@@ -306,8 +306,8 @@ export const withdrawFunds = async (userId, amount, method) => {
         amount: -amount, // Negative for withdrawals (backward compatibility)
         currency: 'ETB',
         method: method || 'bank_transfer',
-        status: TRANSACTION_STATUS.COMPLETED,
-        description: `Withdrawal of ${amount} ETB`,
+        status: TRANSACTION_STATUS.PENDING, 
+        description: `Withdrawal of ${amount} ETB (pending approval)`,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };

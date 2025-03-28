@@ -567,6 +567,15 @@ export const createOrder = async (userId, orderData) => {
       }
     }
     
+    // Add the order ID to the data before creating seller orders
+    const orderWithId = {
+      ...completeOrderData,
+      id: orderRef.id
+    };
+    
+    // Create separate seller orders
+    await createSellerOrders(orderWithId);
+    
     return {
       id: orderRef.id,
       ...completeOrderData
@@ -577,7 +586,6 @@ export const createOrder = async (userId, orderData) => {
   }
 };
 
-// Get user's orders
 export const getUserOrders = async (userId) => {
   try {
     if (!userId) {
@@ -586,32 +594,70 @@ export const getUserOrders = async (userId) => {
       userId = currentUser.uid;
     }
     
-    // Query orders collection for user's orders
-    const ordersRef = collection(db, 'orders');
-    const q = query(
-      ordersRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const orders = [];
-    
-    querySnapshot.forEach((doc) => {
-      orders.push({
-        id: doc.id,
-        ...doc.data()
+    try {
+      // Try the query with index first
+      // Query orders collection for user's orders
+      const ordersRef = collection(db, 'orders');
+      const q = query(
+        ordersRef,
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const orders = [];
+      
+      querySnapshot.forEach((doc) => {
+        orders.push({
+          id: doc.id,
+          ...doc.data()
+        });
       });
-    });
-    
-    return orders;
+      
+      return orders;
+    } catch (indexError) {
+      // If the index error occurs, use a fallback approach
+      console.warn('Index error occurred, using fallback method:', indexError);
+      
+      // Fallback: Get all orders for the user without sorting
+      const ordersRef = collection(db, 'orders');
+      const fallbackQuery = query(
+        ordersRef,
+        where('userId', '==', userId)
+      );
+      
+      const fallbackSnapshot = await getDocs(fallbackQuery);
+      const orders = [];
+      
+      fallbackSnapshot.forEach((doc) => {
+        orders.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      // Sort the results in memory (not as efficient, but works without index)
+      orders.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(0);
+        const dateB = b.createdAt?.toDate?.() || new Date(0);
+        return dateB - dateA; // descending order
+      });
+      
+      // Display a message to create the index
+      console.info(
+        'Please create the required Firestore index using this link:',
+        indexError.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0] || 
+        'https://console.firebase.google.com/project/_/firestore/indexes'
+      );
+      
+      return orders;
+    }
   } catch (error) {
     console.error('Error getting user orders:', error);
     throw error;
   }
 };
 
-// Get order details
 export const getOrderById = async (orderId) => {
   try {
     if (!orderId) throw new Error('Order ID is required');
@@ -675,13 +721,14 @@ export const getSellerProducts = async (sellerId) => {
       
       return products;
     } catch (indexError) {
-      // If index error occurs, fall back to simpler query without ordering
+      // If the index error occurs, use a fallback approach
       if (indexError.message && indexError.message.includes('index')) {
         console.warn('Falling back to unordered query. For better performance, create the suggested index.');
         
-        // Fallback query without ordering (doesn't require composite index)
+        // Fallback: Get all orders for the user without sorting
+        const productsRef = collection(db, 'products');
         const fallbackQuery = query(
-          collection(db, 'products'),
+          productsRef,
           where('sellerId', '==', sellerId)
         );
         
@@ -718,34 +765,86 @@ export const getSellerProducts = async (sellerId) => {
 // Order Management
 export const getSellerOrders = async (sellerId) => {
   try {
-    const ordersQuery = query(
-      collection(db, 'orders'),
-      where('items', 'array-contains', { sellerId }),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(ordersQuery);
-    const orders = [];
-    
-    querySnapshot.forEach((doc) => {
-      // Filter items to only include this seller's items
-      const orderData = doc.data();
-      const sellerItems = orderData.items.filter(item => item.sellerId === sellerId);
+    try {
+      // Try the query with index first
+      const ordersQuery = query(
+        collection(db, 'orders'),
+        where('items', 'array-contains', { sellerId }),
+        orderBy('createdAt', 'desc')
+      );
       
-      // Calculate total for this seller's items
-      const sellerTotal = sellerItems.reduce((total, item) => {
-        return total + (item.price * item.quantity);
-      }, 0);
+      const querySnapshot = await getDocs(ordersQuery);
+      const orders = [];
       
-      orders.push({
-        id: doc.id,
-        ...orderData,
-        sellerItems,
-        sellerTotal
+      querySnapshot.forEach((doc) => {
+        // Filter items to only include this seller's items
+        const orderData = doc.data();
+        const sellerItems = orderData.items.filter(item => item.sellerId === sellerId);
+        
+        // Calculate total for this seller's items
+        const sellerTotal = sellerItems.reduce((total, item) => {
+          return total + (item.price * item.quantity);
+        }, 0);
+        
+        orders.push({
+          id: doc.id,
+          ...orderData,
+          sellerItems,
+          sellerTotal
+        });
       });
-    });
-    
-    return orders;
+      
+      return orders;
+    } catch (indexError) {
+      // If the index error occurs, use a fallback approach
+      console.warn('Index error occurred, using fallback method for seller orders:', indexError);
+      
+      // Fallback: Get all orders and filter in memory
+      // This query doesn't require a composite index
+      const ordersRef = collection(db, 'orders');
+      const fallbackSnapshot = await getDocs(ordersRef);
+      const orders = [];
+      
+      fallbackSnapshot.forEach((doc) => {
+        const orderData = doc.data();
+        
+        // Check if this order contains items from this seller
+        if (orderData.items && Array.isArray(orderData.items)) {
+          const sellerItems = orderData.items.filter(item => item.sellerId === sellerId);
+          
+          // Only include orders that have items from this seller
+          if (sellerItems.length > 0) {
+            // Calculate total for this seller's items
+            const sellerTotal = sellerItems.reduce((total, item) => {
+              return total + (item.price * item.quantity);
+            }, 0);
+            
+            orders.push({
+              id: doc.id,
+              ...orderData,
+              sellerItems,
+              sellerTotal
+            });
+          }
+        }
+      });
+      
+      // Sort the results in memory (not as efficient, but works without index)
+      orders.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(0);
+        const dateB = b.createdAt?.toDate?.() || new Date(0);
+        return dateB - dateA; // descending order
+      });
+      
+      // Display a message to create the index
+      console.info(
+        'Please create the required Firestore index using this link:',
+        indexError.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0] || 
+        'https://console.firebase.google.com/project/_/firestore/indexes'
+      );
+      
+      return orders;
+    }
   } catch (error) {
     console.error("Error getting seller orders:", error);
     throw error;
@@ -782,15 +881,338 @@ export const updateOrderStatusForSeller = async (orderId, status, sellerId) => {
       return item;
     });
     
+    // Create a notification for the customer
+    const notificationMessage = getStatusNotificationMessage(status, orderData.sellerName || 'Seller');
+    
+    // Add notification to the order
+    const notification = {
+      message: notificationMessage,
+      timestamp: serverTimestamp(),
+      status,
+      sellerId,
+      sellerName: currentUser.displayName || 'Seller'
+    };
+    
+    const notifications = orderData.notifications || [];
+    notifications.push(notification);
+    
     // Update order document
     await updateDoc(orderRef, {
       items: updatedItems,
+      notifications,
       updatedAt: serverTimestamp()
+    });
+    
+    // Add a notification to the user's notifications collection if it exists
+    try {
+      if (orderData.userId) {
+        const userNotificationRef = collection(db, 'users', orderData.userId, 'notifications');
+        await addDoc(userNotificationRef, {
+          type: 'order_update',
+          orderId,
+          message: notificationMessage,
+          status,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (notificationError) {
+      // Don't fail the whole operation if notification creation fails
+      console.warn('Failed to create user notification:', notificationError);
+    }
+    
+    // Update order history
+    const historyRef = collection(db, 'orders', orderId, 'history');
+    await addDoc(historyRef, {
+      status,
+      sellerId,
+      sellerName: currentUser.displayName || 'Seller',
+      timestamp: serverTimestamp(),
+      note: `Order status updated to ${status} by seller`
     });
     
     return true;
   } catch (error) {
     console.error("Error updating order status for seller:", error);
+    throw error;
+  }
+};
+
+// Helper function to generate notification messages based on status
+const getStatusNotificationMessage = (status, sellerName) => {
+  switch (status) {
+    case 'processing':
+      return `Your order has been accepted by ${sellerName} and is being processed.`;
+    case 'shipped':
+      return `Your order has been shipped by ${sellerName}.`;
+    case 'completed':
+      return `Your order has been marked as delivered by ${sellerName}.`;
+    case 'cancelled':
+      return `Your order has been cancelled by ${sellerName}.`;
+    default:
+      return `Your order status has been updated to ${status} by ${sellerName}.`;
+  }
+};
+
+// Create a separate seller order when a buyer places an order
+export const createSellerOrders = async (orderData) => {
+  try {
+    // Ensure we have a valid order ID
+    if (!orderData.id) {
+      console.error("Cannot create seller orders: Missing order ID");
+      return false;
+    }
+    
+    // Group items by seller
+    const itemsBySeller = {};
+    
+    orderData.items.forEach(item => {
+      if (!itemsBySeller[item.sellerId]) {
+        itemsBySeller[item.sellerId] = [];
+      }
+      itemsBySeller[item.sellerId].push(item);
+    });
+    
+    // Create a seller order for each seller
+    const sellerOrderPromises = Object.keys(itemsBySeller).map(async (sellerId) => {
+      const sellerItems = itemsBySeller[sellerId];
+      
+      // Calculate total for this seller's items
+      const sellerTotal = sellerItems.reduce((total, item) => {
+        return total + (item.price * item.quantity);
+      }, 0);
+      
+      // Prepare seller order data with null checks for all fields
+      const sellerOrderData = {
+        mainOrderId: orderData.id,
+        sellerId,
+        buyerId: orderData.userId,
+        items: sellerItems,
+        total: sellerTotal,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      
+      // Only add shippingAddress if it exists
+      if (orderData.shippingAddress) {
+        sellerOrderData.shippingAddress = orderData.shippingAddress;
+      }
+      
+      // Create a new seller order
+      const sellerOrderRef = collection(db, 'sellerOrders');
+      await addDoc(sellerOrderRef, sellerOrderData);
+    });
+    
+    await Promise.all(sellerOrderPromises);
+    return true;
+  } catch (error) {
+    console.error("Error creating seller orders:", error);
+    throw error;
+  }
+};
+
+// Get all orders for a specific seller
+export const getSellerOrdersFromCollection = async (sellerId) => {
+  try {
+    try {
+      // Try the query with index first
+      const sellerOrdersRef = collection(db, 'sellerOrders');
+      const q = query(
+        sellerOrdersRef,
+        where('sellerId', '==', sellerId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const sellerOrders = [];
+      
+      querySnapshot.forEach((doc) => {
+        sellerOrders.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return sellerOrders;
+    } catch (indexError) {
+      // Check if this is an index error
+      if (indexError.message && indexError.message.includes('index')) {
+        console.warn('Index error occurred, using fallback method for seller orders:', indexError.message);
+        
+        // Extract the index creation URL from the error message
+        const indexUrl = indexError.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+        if (indexUrl) {
+          console.info('Create the required index here:', indexUrl);
+        }
+        
+        // Fallback: Get all orders and filter in memory
+        // This query doesn't require a composite index
+        const sellerOrdersRef = collection(db, 'sellerOrders');
+        const fallbackQuery = query(
+          sellerOrdersRef,
+          where('sellerId', '==', sellerId)
+        );
+        
+        const querySnapshot = await getDocs(fallbackQuery);
+        const sellerOrders = [];
+        
+        querySnapshot.forEach((doc) => {
+          sellerOrders.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        
+        // Sort manually
+        sellerOrders.sort((a, b) => {
+          // Handle different timestamp formats
+          const getTimestamp = (timestamp) => {
+            if (!timestamp) return 0;
+            if (timestamp.toDate) return timestamp.toDate().getTime();
+            if (timestamp.seconds) return timestamp.seconds * 1000;
+            return 0;
+          };
+          
+          const timeA = getTimestamp(a.createdAt);
+          const timeB = getTimestamp(b.createdAt);
+          return timeB - timeA; // descending order
+        });
+        
+        return sellerOrders;
+      } else {
+        // If it's not an index error, rethrow
+        throw indexError;
+      }
+    }
+  } catch (error) {
+    console.error("Error getting seller orders:", error);
+    throw error;
+  }
+};
+
+// Get a specific seller order by ID
+export const getSellerOrderById = async (orderDocId) => {
+  try {
+    const orderRef = doc(db, 'sellerOrders', orderDocId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Seller order not found');
+    }
+    
+    return {
+      id: orderSnap.id,
+      ...orderSnap.data()
+    };
+  } catch (error) {
+    console.error("Error getting seller order by ID:", error);
+    throw error;
+  }
+};
+
+// Update the status of a seller order
+export const updateSellerOrderStatus = async (orderDocId, status) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('You must be logged in to update an order');
+    
+    // Get the current order data
+    const orderRef = doc(db, 'sellerOrders', orderDocId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Order not found');
+    }
+    
+    const orderData = orderSnap.data();
+    
+    // Check if this seller owns this order
+    if (orderData.sellerId !== currentUser.uid) {
+      throw new Error('You do not have permission to update this order');
+    }
+    
+    // Create a notification for the customer
+    const notificationMessage = getStatusNotificationMessage(status, currentUser.displayName || 'Seller');
+    
+    // Add notification to the order - use a regular Date object instead of serverTimestamp for array items
+    const notification = {
+      message: notificationMessage,
+      timestamp: new Date().toISOString(), // Use ISO string instead of serverTimestamp
+      status,
+      sellerId: currentUser.uid,
+      sellerName: currentUser.displayName || 'Seller'
+    };
+    
+    const notifications = orderData.notifications || [];
+    notifications.push(notification);
+    
+    // Update seller order document
+    await updateDoc(orderRef, {
+      status,
+      notifications,
+      updatedAt: serverTimestamp() // serverTimestamp is fine for direct field updates
+    });
+    
+    // If there's a main order, update the status of the seller's items in it
+    if (orderData.mainOrderId) {
+      try {
+        const mainOrderRef = doc(db, 'orders', orderData.mainOrderId);
+        const mainOrderSnap = await getDoc(mainOrderRef);
+        
+        if (mainOrderSnap.exists()) {
+          const mainOrderData = mainOrderSnap.data();
+          
+          // Update the status for this seller's items in the main order
+          const updatedItems = mainOrderData.items.map(item => {
+            if (item.sellerId === currentUser.uid) {
+              return { ...item, status };
+            }
+            return item;
+          });
+          
+          // Update main order document
+          await updateDoc(mainOrderRef, {
+            items: updatedItems,
+            updatedAt: serverTimestamp()
+          });
+        }
+      } catch (mainOrderError) {
+        console.warn("Error updating main order:", mainOrderError);
+        // Continue even if main order update fails
+      }
+    }
+    
+    // Add a notification to the user's notifications collection if it exists
+    try {
+      if (orderData.buyerId) {
+        const userNotificationRef = collection(db, 'users', orderData.buyerId, 'notifications');
+        await addDoc(userNotificationRef, {
+          type: 'order_update',
+          orderId: orderDocId,
+          mainOrderId: orderData.mainOrderId,
+          message: notificationMessage,
+          status,
+          read: false,
+          createdAt: serverTimestamp() // This is fine as it's not in an array
+        });
+      }
+    } catch (notificationError) {
+      // Don't fail the whole operation if notification creation fails
+      console.warn('Failed to create user notification:', notificationError);
+    }
+    
+    // Update order history
+    const historyRef = collection(db, 'sellerOrders', orderDocId, 'history');
+    await addDoc(historyRef, {
+      status,
+      timestamp: serverTimestamp(), // This is fine as it's not in an array
+      note: `Order status updated to ${status} by seller`
+    });
+    
+    return true;
+  } catch (error) {
+    console.error("Error updating seller order status:", error);
     throw error;
   }
 };

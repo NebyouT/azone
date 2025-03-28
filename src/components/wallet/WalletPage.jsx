@@ -28,7 +28,10 @@ import {
   Chip,
   IconButton,
   Grid,
-  Modal
+  Modal,
+  Stepper,
+  Step,
+  StepLabel
 } from '@mui/material';
 import {
   AccountBalanceWallet as WalletIcon,
@@ -43,7 +46,10 @@ import {
   Info as InfoIcon,
   CreditCard as CardIcon,
   Payment as PaymentIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  AccountBalance as BankIcon,
+  Phone as PhoneIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -58,6 +64,12 @@ import {
 } from '../../firebase/walletServices';
 import { verifyTransaction } from '../../chapa/services';
 import { processSuccessfulPayment } from '../../chapa/transactionHandler';
+import { 
+  createWithdrawalRequest, 
+  WITHDRAWAL_METHODS, 
+  WITHDRAWAL_STATUS,
+  getWithdrawalRequests
+} from '../../firebase/withdrawalServices';
 import ChapaPaymentForm from './ChapaPaymentForm';
 
 // Helper function to format currency
@@ -71,14 +83,9 @@ const formatCurrency = (amount) => {
 
 // Helper function to format date
 const formatDate = (timestamp) => {
-  if (!timestamp) return 'N/A';
-  
-  // Check if it's a Firebase timestamp
-  const date = timestamp.seconds 
-    ? new Date(timestamp.seconds * 1000) 
-    : new Date(timestamp);
-    
-  return date.toLocaleString('en-ET', {
+  if (!timestamp) return '';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return date.toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -94,16 +101,12 @@ const getTransactionIcon = (type) => {
       return <ArrowDownwardIcon color="success" />;
     case TRANSACTION_TYPES.WITHDRAWAL:
       return <ArrowUpwardIcon color="error" />;
-    case TRANSACTION_TYPES.PURCHASE:
-      return <RemoveIcon color="error" />;
-    case TRANSACTION_TYPES.SALE:
-      return <AddIcon color="success" />;
+    case TRANSACTION_TYPES.PAYMENT:
+      return <PaymentIcon color="primary" />;
     case TRANSACTION_TYPES.REFUND:
-      return <RefreshIcon color="info" />;
-    case TRANSACTION_TYPES.TRANSFER:
-      return <MoneyIcon color="primary" />;
+      return <ReceiptIcon color="secondary" />;
     default:
-      return <ReceiptIcon />;
+      return <HistoryIcon />;
   }
 };
 
@@ -140,10 +143,11 @@ const WalletPage = () => {
   const [error, setError] = useState('');
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [withdrawalRequests, setWithdrawalRequests] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [amount, setAmount] = useState('');
   const [depositMethod, setDepositMethod] = useState('chapa');
-  const [withdrawalMethod, setWithdrawalMethod] = useState('bank_transfer');
+  const [withdrawalMethod, setWithdrawalMethod] = useState(WITHDRAWAL_METHODS.CBE);
   const [openDepositDialog, setOpenDepositDialog] = useState(false);
   const [openWithdrawDialog, setOpenWithdrawDialog] = useState(false);
   const [processingDeposit, setProcessingDeposit] = useState(false);
@@ -151,8 +155,17 @@ const WalletPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [chapaRedirectUrl, setChapaRedirectUrl] = useState('');
   const [depositSuccess, setDepositSuccess] = useState(false);
+  const [withdrawalSuccess, setWithdrawalSuccess] = useState(false);
   const [showChapaForm, setShowChapaForm] = useState(false);
   const [chapaPaymentData, setChapaPaymentData] = useState(null);
+  
+  // Withdrawal form state
+  const [withdrawalStep, setWithdrawalStep] = useState(0);
+  const [bankDetails, setBankDetails] = useState({
+    accountNumber: '',
+    phoneNumber: '',
+    fullName: ''
+  });
   
   // Check for transaction reference in URL (for Chapa callback)
   useEffect(() => {
@@ -261,6 +274,35 @@ const WalletPage = () => {
     }
   };
   
+  // Fetch all data
+  const fetchAllData = async () => {
+    await fetchWalletData();
+    await fetchTransactionHistory();
+    await fetchWithdrawalRequests();
+  };
+  
+  // Fetch transaction history
+  const fetchTransactionHistory = async () => {
+    try {
+      const transactionHistory = await getTransactionHistory(currentUser.uid);
+      setTransactions(transactionHistory);
+    } catch (error) {
+      console.error('Error fetching transaction history:', error);
+    }
+  };
+  
+  // Fetch withdrawal requests
+  const fetchWithdrawalRequests = async () => {
+    try {
+      if (!currentUser) return;
+      
+      const requests = await getWithdrawalRequests(currentUser.uid);
+      setWithdrawalRequests(requests);
+    } catch (error) {
+      console.error('Error fetching withdrawal requests:', error);
+    }
+  };
+  
   // Load wallet data on component mount
   useEffect(() => {
     if (!currentUser) {
@@ -268,7 +310,7 @@ const WalletPage = () => {
       return;
     }
     
-    fetchWalletData();
+    fetchAllData();
   }, [currentUser, navigate]);
   
   // Handle tab change
@@ -350,21 +392,115 @@ const WalletPage = () => {
         return;
       }
       
+      // Validate bank details based on method
+      if (withdrawalMethod === WITHDRAWAL_METHODS.CBE && !bankDetails.accountNumber) {
+        setError('Please enter your CBE account number');
+        setProcessingWithdrawal(false);
+        return;
+      }
+      
+      if (withdrawalMethod === WITHDRAWAL_METHODS.TELEBIRR && !bankDetails.phoneNumber) {
+        setError('Please enter your Telebirr phone number');
+        setProcessingWithdrawal(false);
+        return;
+      }
+      
+      if (!bankDetails.fullName) {
+        setError('Please enter the full name on your account');
+        setProcessingWithdrawal(false);
+        return;
+      }
+      
+      // Create withdrawal request
+      await createWithdrawalRequest(
+        currentUser.uid,
+        amountValue,
+        withdrawalMethod,
+        bankDetails
+      );
+      
+      // Deduct funds from wallet
       await withdrawFunds(currentUser.uid, amountValue, withdrawalMethod);
       
-      // Refresh wallet data
-      await fetchWalletData();
+      // Refresh data
+      await fetchAllData();
+      
+      // Show success message
+      setWithdrawalSuccess(true);
+      setTimeout(() => setWithdrawalSuccess(false), 5000);
       
       // Close dialog and reset form
       setOpenWithdrawDialog(false);
       setAmount('');
-      setWithdrawalMethod('bank_transfer');
+      setWithdrawalMethod(WITHDRAWAL_METHODS.CBE);
+      setBankDetails({
+        accountNumber: '',
+        phoneNumber: '',
+        fullName: ''
+      });
+      setWithdrawalStep(0);
     } catch (err) {
       console.error('Error withdrawing funds:', err);
       setError('Failed to withdraw funds. Please try again.');
     } finally {
       setProcessingWithdrawal(false);
     }
+  };
+  
+  // Handle withdrawal step changes
+  const handleNextWithdrawalStep = () => {
+    // Validate current step
+    if (withdrawalStep === 0) {
+      const amountValue = parseFloat(amount);
+      
+      if (isNaN(amountValue) || amountValue <= 0) {
+        setError('Please enter a valid amount');
+        return;
+      }
+      
+      if (amountValue > wallet.balance) {
+        setError('Insufficient balance');
+        return;
+      }
+      
+      setError('');
+    } else if (withdrawalStep === 1) {
+      // Validate bank details based on method
+      if (withdrawalMethod === WITHDRAWAL_METHODS.CBE && !bankDetails.accountNumber) {
+        setError('Please enter your CBE account number');
+        return;
+      }
+      
+      if (withdrawalMethod === WITHDRAWAL_METHODS.TELEBIRR && !bankDetails.phoneNumber) {
+        setError('Please enter your Telebirr phone number');
+        return;
+      }
+      
+      setError('');
+    } else if (withdrawalStep === 2) {
+      if (!bankDetails.fullName) {
+        setError('Please enter the full name on your account');
+        return;
+      }
+      
+      setError('');
+    }
+    
+    // Move to next step
+    setWithdrawalStep(withdrawalStep + 1);
+  };
+  
+  const handlePreviousWithdrawalStep = () => {
+    setWithdrawalStep(withdrawalStep - 1);
+    setError('');
+  };
+  
+  // Handle bank details change
+  const handleBankDetailsChange = (e) => {
+    setBankDetails({
+      ...bankDetails,
+      [e.target.name]: e.target.value
+    });
   };
   
   // Render loading state
@@ -544,6 +680,445 @@ const WalletPage = () => {
     </Modal>
   );
   
+  // Render withdrawal dialog
+  const renderWithdrawDialog = () => (
+    <Dialog
+      open={openWithdrawDialog}
+      onClose={() => {
+        setOpenWithdrawDialog(false);
+        setWithdrawalStep(0);
+        setError('');
+      }}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>
+        Withdraw Funds
+        <IconButton
+          aria-label="close"
+          onClick={() => {
+            setOpenWithdrawDialog(false);
+            setWithdrawalStep(0);
+            setError('');
+          }}
+          sx={{ position: 'absolute', right: 8, top: 8 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      
+      <DialogContent>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        
+        <Stepper activeStep={withdrawalStep} sx={{ mb: 3 }}>
+          <Step>
+            <StepLabel>Amount</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>Method</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>Details</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>Confirm</StepLabel>
+          </Step>
+        </Stepper>
+        
+        {/* Step 1: Enter amount */}
+        {withdrawalStep === 0 && (
+          <>
+            <Typography variant="subtitle1" gutterBottom>
+              Enter withdrawal amount
+            </Typography>
+            
+            <TextField
+              label="Amount"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <MoneyIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    ETB
+                  </InputAdornment>
+                )
+              }}
+              sx={{ mb: 2 }}
+            />
+            
+            <Typography variant="body2" color="text.secondary">
+              Available balance: {formatCurrency(wallet?.balance || 0)} ETB
+            </Typography>
+          </>
+        )}
+        
+        {/* Step 2: Select withdrawal method */}
+        {withdrawalStep === 1 && (
+          <>
+            <Typography variant="subtitle1" gutterBottom>
+              Select withdrawal method
+            </Typography>
+            
+            <FormControl component="fieldset" sx={{ width: '100%' }}>
+              <RadioGroup
+                value={withdrawalMethod}
+                onChange={(e) => setWithdrawalMethod(e.target.value)}
+              >
+                <FormControlLabel
+                  value={WITHDRAWAL_METHODS.CBE}
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <BankIcon sx={{ mr: 1 }} />
+                      <Typography>Commercial Bank of Ethiopia (CBE)</Typography>
+                    </Box>
+                  }
+                  sx={{ mb: 1 }}
+                />
+                
+                <FormControlLabel
+                  value={WITHDRAWAL_METHODS.TELEBIRR}
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <PhoneIcon sx={{ mr: 1 }} />
+                      <Typography>Telebirr</Typography>
+                    </Box>
+                  }
+                  sx={{ mb: 1 }}
+                />
+              </RadioGroup>
+            </FormControl>
+            
+            {/* CBE Account Number */}
+            {withdrawalMethod === WITHDRAWAL_METHODS.CBE && (
+              <TextField
+                label="CBE Account Number"
+                name="accountNumber"
+                value={bankDetails.accountNumber}
+                onChange={handleBankDetailsChange}
+                fullWidth
+                margin="normal"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <BankIcon />
+                    </InputAdornment>
+                  )
+                }}
+              />
+            )}
+            
+            {/* Telebirr Phone Number */}
+            {withdrawalMethod === WITHDRAWAL_METHODS.TELEBIRR && (
+              <TextField
+                label="Telebirr Phone Number"
+                name="phoneNumber"
+                value={bankDetails.phoneNumber}
+                onChange={handleBankDetailsChange}
+                fullWidth
+                margin="normal"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PhoneIcon />
+                    </InputAdornment>
+                  )
+                }}
+              />
+            )}
+          </>
+        )}
+        
+        {/* Step 3: Enter account holder details */}
+        {withdrawalStep === 2 && (
+          <>
+            <Typography variant="subtitle1" gutterBottom>
+              Enter account holder details
+            </Typography>
+            
+            <TextField
+              label="Full Name (as it appears on your account)"
+              name="fullName"
+              value={bankDetails.fullName}
+              onChange={handleBankDetailsChange}
+              fullWidth
+              margin="normal"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon />
+                  </InputAdornment>
+                )
+              }}
+            />
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Please ensure the name matches exactly as it appears on your {withdrawalMethod === WITHDRAWAL_METHODS.CBE ? 'bank account' : 'Telebirr account'}.
+            </Typography>
+          </>
+        )}
+        
+        {/* Step 4: Confirmation */}
+        {withdrawalStep === 3 && (
+          <>
+            <Typography variant="subtitle1" gutterBottom>
+              Confirm withdrawal details
+            </Typography>
+            
+            <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, mb: 2 }}>
+              <Typography variant="body1" gutterBottom>
+                <strong>Amount:</strong> {formatCurrency(amount)} ETB
+              </Typography>
+              
+              <Typography variant="body1" gutterBottom>
+                <strong>Method:</strong> {withdrawalMethod === WITHDRAWAL_METHODS.CBE ? 'Commercial Bank of Ethiopia (CBE)' : 'Telebirr'}
+              </Typography>
+              
+              {withdrawalMethod === WITHDRAWAL_METHODS.CBE && (
+                <Typography variant="body1" gutterBottom>
+                  <strong>Account Number:</strong> {bankDetails.accountNumber}
+                </Typography>
+              )}
+              
+              {withdrawalMethod === WITHDRAWAL_METHODS.TELEBIRR && (
+                <Typography variant="body1" gutterBottom>
+                  <strong>Phone Number:</strong> {bankDetails.phoneNumber}
+                </Typography>
+              )}
+              
+              <Typography variant="body1">
+                <strong>Account Holder:</strong> {bankDetails.fullName}
+              </Typography>
+            </Box>
+            
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Funds will be transferred to your account within 24 hours. Your withdrawal request will be marked as pending until processed.
+            </Alert>
+          </>
+        )}
+      </DialogContent>
+      
+      <DialogActions>
+        {withdrawalStep > 0 && (
+          <Button 
+            onClick={handlePreviousWithdrawalStep}
+            disabled={processingWithdrawal}
+          >
+            Back
+          </Button>
+        )}
+        
+        {withdrawalStep < 3 ? (
+          <Button 
+            onClick={handleNextWithdrawalStep}
+            variant="contained" 
+            color="primary"
+          >
+            Next
+          </Button>
+        ) : (
+          <Button
+            onClick={handleWithdrawal}
+            variant="contained"
+            color="primary"
+            disabled={processingWithdrawal}
+            startIcon={processingWithdrawal && <CircularProgress size={20} color="inherit" />}
+          >
+            {processingWithdrawal ? 'Processing...' : 'Confirm Withdrawal'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+  
+  // Render transaction history
+  const renderTransactionHistory = () => (
+    <Paper elevation={2} sx={{ p: 2, mt: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+          <HistoryIcon sx={{ mr: 1 }} /> Transaction History
+        </Typography>
+        <Button
+          startIcon={<RefreshIcon />}
+          onClick={fetchAllData}
+          disabled={refreshing}
+          size="small"
+          color="primary"
+          variant="outlined"
+        >
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </Box>
+      
+      {transactions.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 4, bgcolor: 'background.paper', borderRadius: 1 }}>
+          <ReceiptIcon sx={{ fontSize: 40, color: 'text.secondary', opacity: 0.5, mb: 1 }} />
+          <Typography variant="body1" color="text.secondary">
+            No transactions found
+          </Typography>
+        </Box>
+      ) : (
+        <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+          {transactions.map((transaction) => (
+            <ListItem 
+              key={transaction.id} 
+              divider
+              sx={{
+                borderLeft: 3,
+                borderColor: transaction.amount > 0 ? 'success.main' : 'error.main',
+                mb: 1,
+                bgcolor: 'background.paper',
+                borderRadius: 1,
+                transition: 'all 0.2s',
+                '&:hover': {
+                  bgcolor: 'background.default',
+                  transform: 'translateX(4px)'
+                }
+              }}
+            >
+              <Box sx={{ mr: 2 }}>
+                {getTransactionIcon(transaction.type)}
+              </Box>
+              <ListItemText
+                primary={
+                  <Typography variant="body1" fontWeight="medium">
+                    {transaction.amount > 0 ? 'Deposit' : 'Withdrawal'}
+                    {transaction.method && ` via ${transaction.method}`}
+                  </Typography>
+                }
+                secondary={
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {formatDate(transaction.createdAt)}
+                    </Typography>
+                    {transaction.description && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {transaction.description}
+                      </Typography>
+                    )}
+                  </Box>
+                }
+              />
+              <ListItemSecondaryAction>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <Typography
+                    variant="body1"
+                    color={transaction.amount > 0 ? 'success.main' : 'error.main'}
+                    sx={{ fontWeight: 'bold' }}
+                  >
+                    {transaction.amount > 0 ? '+' : ''}{formatCurrency(transaction.amount)} ETB
+                  </Typography>
+                  
+                  {/* Show status chip for withdrawals */}
+                  {transaction.type === TRANSACTION_TYPES.WITHDRAWAL && (
+                    <Chip
+                      size="small"
+                      label={transaction.status}
+                      color={getStatusColor(transaction.status)}
+                      sx={{ mt: 1 }}
+                    />
+                  )}
+                </Box>
+              </ListItemSecondaryAction>
+            </ListItem>
+          ))}
+        </List>
+      )}
+    </Paper>
+  );
+  
+  // Render withdrawal requests
+  const renderWithdrawalRequests = () => (
+    <Paper elevation={2} sx={{ p: 2, mt: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <BankIcon sx={{ mr: 1 }} />
+        <Typography variant="h6">
+          Withdrawal Requests
+        </Typography>
+      </Box>
+      
+      {withdrawalRequests.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 4, bgcolor: 'background.paper', borderRadius: 1 }}>
+          <RemoveIcon sx={{ fontSize: 40, color: 'text.secondary', opacity: 0.5, mb: 1 }} />
+          <Typography variant="body1" color="text.secondary">
+            No withdrawal requests found
+          </Typography>
+        </Box>
+      ) : (
+        <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+          {withdrawalRequests.map((request) => (
+            <ListItem 
+              key={request.id} 
+              divider
+              sx={{
+                borderLeft: 3,
+                borderColor: 
+                  request.status === WITHDRAWAL_STATUS.COMPLETED
+                    ? 'success.main'
+                    : request.status === WITHDRAWAL_STATUS.PENDING
+                    ? 'warning.main'
+                    : request.status === WITHDRAWAL_STATUS.REJECTED
+                    ? 'error.main'
+                    : 'grey.500',
+                mb: 1,
+                bgcolor: 'background.paper',
+                borderRadius: 1,
+                transition: 'all 0.2s',
+                '&:hover': {
+                  bgcolor: 'background.default',
+                  transform: 'translateX(4px)'
+                }
+              }}
+            >
+              <Box sx={{ mr: 2 }}>
+                {request.method === WITHDRAWAL_METHODS.CBE ? <BankIcon /> : <PhoneIcon />}
+              </Box>
+              <ListItemText
+                primary={
+                  <Typography variant="body1" fontWeight="medium">
+                    {formatCurrency(request.amount)} ETB via {request.method === WITHDRAWAL_METHODS.CBE ? 'CBE' : 'Telebirr'}
+                  </Typography>
+                }
+                secondary={
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {formatDate(request.createdAt)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {request.method === WITHDRAWAL_METHODS.CBE 
+                        ? `Account: ${request.bankDetails?.accountNumber}` 
+                        : `Phone: ${request.bankDetails?.phoneNumber}`}
+                    </Typography>
+                  </Box>
+                }
+              />
+              <ListItemSecondaryAction>
+                <Chip
+                  label={request.status}
+                  color={getStatusColor(request.status)}
+                  size="small"
+                  sx={{ fontWeight: 'medium' }}
+                />
+              </ListItemSecondaryAction>
+            </ListItem>
+          ))}
+        </List>
+      )}
+    </Paper>
+  );
+  
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
@@ -626,58 +1201,8 @@ const WalletPage = () => {
           <Box sx={{ mt: 3 }}>
             {activeTab === 0 && (
               <Box>
-                <Typography variant="h6" gutterBottom>
-                  Transaction History
-                </Typography>
-                
-                {transactions.length === 0 ? (
-                  <Box sx={{ textAlign: 'center', py: 4 }}>
-                    <Typography variant="body1" color="text.secondary">
-                      No transactions yet
-                    </Typography>
-                  </Box>
-                ) : (
-                  <List>
-                    {transactions.map((transaction) => (
-                      <ListItem
-                        key={transaction.id}
-                        divider
-                        sx={{
-                          borderLeft: 3,
-                          borderColor: getTransactionColor(transaction.amount),
-                          mb: 1,
-                          bgcolor: 'background.paper',
-                          borderRadius: 1
-                        }}
-                      >
-                        <Box sx={{ mr: 2 }}>
-                          {getTransactionIcon(transaction.type)}
-                        </Box>
-                        <ListItemText
-                          primary={transaction.description}
-                          secondary={formatDate(transaction.createdAt)}
-                        />
-                        <ListItemSecondaryAction>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                            <Typography
-                              variant="body1"
-                              color={getTransactionColor(transaction.amount)}
-                              sx={{ fontWeight: 'bold' }}
-                            >
-                              {formatCurrency(transaction.amount)}
-                            </Typography>
-                            <Chip
-                              label={transaction.status}
-                              size="small"
-                              color={getStatusColor(transaction.status)}
-                              sx={{ mt: 1 }}
-                            />
-                          </Box>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
-                  </List>
-                )}
+                {renderTransactionHistory()}
+                {renderWithdrawalRequests()}
               </Box>
             )}
             
@@ -776,66 +1301,7 @@ const WalletPage = () => {
       {renderDepositDialog()}
       
       {/* Withdraw Dialog */}
-      <Dialog 
-        open={openWithdrawDialog} 
-        onClose={() => setOpenWithdrawDialog(false)}
-        aria-labelledby="withdraw-dialog-title"
-        disableEnforceFocus
-        keepMounted
-      >
-        <DialogTitle id="withdraw-dialog-title">Withdraw Funds</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 1 }}>
-            <TextField
-              fullWidth
-              label="Amount (ETB)"
-              value={amount}
-              onChange={handleAmountChange}
-              margin="normal"
-              type="text"
-              InputProps={{
-                startAdornment: <InputAdornment position="start">ETB</InputAdornment>,
-              }}
-              helperText={`Available balance: ${formatCurrency(wallet?.balance || 0)}`}
-              autoFocus
-            />
-            
-            <FormControl component="fieldset" sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Withdrawal Method
-              </Typography>
-              <RadioGroup
-                value={withdrawalMethod}
-                onChange={(e) => setWithdrawalMethod(e.target.value)}
-              >
-                <FormControlLabel
-                  value="bank_transfer"
-                  control={<Radio />}
-                  label="Bank Transfer"
-                />
-                <FormControlLabel
-                  value="mobile_money"
-                  control={<Radio />}
-                  label="Mobile Money"
-                />
-              </RadioGroup>
-            </FormControl>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenWithdrawDialog(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleWithdrawal}
-            variant="contained"
-            color="primary"
-            disabled={processingWithdrawal || !amount || parseFloat(amount) > (wallet?.balance || 0)}
-          >
-            {processingWithdrawal ? <CircularProgress size={24} /> : 'Withdraw'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {renderWithdrawDialog()}
       
       {/* Chapa Payment Form Modal */}
       {renderChapaFormModal()}

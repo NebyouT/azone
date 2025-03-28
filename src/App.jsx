@@ -17,10 +17,12 @@ import Register from './components/auth/Register';
 import Checkout from './components/checkout/Checkout';
 import Profile from './components/profile/Profile';
 import Orders from './components/orders/Orders';
+import OrderDetail from './components/orders/OrderDetail';
 
 // Seller Components
 import SellerDashboard from './components/seller/SellerDashboard';
 import ProductForm from './components/seller/ProductForm';
+import SellerOrderDetail from './components/seller/SellerOrderDetail';
 import WalletPage from './components/wallet/WalletPage';
 
 // Create a theme instance
@@ -107,6 +109,16 @@ function App() {
                   } 
                 />
                 
+                {/* Order Detail Route */}
+                <Route 
+                  path="orders/:id" 
+                  element={
+                    <ProtectedRoute>
+                      <OrderDetail />
+                    </ProtectedRoute>
+                  } 
+                />
+                
                 {/* Seller Routes */}
                 <Route 
                   path="seller/dashboard" 
@@ -129,6 +141,14 @@ function App() {
                   element={
                     <ProtectedRoute requiredRole="seller">
                       <ProductForm />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="seller/orders/:id" 
+                  element={
+                    <ProtectedRoute requiredRole="seller">
+                      <SellerOrderDetail />
                     </ProtectedRoute>
                   } 
                 />

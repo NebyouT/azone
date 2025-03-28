@@ -15,11 +15,17 @@ import {
   CircularProgress,
   Alert,
   Button,
-  Divider
+  Divider,
+  Tooltip
 } from '@mui/material';
 import {
   ShoppingBag as OrderIcon,
-  ArrowBack as BackIcon
+  ArrowBack as BackIcon,
+  CheckCircle as CheckCircleIcon,
+  Autorenew as AutorenewIcon,
+  LocalShipping as ShippingIcon,
+  Cancel as CancelIcon,
+  HourglassEmpty as HourglassEmptyIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserOrders } from '../../firebase/services';
@@ -62,8 +68,86 @@ const getStatusColor = (status) => {
     case 'cancelled':
       return 'error';
     default:
-      return 'default';
+      return 'warning';
   }
+};
+
+// Get status icon
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'completed':
+      return <CheckCircleIcon fontSize="small" />;
+    case 'processing':
+      return <AutorenewIcon fontSize="small" />;
+    case 'shipped':
+      return <ShippingIcon fontSize="small" />;
+    case 'cancelled':
+      return <CancelIcon fontSize="small" />;
+    default:
+      return <HourglassEmptyIcon fontSize="small" />;
+  }
+};
+
+// Calculate the overall status of an order based on item statuses
+const calculateOrderStatus = (order) => {
+  if (!order.items || order.items.length === 0) {
+    return order.status || 'pending';
+  }
+  
+  // Count items by status
+  const statusCounts = order.items.reduce((counts, item) => {
+    const status = item.status || 'pending';
+    counts[status] = (counts[status] || 0) + 1;
+    return counts;
+  }, {});
+  
+  const totalItems = order.items.length;
+  
+  // If all items have the same status, use that
+  if (statusCounts.completed === totalItems) return 'completed';
+  if (statusCounts.cancelled === totalItems) return 'cancelled';
+  
+  // If any items are shipped, show as partially shipped
+  if (statusCounts.shipped) return 'shipped';
+  
+  // If any items are processing, show as processing
+  if (statusCounts.processing) return 'processing';
+  
+  // Default to pending
+  return 'pending';
+};
+
+// Get a human-readable status description
+const getStatusDescription = (order) => {
+  if (!order.items || order.items.length === 0) {
+    return order.status || 'Pending';
+  }
+  
+  // Count items by status
+  const statusCounts = order.items.reduce((counts, item) => {
+    const status = item.status || 'pending';
+    counts[status] = (counts[status] || 0) + 1;
+    return counts;
+  }, {});
+  
+  const totalItems = order.items.length;
+  
+  // If all items have the same status, use that
+  if (statusCounts.completed === totalItems) return 'Completed';
+  if (statusCounts.cancelled === totalItems) return 'Cancelled';
+  if (statusCounts.shipped === totalItems) return 'Shipped';
+  if (statusCounts.processing === totalItems) return 'Processing';
+  if (statusCounts.pending === totalItems) return 'Pending';
+  
+  // Mixed statuses
+  const parts = [];
+  if (statusCounts.completed) parts.push(`${statusCounts.completed} Completed`);
+  if (statusCounts.shipped) parts.push(`${statusCounts.shipped} Shipped`);
+  if (statusCounts.processing) parts.push(`${statusCounts.processing} Processing`);
+  if (statusCounts.pending) parts.push(`${statusCounts.pending} Pending`);
+  if (statusCounts.cancelled) parts.push(`${statusCounts.cancelled} Cancelled`);
+  
+  return parts.join(', ');
 };
 
 const Orders = () => {
@@ -100,38 +184,32 @@ const Orders = () => {
         </Typography>
       </Box>
       
-      <Button
-        component={Link}
-        to="/"
-        startIcon={<BackIcon />}
-        sx={{ mb: 3 }}
-      >
-        Continue Shopping
-      </Button>
-      
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : error ? (
+      {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
+      )}
+      
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
       ) : orders.length === 0 ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
+        <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" gutterBottom>
-            You haven't placed any orders yet
+            No orders found
           </Typography>
           <Typography variant="body1" color="text.secondary" paragraph>
-            Explore our products and place your first order!
+            You haven't placed any orders yet.
           </Typography>
           <Button
             component={Link}
             to="/products"
             variant="contained"
             color="primary"
+            startIcon={<OrderIcon />}
           >
-            Browse Products
+            Start Shopping
           </Button>
         </Paper>
       ) : (
@@ -141,37 +219,26 @@ const Orders = () => {
               <TableRow>
                 <TableCell>Order ID</TableCell>
                 <TableCell>Date</TableCell>
-                <TableCell>Items</TableCell>
                 <TableCell>Total</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Payment</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {orders.map((order) => (
                 <TableRow key={order.id} hover>
+                  <TableCell>#{order.id.substring(0, 8)}</TableCell>
+                  <TableCell>{formatDate(order.createdAt)}</TableCell>
+                  <TableCell>{formatCurrency(order.total)}</TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      {order.id.slice(0, 8)}...
-                    </Typography>
-                  </TableCell>
-                  <TableCell>{formatDate(order.orderDate)}</TableCell>
-                  <TableCell>{order.items?.length || 0} items</TableCell>
-                  <TableCell>{formatCurrency(order.total || 0)}</TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={order.status || 'pending'} 
-                      color={getStatusColor(order.status)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={order.paymentStatus || 'pending'} 
-                      color={order.paymentStatus === 'paid' ? 'success' : 'warning'}
-                      size="small"
-                    />
+                    <Tooltip title={getStatusDescription(order)}>
+                      <Chip 
+                        icon={getStatusIcon(calculateOrderStatus(order))}
+                        label={calculateOrderStatus(order).toUpperCase()} 
+                        color={getStatusColor(calculateOrderStatus(order))}
+                        size="small"
+                      />
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     <Button

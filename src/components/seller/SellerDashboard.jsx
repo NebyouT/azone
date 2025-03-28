@@ -27,7 +27,7 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { getSellerProducts, getSellerOrders } from '../../firebase/services';
+import { getSellerProducts, getSellerOrdersFromCollection } from '../../firebase/services';
 
 // TabPanel component for tab content
 function TabPanel(props) {
@@ -76,8 +76,8 @@ const SellerDashboard = () => {
         const sellerProducts = await getSellerProducts(currentUser.uid);
         setProducts(sellerProducts);
         
-        // Fetch seller's orders
-        const sellerOrders = await getSellerOrders(currentUser.uid);
+        // Fetch seller's orders from the dedicated collection
+        const sellerOrders = await getSellerOrdersFromCollection(currentUser.uid);
         setOrders(sellerOrders);
         
         setError('');
@@ -230,9 +230,14 @@ const SellerDashboard = () => {
 
         {/* Orders Tab */}
         <TabPanel value={activeTab} index={1}>
-          <Typography variant="h6" gutterBottom>
-            Your Orders ({orders.length})
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6">
+              Your Orders ({orders.length})
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Manage your customer orders here
+            </Typography>
+          </Box>
           
           {orders.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
@@ -247,28 +252,79 @@ const SellerDashboard = () => {
                   <ListItem 
                     button
                     onClick={() => handleViewOrder(order.id)}
-                    sx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' } }}
+                    sx={{ 
+                      flexDirection: { xs: 'column', sm: 'row' }, 
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      p: 2
+                    }}
                   >
                     <ListItemText
-                      primary={`Order #${order.id.substring(0, 8)}`}
-                      secondary={`Placed on ${new Date(order.createdAt.seconds * 1000).toLocaleDateString()}`}
+                      primary={
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                          Order #{order.id.substring(0, 8)}
+                        </Typography>
+                      }
+                      secondary={
+                        <>
+                          <Typography variant="body2" color="text.secondary">
+                            Placed on {order.createdAt?.toDate?.() ? new Date(order.createdAt.toDate()).toLocaleDateString() : 'Unknown date'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Items: {order.items?.length || 0} | 
+                            Customer: {order.shippingAddress?.name || 'Unknown'}
+                          </Typography>
+                        </>
+                      }
                       sx={{ mb: { xs: 1, sm: 0 } }}
                     />
-                    <Box sx={{ display: 'flex', alignItems: 'center', ml: { xs: 0, sm: 'auto' }, width: { xs: '100%', sm: 'auto' } }}>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: { xs: 'row', sm: 'column' },
+                      alignItems: { xs: 'center', sm: 'flex-end' },
+                      justifyContent: 'space-between',
+                      ml: { xs: 0, sm: 'auto' }, 
+                      width: { xs: '100%', sm: 'auto' }
+                    }}>
                       <Chip 
-                        label={order.status.toUpperCase()} 
+                        label={(order.status || 'pending').toUpperCase()} 
                         color={
                           order.status === 'completed' ? 'success' :
                           order.status === 'processing' ? 'info' :
+                          order.status === 'shipped' ? 'primary' :
                           order.status === 'cancelled' ? 'error' : 'warning'
                         }
-                        sx={{ mr: 2 }}
+                        sx={{ mr: { xs: 2, sm: 0 }, mb: { xs: 0, sm: 1 } }}
                       />
                       <Typography variant="h6" color="primary">
-                        ${order.sellerTotal.toFixed(2)}
+                        ${order.total?.toFixed(2) || '0.00'}
                       </Typography>
                     </Box>
                   </ListItem>
+                  <Box sx={{ px: 2, pb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button 
+                      variant="outlined" 
+                      size="small"
+                      onClick={() => handleViewOrder(order.id)}
+                      sx={{ mr: 1 }}
+                    >
+                      View Details
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      size="small"
+                      color={
+                        order.status === 'pending' ? 'primary' :
+                        order.status === 'processing' ? 'info' :
+                        order.status === 'shipped' ? 'success' : 'inherit'
+                      }
+                      disabled={order.status === 'completed' || order.status === 'cancelled'}
+                      onClick={() => handleViewOrder(order.id)}
+                    >
+                      {order.status === 'pending' ? 'Accept Order' :
+                       order.status === 'processing' ? 'Mark Shipped' :
+                       order.status === 'shipped' ? 'Mark Delivered' : 'Manage Order'}
+                    </Button>
+                  </Box>
                 </Paper>
               ))}
             </List>
