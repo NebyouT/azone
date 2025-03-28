@@ -57,8 +57,30 @@ export const processSuccessfulPayment = async (userId, txRef, amount, verificati
     const walletData = walletDoc.data();
     
     // Calculate new balance
-    const currentBalance = parseFloat(decrypt(walletData.encryptedBalance || '0'));
-    const newBalance = currentBalance + parseFloat(amount);
+    let currentBalance = 0;
+    
+    // Try to get balance from encrypted value first
+    if (walletData.encryptedBalance) {
+      try {
+        currentBalance = parseFloat(decrypt(walletData.encryptedBalance));
+      } catch (decryptError) {
+        console.warn('Could not decrypt balance, falling back to unencrypted balance:', decryptError);
+        // Fallback to unencrypted balance
+        currentBalance = parseFloat(walletData.balance || 0);
+      }
+    } else {
+      // Use unencrypted balance if no encrypted balance exists
+      currentBalance = parseFloat(walletData.balance || 0);
+    }
+    
+    // Ensure amount is a number
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount)) {
+      throw new Error('Invalid amount: ' + amount);
+    }
+    
+    // Calculate new balance
+    const newBalance = currentBalance + parsedAmount;
     
     // Encrypt the new balance
     const encryptedBalance = encrypt(newBalance.toString());
@@ -66,16 +88,18 @@ export const processSuccessfulPayment = async (userId, txRef, amount, verificati
     // Update wallet with encrypted balance
     await updateDoc(walletRef, {
       encryptedBalance,
+      balance: newBalance, // Keep unencrypted balance for backward compatibility
       lastUpdated: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
     
     // Create transaction record with encrypted amount
-    const encryptedAmount = encrypt(amount.toString());
+    const encryptedAmount = encrypt(parsedAmount.toString());
     const transactionData = {
       userId,
       txRef,
       encryptedAmount,
+      amount: parsedAmount, // Keep unencrypted amount for backward compatibility
       paymentMethod: 'chapa',
       type: 'deposit',
       status: 'completed',
@@ -89,6 +113,13 @@ export const processSuccessfulPayment = async (userId, txRef, amount, verificati
     
     // Add transaction to Firestore
     const transactionRef = await addDoc(collection(db, 'transactions'), transactionData);
+    
+    console.log('Payment processed successfully:', {
+      userId,
+      txRef,
+      amount: parsedAmount,
+      newBalance
+    });
     
     return {
       success: true,

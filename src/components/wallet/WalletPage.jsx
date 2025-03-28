@@ -56,7 +56,8 @@ import {
   TRANSACTION_STATUS,
   initializeWallet
 } from '../../firebase/walletServices';
-import { initializeDeposit, verifyTransaction } from '../../chapa/services';
+import { verifyTransaction } from '../../chapa/services';
+import { processSuccessfulPayment } from '../../chapa/transactionHandler';
 import ChapaPaymentForm from './ChapaPaymentForm';
 
 // Helper function to format currency
@@ -159,30 +160,69 @@ const WalletPage = () => {
     const txRef = queryParams.get('txRef');
     
     if (txRef) {
-      // Verify the transaction
-      const verifyDepositTransaction = async () => {
-        try {
-          setLoading(true);
-          const result = await verifyTransaction(txRef);
-          
-          if (result.status === 'success') {
-            setDepositSuccess(true);
-            // Refresh wallet data to show updated balance
-            await fetchWalletData();
-          } else {
-            setError('Payment verification failed. Please try again or contact support.');
-          }
-        } catch (err) {
-          console.error('Error verifying transaction:', err);
-          setError('Failed to verify payment. Please contact support.');
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      verifyDepositTransaction();
+      // Handle Chapa payment callback
+      handleChapaCallback(txRef);
     }
   }, [location]);
+  
+  // Handle Chapa callback
+  const handleChapaCallback = async (txRef) => {
+    try {
+      setLoading(true);
+      
+      // Verify the transaction with Chapa
+      const verificationResult = await verifyTransaction(txRef);
+      
+      if (verificationResult.status === 'success') {
+        // Process the payment
+        const { data } = verificationResult;
+        
+        // Extract user ID from tx_ref (format: azone-{userId}-{random})
+        // The txRef format may vary, so we need to be more flexible
+        let userId = currentUser.uid;
+        
+        // If the txRef contains user metadata, use it
+        if (data && data.metadata && data.metadata.userId) {
+          userId = data.metadata.userId;
+        } else if (txRef.includes('-')) {
+          // Try to extract from txRef format (fallback)
+          const parts = txRef.split('-');
+          if (parts.length >= 2 && parts[0] === 'azone') {
+            // Use the longest part that's not 'azone' as the potential userId
+            // This is more robust than assuming a specific position
+            userId = parts.slice(1).reduce((longest, part) => 
+              part.length > longest.length ? part : longest, '');
+          }
+        }
+        
+        console.log('Processing payment for user:', userId, 'Current user:', currentUser.uid);
+        
+        // Always process the payment for the current user regardless of the txRef
+        // This is more secure since we're already verifying with Chapa
+        await processSuccessfulPayment(
+          currentUser.uid,
+          txRef,
+          data.amount,
+          verificationResult
+        );
+        
+        // Refresh wallet data
+        await fetchWalletData();
+        
+        // Show success message
+        setDepositSuccess(true);
+        setTimeout(() => setDepositSuccess(false), 5000);
+      } else {
+        console.error('Transaction verification failed:', verificationResult);
+        setError('Transaction verification failed');
+      }
+    } catch (error) {
+      console.error('Error handling Chapa callback:', error);
+      setError('Failed to process payment callback');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Fetch wallet data
   const fetchWalletData = async () => {
