@@ -13,6 +13,8 @@ import ProductDetail from './components/products/ProductDetail';
 import Cart from './components/cart/Cart';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
+import ForgotPassword from './components/auth/ForgotPassword';
+import ResetPassword from './components/auth/ResetPassword';
 import Checkout from './components/checkout/Checkout';
 import Profile from './components/profile/Profile';
 import Orders from './components/orders/Orders';
@@ -57,6 +59,8 @@ const App = () => {
                 <Route path="cart" element={<Cart />} />
                 <Route path="login" element={<Login />} />
                 <Route path="register" element={<Register />} />
+                <Route path="forgot-password" element={<ForgotPassword />} />
+                <Route path="reset-password" element={<ResetPassword />} />
                 <Route 
                   path="checkout" 
                   element={
