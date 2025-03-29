@@ -2,9 +2,8 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import CHAPA_CONFIG from './config';
 import { getWallet, addFunds } from '../firebase/walletServices';
-
-// Mock implementation for local development
-// In production, you would use the actual Chapa API
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 // Initialize a Chapa transaction for wallet deposit
 export const initializeDeposit = async (userId, amount, email, firstName, lastName, phone) => {
@@ -12,79 +11,157 @@ export const initializeDeposit = async (userId, amount, email, firstName, lastNa
     // Generate a unique transaction reference
     const txRef = `azone-${userId.substring(0, 6)}-${uuidv4().substring(0, 8)}`;
     
-    console.log('Initializing deposit with mock implementation:', {
+    console.log('Initializing deposit with Chapa:', {
       userId,
       amount,
       email,
       txRef
     });
     
-    // Save transaction reference
+    // Save transaction reference to Firestore
     await saveTransactionReference(userId, txRef, amount, 'deposit', 'pending');
     
-    // For development, we'll simulate a successful deposit immediately
-    // In production, this would redirect to Chapa's payment page
-    
-    // Mock successful deposit after 2 seconds
-    setTimeout(async () => {
-      try {
-        // Add funds to wallet
-        await addFunds(userId, parseFloat(amount), 'chapa');
-        
-        // Update transaction status
-        await updateTransactionStatus(txRef, 'completed');
-        
-        console.log('Mock deposit completed successfully:', {
-          txRef,
-          amount,
-          userId
-        });
-      } catch (error) {
-        console.error('Error processing mock deposit:', error);
-      }
-    }, 2000);
-    
-    // Return a real Chapa checkout URL for testing
-    // This is a real Chapa test checkout URL format
-    const chapaTestUrl = `https://checkout.chapa.co/checkout/payment/${txRef}`;
-    
+    // Return the form data needed for Chapa payment
     return {
-      checkoutUrl: chapaTestUrl,
-      txRef: txRef
+      txRef,
+      amount,
+      email,
+      firstName,
+      lastName,
+      currency: 'ETB',
+      title: 'Add Funds to Wallet',
+      description: 'Adding funds to your Azone wallet',
+      logo: 'https://azone.com/logo.png', // Replace with your actual logo URL
+      callback_url: `${window.location.origin}/wallet/callback`,
+      return_url: `${window.location.origin}/wallet?tx_ref=${txRef}&status=success`
     };
   } catch (error) {
-    console.error('Error initializing mock deposit:', error);
+    console.error('Error initializing deposit:', error);
     throw new Error('Failed to initialize deposit');
+  }
+};
+
+// Save transaction reference to Firestore
+export const saveTransactionReference = async (userId, txRef, amount, type, status) => {
+  try {
+    const txRefDoc = doc(db, 'chapaTransactions', txRef);
+    await setDoc(txRefDoc, {
+      userId,
+      txRef,
+      amount: parseFloat(amount),
+      type,
+      status,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+    
+    console.log('Transaction reference saved:', txRef);
+    return true;
+  } catch (error) {
+    console.error('Error saving transaction reference:', error);
+    throw error;
+  }
+};
+
+// Update transaction status
+export const updateTransactionStatus = async (txRef, status) => {
+  try {
+    const txRefDoc = doc(db, 'chapaTransactions', txRef);
+    const txRefSnap = await getDoc(txRefDoc);
+    
+    if (!txRefSnap.exists()) {
+      throw new Error('Transaction reference not found');
+    }
+    
+    await updateDoc(txRefDoc, {
+      status,
+      updatedAt: Timestamp.now()
+    });
+    
+    console.log('Transaction status updated:', status);
+    return true;
+  } catch (error) {
+    console.error('Error updating transaction status:', error);
+    throw error;
+  }
+};
+
+// Get transaction by reference
+export const getTransactionByReference = async (txRef) => {
+  try {
+    const txRefDoc = doc(db, 'chapaTransactions', txRef);
+    const txRefSnap = await getDoc(txRefDoc);
+    
+    if (!txRefSnap.exists()) {
+      return null;
+    }
+    
+    return {
+      id: txRefSnap.id,
+      ...txRefSnap.data()
+    };
+  } catch (error) {
+    console.error('Error getting transaction by reference:', error);
+    throw error;
   }
 };
 
 // Verify a Chapa transaction
 export const verifyTransaction = async (txRef) => {
   try {
-    console.log('Verifying transaction with mock implementation:', txRef);
+    console.log('Verifying transaction:', txRef);
     
-    // Mock successful verification
-    return {
-      status: 'success',
-      data: {
-        tx_ref: txRef,
-        status: 'success',
-        amount: '100'
+    // Get transaction from Firestore
+    const transaction = await getTransactionByReference(txRef);
+    
+    if (!transaction) {
+      throw new Error('Transaction not found');
+    }
+    
+    // In a production environment, this would make a real API call to Chapa's verification endpoint
+    // For example:
+    const response = await axios.get(
+      `https://api.chapa.co/v1/transaction/verify/${txRef}`,
+      { headers: { 'Authorization': `Bearer ${CHAPA_CONFIG.SECRET_KEY}` } }
+    );
+    
+    console.log('Chapa verification response:', response.data);
+    
+    // Check if the verification was successful
+    if (response.data.status === 'success' && 
+        response.data.data.status === 'success') {
+      
+      // Update transaction status to 'completed'
+      await updateTransactionStatus(txRef, 'completed');
+      
+      // Add funds to wallet - THIS SHOULD ONLY HAPPEN AFTER VERIFICATION
+      const amountToAdd = parseFloat(transaction.amount);
+      console.log(`Adding ${amountToAdd} to wallet for user ${transaction.userId}`);
+      
+      try {
+        await addFunds(transaction.userId, amountToAdd, 'chapa');
+        console.log('Funds added successfully');
+        return response.data;
+      } catch (fundError) {
+        console.error('Error adding funds to wallet:', fundError);
+        throw new Error('Failed to add funds to wallet');
       }
-    };
+    } else {
+      // If verification failed, update transaction status
+      await updateTransactionStatus(txRef, 'failed');
+      
+      throw new Error('Payment verification failed');
+    }
   } catch (error) {
-    console.error('Error verifying mock transaction:', error);
+    console.error('Error verifying transaction:', error);
     throw new Error('Failed to verify transaction');
   }
 };
 
 // Process deposit callback from Chapa
-export const processDepositCallback = async (userId, txRef) => {
+export const processDepositCallback = async (txRef, status) => {
   try {
-    console.log('Processing deposit callback with mock implementation:', {
-      userId,
-      txRef
-    });
+    console.log('Processing deposit callback:', txRef, 'Status:', status);
     
     // Get transaction details
     const transaction = await getTransactionByReference(txRef);
@@ -98,80 +175,69 @@ export const processDepositCallback = async (userId, txRef) => {
       return { success: true, message: 'Transaction already processed' };
     }
     
-    // Update wallet balance
-    await addFunds(userId, parseFloat(transaction.amount), 'chapa');
+    // If status is provided and it's not successful, mark as failed
+    if (status && status !== 'success') {
+      await updateTransactionStatus(txRef, 'failed');
+      return { success: false, message: 'Payment was not successful' };
+    }
     
-    // Update transaction status
-    await updateTransactionStatus(txRef, 'completed');
-    
-    return {
-      success: true,
-      message: 'Deposit successful',
-      amount: transaction.amount
-    };
+    // Verify transaction with Chapa
+    try {
+      const verificationResult = await verifyTransaction(txRef);
+      
+      // If verification was successful, funds have already been added in verifyTransaction
+      return { success: true, message: 'Transaction processed successfully' };
+    } catch (error) {
+      console.error('Verification error:', error);
+      await updateTransactionStatus(txRef, 'failed');
+      return { success: false, message: 'Transaction verification failed' };
+    }
   } catch (error) {
-    console.error('Error processing mock deposit callback:', error);
-    throw new Error('Failed to process deposit callback');
-  }
-};
-
-// Helper functions for transaction management
-// These functions interact with your Firebase database
-
-// Save transaction reference
-const saveTransactionReference = async (userId, txRef, amount, type, status) => {
-  try {
-    // For development, we'll just log the transaction
-    console.log('Mock transaction saved:', {
-      userId,
-      txRef,
-      amount,
-      type,
-      status,
-      createdAt: new Date(),
-      provider: 'chapa'
-    });
-    
-    return true;
-  } catch (error) {
-    console.error('Error saving mock transaction:', error);
+    console.error('Error processing deposit callback:', error);
     throw error;
   }
 };
 
-// Get transaction by reference
-const getTransactionByReference = async (txRef) => {
+// Handle payment verification after redirect back from Chapa
+export const handlePaymentVerification = async (txRef, status) => {
   try {
-    // For development, we'll return a mock transaction
-    console.log('Getting mock transaction:', txRef);
+    console.log('Handling payment verification for txRef:', txRef, 'Status:', status);
     
-    return {
-      txRef,
-      amount: '100',
-      status: 'pending',
-      userId: 'mock-user-id',
-      createdAt: new Date(),
-      provider: 'chapa'
-    };
-  } catch (error) {
-    console.error('Error getting mock transaction:', error);
-    throw error;
-  }
-};
-
-// Update transaction status
-const updateTransactionStatus = async (txRef, status) => {
-  try {
-    // For development, we'll just log the status update
-    console.log('Mock transaction status updated:', {
-      txRef,
-      status,
-      updatedAt: new Date()
-    });
+    // Only proceed if the status is success
+    if (status !== 'success') {
+      console.error('Payment was not successful. Status:', status);
+      return { success: false, message: 'Payment was not successful' };
+    }
     
-    return true;
+    // Get transaction details
+    const transaction = await getTransactionByReference(txRef);
+    
+    if (!transaction) {
+      console.error('Transaction not found for txRef:', txRef);
+      return { success: false, message: 'Transaction not found' };
+    }
+    
+    // Check if transaction has already been processed
+    if (transaction.status === 'completed') {
+      console.log('Transaction already processed:', txRef);
+      return { success: true, message: 'Transaction already processed' };
+    }
+    
+    // Verify the transaction with Chapa
+    try {
+      await verifyTransaction(txRef);
+      console.log('Transaction verified successfully:', txRef);
+      return { 
+        success: true, 
+        message: 'Payment successful! Your wallet has been updated.',
+        amount: transaction.amount
+      };
+    } catch (verificationError) {
+      console.error('Verification error:', verificationError);
+      return { success: false, message: 'Payment verification failed' };
+    }
   } catch (error) {
-    console.error('Error updating mock transaction status:', error);
-    throw error;
+    console.error('Error handling payment verification:', error);
+    return { success: false, message: 'Payment verification failed' };
   }
 };

@@ -1,30 +1,35 @@
 import { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  IconButton, 
-  Badge, 
-  Menu, 
-  MenuItem, 
+import {
+  AppBar,
   Box,
+  Toolbar,
+  IconButton,
+  Typography,
+  Menu,
   Container,
+  Avatar,
+  Button,
+  Tooltip,
+  MenuItem,
   Drawer,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
   Divider,
-  Avatar,
+  Badge,
+  ListItemIcon,
+  useMediaQuery,
   useTheme,
   alpha,
+  Paper,
   InputBase,
-  Tooltip,
-  Switch,
   styled,
-  useMediaQuery
+  FormControl,
+  Select,
+  Switch,
+  Popover,
 } from '@mui/material';
 import {
   ShoppingCart as ShoppingCartIcon,
@@ -40,30 +45,30 @@ import {
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
   Notifications as NotificationsIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Language as LanguageIcon,
+  KeyboardArrowDown as KeyboardArrowDownIcon,
+  Category as CategoryIcon,
+  Home as HomeIcon,
+  Translate as TranslateIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { logoutUser } from '../../firebase/services';
 import { useColorMode } from '../../theme/ThemeProvider';
 import { glassmorphism } from '../../theme/futuristicTheme';
+import { useLanguage } from '../../contexts/LanguageContext';
 
-// Styled search component
+// Styled components
 const Search = styled('div')(({ theme }) => ({
   position: 'relative',
-  borderRadius: theme.shape.borderRadius,
+  borderRadius: 0,
   backgroundColor: alpha(theme.palette.common.white, 0.15),
   '&:hover': {
     backgroundColor: alpha(theme.palette.common.white, 0.25),
   },
-  marginRight: theme.spacing(2),
-  marginLeft: 0,
   width: '100%',
-  [theme.breakpoints.up('sm')]: {
-    marginLeft: theme.spacing(3),
-    width: 'auto',
-  },
-  transition: 'all 0.3s ease',
 }));
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -74,26 +79,47 @@ const SearchIconWrapper = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  color: alpha(theme.palette.text.primary, 0.6),
 }));
 
 const StyledInputBase = styled(InputBase)(({ theme }) => ({
-  color: 'inherit',
+  color: theme.palette.text.primary,
   width: '100%',
   '& .MuiInputBase-input': {
     padding: theme.spacing(1, 1, 1, 0),
+    // vertical padding + font size from searchIcon
     paddingLeft: `calc(1em + ${theme.spacing(4)})`,
     transition: theme.transitions.create('width'),
     width: '100%',
-    [theme.breakpoints.up('md')]: {
-      width: '20ch',
-      '&:focus': {
-        width: '30ch',
-      },
-    },
   },
 }));
 
-// Material UI switch with custom styling
+// Top Bar styled component
+const TopBar = styled(Box)(({ theme }) => ({
+  backgroundColor: theme.palette.mode === 'dark' ? alpha('#000', 0.6) : alpha('#f5f5f5', 0.8),
+  backdropFilter: 'blur(8px)',
+  borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+  padding: theme.spacing(0.5, 0),
+  fontSize: '0.75rem',
+  color: theme.palette.text.secondary,
+}));
+
+// Category Menu styled component
+const CategoryMenu = styled(Paper)(({ theme }) => ({
+  position: 'absolute',
+  top: '100%',
+  left: 0,
+  zIndex: 1000,
+  width: 220,
+  maxHeight: 400,
+  overflow: 'auto',
+  marginTop: theme.spacing(1),
+  boxShadow: theme.shadows[5],
+  borderRadius: 0,
+  ...glassmorphism(0.95, 5, theme.palette.mode === 'dark'),
+}));
+
+// Material UI Switch for dark/light mode
 const MaterialUISwitch = styled(Switch)(({ theme }) => ({
   width: 62,
   height: 34,
@@ -137,7 +163,7 @@ const MaterialUISwitch = styled(Switch)(({ theme }) => ({
   '& .MuiSwitch-track': {
     opacity: 1,
     backgroundColor: theme.palette.mode === 'dark' ? '#8796A5' : '#aab4be',
-    borderRadius: 20 / 2,
+    borderRadius: 0,
   },
 }));
 
@@ -149,19 +175,22 @@ const Navbar = () => {
   const { mode, toggleColorMode } = useColorMode();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
-  
+  const { language, changeLanguage, t } = useLanguage();
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [languageMenuAnchorEl, setLanguageMenuAnchorEl] = useState(null);
+
   const handleProfileMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
   };
-  
+
   const handleMenuClose = () => {
     setAnchorEl(null);
   };
-  
+
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
@@ -169,7 +198,7 @@ const Navbar = () => {
   const toggleSearch = () => {
     setSearchOpen(!searchOpen);
   };
-  
+
   const handleLogout = async () => {
     try {
       await logoutUser();
@@ -179,15 +208,33 @@ const Navbar = () => {
       console.error('Error logging out:', error);
     }
   };
-  
+
   const handleNavigate = (path) => {
     navigate(path);
     handleMenuClose();
     setMobileOpen(false);
   };
-  
+
+  const handleCategoryMenuToggle = () => {
+    setCategoryMenuOpen(!categoryMenuOpen);
+  };
+
+  const handleLanguageMenuOpen = (event) => {
+    setLanguageMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleLanguageMenuClose = () => {
+    setLanguageMenuAnchorEl(null);
+  };
+
+  const handleLanguageChange = (lang) => {
+    changeLanguage(lang);
+    handleLanguageMenuClose();
+  };
+
   const isMenuOpen = Boolean(anchorEl);
-  
+  const isLanguageMenuOpen = Boolean(languageMenuAnchorEl);
+
   const menuId = 'primary-search-account-menu';
   const renderMenu = (
     <Menu
@@ -199,75 +246,121 @@ const Navbar = () => {
       PaperProps={{
         elevation: 3,
         sx: {
-          ...glassmorphism(0.7, 10, mode === 'dark'),
           mt: 1.5,
-          borderRadius: 2,
-          minWidth: 180,
-          '& .MuiMenuItem-root': {
-            px: 2,
-            py: 1.5,
-            my: 0.5,
-            borderRadius: 1,
-            '&:hover': {
-              backgroundColor: alpha(theme.palette.primary.main, 0.1),
-            },
+          overflow: 'visible',
+          borderRadius: 0,
+          filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.1))',
+          '&:before': {
+            content: '""',
+            display: 'block',
+            position: 'absolute',
+            top: 0,
+            right: 14,
+            width: 10,
+            height: 10,
+            bgcolor: 'background.paper',
+            transform: 'translateY(-50%) rotate(45deg)',
+            zIndex: 0,
           },
         },
       }}
       transformOrigin={{ horizontal: 'right', vertical: 'top' }}
       anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
     >
-      <Box sx={{ px: 2, py: 1.5 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-          {userDetails?.displayName || currentUser?.email}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {userDetails?.role || 'User'}
-        </Typography>
-      </Box>
-      <Divider sx={{ my: 1 }} />
       <MenuItem onClick={() => handleNavigate('/profile')}>
-        <PersonIcon sx={{ mr: 2 }} />
-        Profile
+        <ListItemIcon>
+          <PersonIcon fontSize="small" />
+        </ListItemIcon>
+        {t('profile')}
       </MenuItem>
       <MenuItem onClick={() => handleNavigate('/orders')}>
-        <OrdersIcon sx={{ mr: 2 }} />
-        My Orders
+        <ListItemIcon>
+          <OrdersIcon fontSize="small" />
+        </ListItemIcon>
+        {t('orders')}
       </MenuItem>
       <MenuItem onClick={() => handleNavigate('/wallet')}>
-        <WalletIcon sx={{ mr: 2 }} />
-        Wallet
+        <ListItemIcon>
+          <WalletIcon fontSize="small" />
+        </ListItemIcon>
+        {t('wallet')}
       </MenuItem>
       {isSeller && (
         <MenuItem onClick={() => handleNavigate('/seller/dashboard')}>
-          <StoreIcon sx={{ mr: 2 }} />
-          Seller Dashboard
+          <ListItemIcon>
+            <StoreIcon fontSize="small" />
+          </ListItemIcon>
+          {t('sellerDashboard')}
         </MenuItem>
       )}
-      <Divider sx={{ my: 1 }} />
+      <Divider />
       <MenuItem onClick={handleLogout}>
-        <LogoutIcon sx={{ mr: 2 }} />
-        Logout
+        <ListItemIcon>
+          <LogoutIcon fontSize="small" />
+        </ListItemIcon>
+        {t('logout')}
       </MenuItem>
     </Menu>
   );
-  
-  const drawer = (
-    <Box 
-      onClick={handleDrawerToggle} 
-      sx={{ 
-        textAlign: 'center',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column'
+
+  const languageMenu = (
+    <Menu
+      anchorEl={languageMenuAnchorEl}
+      id="language-menu"
+      keepMounted
+      open={isLanguageMenuOpen}
+      onClose={handleLanguageMenuClose}
+      PaperProps={{
+        elevation: 3,
+        sx: {
+          mt: 1.5,
+          overflow: 'visible',
+          borderRadius: 0,
+          filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.1))',
+          '&:before': {
+            content: '""',
+            display: 'block',
+            position: 'absolute',
+            top: 0,
+            right: 14,
+            width: 10,
+            height: 10,
+            bgcolor: 'background.paper',
+            transform: 'translateY(-50%) rotate(45deg)',
+            zIndex: 0,
+          },
+        },
       }}
+      transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+      anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
     >
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        p: 2
-      }}>
+      <MenuItem
+        onClick={() => handleLanguageChange('en')}
+        selected={language === 'en'}
+      >
+        <ListItemIcon>
+          {language === 'en' && <CheckCircleIcon fontSize="small" color="primary" />}
+        </ListItemIcon>
+        English
+      </MenuItem>
+      <MenuItem
+        onClick={() => handleLanguageChange('am')}
+        selected={language === 'am'}
+      >
+        <ListItemIcon>
+          {language === 'am' && <CheckCircleIcon fontSize="small" color="primary" />}
+        </ListItemIcon>
+        አማርኛ (Amharic)
+      </MenuItem>
+    </Menu>
+  );
+
+  const drawer = (
+    <Box
+      onClick={handleDrawerToggle}
+      sx={{ textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
+      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
         <Typography
           variant="h6"
           component={RouterLink}
@@ -279,203 +372,305 @@ const Navbar = () => {
             WebkitTextFillColor: 'transparent',
             textDecoration: 'none',
           }}
-          onClick={(e) => e.stopPropagation()}
         >
           Azone
         </Typography>
-        <IconButton 
-          edge="end" 
-          color="inherit" 
-          onClick={handleDrawerToggle}
-          aria-label="close drawer"
-        >
+        <IconButton onClick={handleDrawerToggle}>
           <CloseIcon />
         </IconButton>
       </Box>
-      <Divider />
-      
-      <Box sx={{ p: 2, width: '100%' }}>
-        <Search sx={{ mb: 2, width: '100%' }}>
+
+      <Box sx={{ p: 1 }}>
+        <Search sx={{ backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.15) : 'white', '&:hover': { backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.25) : 'white' } }}>
           <SearchIconWrapper>
             <SearchIcon />
           </SearchIconWrapper>
           <StyledInputBase
-            placeholder="Search…"
+            placeholder={t('search')}
             inputProps={{ 'aria-label': 'search' }}
             fullWidth
           />
         </Search>
       </Box>
-      
+
       <List sx={{ flexGrow: 1, overflow: 'auto', width: '100%' }}>
         <ListItem disablePadding>
-          <ListItemButton 
-            component={RouterLink} 
-            to="/products"
-            sx={{ 
+          <ListItemButton
+            component={RouterLink}
+            to="/"
+            sx={{
               textAlign: 'center',
-              borderRadius: 1,
+              borderRadius: 0,
               my: 0.5,
-              mx: 1
+              mx: 1,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <ListItemText primary="Products" />
+            <ListItemIcon>
+              <HomeIcon />
+            </ListItemIcon>
+            <ListItemText primary={t('home')} />
           </ListItemButton>
         </ListItem>
+
+        <ListItem disablePadding>
+          <ListItemButton
+            component={RouterLink}
+            to="/products"
+            sx={{
+              textAlign: 'center',
+              borderRadius: 0,
+              my: 0.5,
+              mx: 1,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ListItemIcon>
+              <CategoryIcon />
+            </ListItemIcon>
+            <ListItemText primary={t('products')} />
+          </ListItemButton>
+        </ListItem>
+
         {!currentUser ? (
           <>
             <ListItem disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
+              <ListItemButton
+                component={RouterLink}
                 to="/login"
-                sx={{ 
+                sx={{
                   textAlign: 'center',
-                  borderRadius: 1,
+                  borderRadius: 0,
                   my: 0.5,
-                  mx: 1
+                  mx: 1,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <ListItemText primary="Login" />
+                <ListItemIcon>
+                  <PersonIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('login')} />
               </ListItemButton>
             </ListItem>
             <ListItem disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
+              <ListItemButton
+                component={RouterLink}
                 to="/register"
-                sx={{ 
+                sx={{
                   textAlign: 'center',
-                  borderRadius: 1,
+                  borderRadius: 0,
                   my: 0.5,
-                  mx: 1
+                  mx: 1,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <ListItemText primary="Register" />
+                <ListItemIcon>
+                  <PersonIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('register')} />
               </ListItemButton>
             </ListItem>
           </>
         ) : (
           <>
             <ListItem disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
+              <ListItemButton
+                component={RouterLink}
                 to="/profile"
-                sx={{ 
+                sx={{
                   textAlign: 'center',
-                  borderRadius: 1,
+                  borderRadius: 0,
                   my: 0.5,
-                  mx: 1
+                  mx: 1,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <ListItemText primary="Profile" />
+                <ListItemIcon>
+                  <PersonIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('profile')} />
               </ListItemButton>
             </ListItem>
             <ListItem disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
+              <ListItemButton
+                component={RouterLink}
                 to="/orders"
-                sx={{ 
+                sx={{
                   textAlign: 'center',
-                  borderRadius: 1,
+                  borderRadius: 0,
                   my: 0.5,
-                  mx: 1
+                  mx: 1,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <ListItemText primary="Orders" />
+                <ListItemIcon>
+                  <OrdersIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('orders')} />
               </ListItemButton>
             </ListItem>
             <ListItem disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
+              <ListItemButton
+                component={RouterLink}
                 to="/wallet"
-                sx={{ 
+                sx={{
                   textAlign: 'center',
-                  borderRadius: 1,
+                  borderRadius: 0,
                   my: 0.5,
-                  mx: 1
+                  mx: 1,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <ListItemText primary="Wallet" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
-                to="/cart"
-                sx={{ 
-                  textAlign: 'center',
-                  borderRadius: 1,
-                  my: 0.5,
-                  mx: 1
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ListItemText primary="Cart" />
+                <ListItemIcon>
+                  <WalletIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('wallet')} />
               </ListItemButton>
             </ListItem>
             {isSeller && (
               <ListItem disablePadding>
-                <ListItemButton 
-                  component={RouterLink} 
+                <ListItemButton
+                  component={RouterLink}
                   to="/seller/dashboard"
-                  sx={{ 
+                  sx={{
                     textAlign: 'center',
-                    borderRadius: 1,
+                    borderRadius: 0,
                     my: 0.5,
-                    mx: 1
+                    mx: 1,
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <ListItemText primary="Seller Dashboard" />
+                  <ListItemIcon>
+                    <StoreIcon />
+                  </ListItemIcon>
+                  <ListItemText primary={t('sellerDashboard')} />
                 </ListItemButton>
               </ListItem>
             )}
-            <Divider sx={{ my: 1 }} />
             <ListItem disablePadding>
-              <ListItemButton 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleLogout();
-                }}
-                sx={{ 
+              <ListItemButton
+                onClick={handleLogout}
+                sx={{
                   textAlign: 'center',
-                  borderRadius: 1,
+                  borderRadius: 0,
                   my: 0.5,
-                  mx: 1
+                  mx: 1,
                 }}
               >
-                <ListItemText primary="Logout" />
+                <ListItemIcon>
+                  <LogoutIcon />
+                </ListItemIcon>
+                <ListItemText primary={t('logout')} />
               </ListItemButton>
             </ListItem>
           </>
         )}
       </List>
-      
+
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <MaterialUISwitch 
-          checked={mode === 'dark'} 
+        <MaterialUISwitch
+          checked={mode === 'dark'}
           onChange={(e) => {
             e.stopPropagation();
             toggleColorMode();
-          }} 
+          }}
         />
       </Box>
     </Box>
   );
-  
+
   return (
     <>
-      <AppBar 
-        position="sticky" 
-        sx={{ 
+      {/* Top Bar - Similar to AliExpress */}
+      <TopBar>
+        <Container maxWidth="xl">
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: { xs: 1, sm: 2 } }}>
+            {/* Left side links */}
+            <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 2 }}>
+              {isSeller ? (
+                <Button
+                  component={RouterLink}
+                  to="/seller/dashboard"
+                  size="small"
+                  color="inherit"
+                  sx={{ fontSize: '0.75rem', borderRadius: 0 }}
+                  startIcon={<StoreIcon fontSize="small" />}
+                >
+                  {t('sellerDashboard')}
+                </Button>
+              ) : (
+                <Button
+                  component={RouterLink}
+                  to="/register"
+                  size="small"
+                  color="inherit"
+                  sx={{ fontSize: '0.75rem', borderRadius: 0 }}
+                >
+                  {t('sellerDashboard')}
+                </Button>
+              )}
+            </Box>
+
+            {/* Right side links */}
+            <Box sx={{ display: 'flex', gap: 2, ml: 'auto' }}>
+              {!currentUser ? (
+                <>
+                  <Button
+                    component={RouterLink}
+                    to="/login"
+                    size="small"
+                    color="inherit"
+                    sx={{ fontSize: '0.75rem', borderRadius: 0 }}
+                  >
+                    {t('login')}
+                  </Button>
+                  <Button
+                    component={RouterLink}
+                    to="/register"
+                    size="small"
+                    color="inherit"
+                    sx={{ fontSize: '0.75rem', borderRadius: 0 }}
+                  >
+                    {t('register')}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  component={RouterLink}
+                  to="/orders"
+                  size="small"
+                  color="inherit"
+                  sx={{ fontSize: '0.75rem', borderRadius: 0 }}
+                  startIcon={<OrdersIcon fontSize="small" />}
+                >
+                  {t('orders')}
+                </Button>
+              )}
+
+              <Button
+                size="small"
+                color="inherit"
+                sx={{ fontSize: '0.75rem', borderRadius: 0 }}
+                startIcon={<TranslateIcon fontSize="small" />}
+                onClick={handleLanguageMenuOpen}
+                endIcon={<KeyboardArrowDownIcon fontSize="small" />}
+              >
+                {language === 'en' ? 'English' : 'አማርኛ'}
+              </Button>
+            </Box>
+          </Box>
+        </Container>
+      </TopBar>
+
+      {/* Main Navbar */}
+      <AppBar
+        position="sticky"
+        sx={{
           ...glassmorphism(0.7, 10, mode === 'dark'),
+          borderRadius: 0,
           boxShadow: 'none',
           borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+          backgroundColor: theme.palette.mode === 'dark' ? '#1A1A1A' : '#FF4747', // AliExpress red color
         }}
       >
         <Container maxWidth="xl" disableGutters={isSmall}>
@@ -490,7 +685,7 @@ const Navbar = () => {
             >
               <MenuIcon />
             </IconButton>
-            
+
             {/* Logo */}
             <Typography
               variant="h6"
@@ -501,15 +696,13 @@ const Navbar = () => {
                 mr: 2,
                 display: { xs: 'none', md: 'flex' },
                 fontWeight: 700,
-                background: theme.palette.gradients.primary,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+                color: 'white',
                 textDecoration: 'none',
               }}
             >
               Azone
             </Typography>
-            
+
             {/* Mobile Logo */}
             <Typography
               variant="h6"
@@ -520,73 +713,159 @@ const Navbar = () => {
                 flexGrow: { xs: 1, sm: 0 },
                 display: { xs: 'flex', md: 'none' },
                 fontWeight: 700,
-                background: theme.palette.gradients.primary,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+                color: 'white',
                 textDecoration: 'none',
               }}
             >
               Azone
             </Typography>
-            
+
+            {/* Categories Button (Desktop) */}
+            <Box
+              sx={{
+                position: 'relative',
+                display: { xs: 'none', md: 'block' },
+                mr: 2,
+              }}
+            >
+              <Button
+                variant="contained"
+                color="secondary"
+                startIcon={<CategoryIcon />}
+                endIcon={<KeyboardArrowDownIcon />}
+                onClick={handleCategoryMenuToggle}
+                sx={{
+                  borderRadius: 0,
+                  backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.2) : alpha('#fff', 0.2),
+                  '&:hover': {
+                    backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.3) : alpha('#fff', 0.3),
+                  },
+                }}
+              >
+                {t('categories')}
+              </Button>
+
+              {categoryMenuOpen && (
+                <CategoryMenu
+                  elevation={3}
+                  sx={{
+                    borderRadius: 0,
+                  }}
+                >
+                  <List>
+                    <ListItem button>
+                      <ListItemText primary="Electronics" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Clothing" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Home & Kitchen" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Beauty" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Sports" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Toys" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Books" />
+                    </ListItem>
+                    <ListItem button>
+                      <ListItemText primary="Automotive" />
+                    </ListItem>
+                  </List>
+                </CategoryMenu>
+              )}
+            </Box>
+
             {/* Desktop Navigation Links */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
               <Button
                 component={RouterLink}
-                to="/products"
-                sx={{ 
-                  my: 2, 
-                  color: 'text.primary', 
+                to="/"
+                sx={{
+                  my: 2,
+                  color: 'white',
                   display: 'block',
                   mx: 1,
                   '&:hover': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                  }
+                    backgroundColor: alpha('#fff', 0.1),
+                  },
+                  borderRadius: 0,
                 }}
               >
-                Products
+                {t('home')}
+              </Button>
+
+              <Button
+                component={RouterLink}
+                to="/products"
+                sx={{
+                  my: 2,
+                  color: 'white',
+                  display: 'block',
+                  mx: 1,
+                  '&:hover': {
+                    backgroundColor: alpha('#fff', 0.1),
+                  },
+                  borderRadius: 0,
+                }}
+              >
+                {t('products')}
               </Button>
             </Box>
-            
+
             {/* Desktop Search */}
             {!isMobile && (
-              <Search sx={{ flexGrow: { sm: 1, md: 0 }, mx: { sm: 2 } }}>
+              <Search sx={{
+                flexGrow: { sm: 1, md: 0 },
+                mx: { sm: 2 },
+                backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.15) : 'white',
+                '&:hover': {
+                  backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.25) : 'white',
+                },
+                borderRadius: 0,
+              }}>
                 <SearchIconWrapper>
                   <SearchIcon />
                 </SearchIconWrapper>
                 <StyledInputBase
-                  placeholder="Search…"
+                  placeholder={t('search')}
                   inputProps={{ 'aria-label': 'search' }}
                 />
               </Search>
             )}
-            
+
             {/* Mobile Search Icon */}
             {isMobile && !searchOpen && (
-              <IconButton 
-                color="inherit" 
+              <IconButton
+                color="inherit"
                 onClick={toggleSearch}
                 sx={{ ml: 'auto', mr: 1 }}
               >
                 <SearchIcon />
               </IconButton>
             )}
-            
+
             {/* Mobile Search Bar (Expanded) */}
             {isMobile && searchOpen && (
-              <Box sx={{ 
-                display: 'flex', 
+              <Box sx={{
+                display: 'flex',
                 flexGrow: 1,
                 alignItems: 'center',
                 ml: 1,
-                mr: 1
+                mr: 1,
               }}>
-                <Search sx={{ flexGrow: 1 }}>
+                <Search sx={{ flexGrow: 1, borderRadius: 0 }}>
                   <SearchIconWrapper>
                     <SearchIcon />
                   </SearchIconWrapper>
                   <StyledInputBase
-                    placeholder="Search…"
+                    placeholder={t('search')}
                     inputProps={{ 'aria-label': 'search' }}
                     autoFocus
                   />
@@ -595,12 +874,13 @@ const Navbar = () => {
                   color="inherit" 
                   onClick={toggleSearch}
                   edge="end"
+                  sx={{ borderRadius: 0 }}
                 >
                   <CloseIcon />
                 </IconButton>
               </Box>
             )}
-            
+
             {/* Theme toggle */}
             {!isSmall && !searchOpen && (
               <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
@@ -609,10 +889,28 @@ const Navbar = () => {
                 </IconButton>
               </Tooltip>
             )}
-            
+
             {/* Action Icons */}
             {!searchOpen && (
               <Box sx={{ display: 'flex' }}>
+                {/* Wallet Icon */}
+                {currentUser && (
+                  <IconButton
+                    component={RouterLink}
+                    to="/wallet"
+                    size="large"
+                    aria-label="show wallet"
+                    color="inherit"
+                    sx={{
+                      ml: 1,
+                      transition: 'transform 0.2s',
+                      '&:hover': { transform: 'scale(1.1)' },
+                    }}
+                  >
+                    <WalletIcon />
+                  </IconButton>
+                )}
+
                 {/* Cart Icon */}
                 <IconButton
                   component={RouterLink}
@@ -620,17 +918,17 @@ const Navbar = () => {
                   size="large"
                   aria-label="show cart items"
                   color="inherit"
-                  sx={{ 
+                  sx={{
                     ml: 1,
                     transition: 'transform 0.2s',
-                    '&:hover': { transform: 'scale(1.1)' }
+                    '&:hover': { transform: 'scale(1.1)' },
                   }}
                 >
                   <Badge badgeContent={itemCount} color="error">
                     <ShoppingCartIcon />
                   </Badge>
                 </IconButton>
-                
+
                 {/* Profile Icon or Login Button */}
                 {currentUser ? (
                   <Tooltip title="Account settings">
@@ -642,21 +940,17 @@ const Navbar = () => {
                       aria-haspopup="true"
                       onClick={handleProfileMenuOpen}
                       color="inherit"
-                      sx={{ 
+                      sx={{
                         ml: 1,
                         transition: 'transform 0.2s',
-                        '&:hover': { transform: 'scale(1.1)' }
+                        '&:hover': { transform: 'scale(1.1)' },
                       }}
                     >
                       {userDetails?.photoURL ? (
-                        <Avatar 
-                          src={userDetails.photoURL} 
+                        <Avatar
+                          src={userDetails.photoURL}
                           alt={userDetails.displayName}
-                          sx={{ 
-                            width: 32, 
-                            height: 32,
-                            border: `2px solid ${theme.palette.primary.main}`
-                          }}
+                          sx={{ width: 32, height: 32 }}
                         />
                       ) : (
                         <PersonIcon />
@@ -667,17 +961,18 @@ const Navbar = () => {
                   <Button
                     component={RouterLink}
                     to="/login"
-                    variant="contained"
-                    sx={{ 
-                      ml: { xs: 1, sm: 2 },
-                      background: theme.palette.gradients.primary,
-                      boxShadow: '0 4px 12px rgba(0, 188, 212, 0.3)',
-                      px: { xs: 2, sm: 3 },
-                      py: { xs: 0.5, sm: 0.75 },
-                      fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                    color="inherit"
+                    sx={{
+                      ml: 1,
+                      display: { xs: 'none', sm: 'flex' },
+                      borderRadius: 0,
+                      backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.2) : alpha('#fff', 0.2),
+                      '&:hover': {
+                        backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.3) : alpha('#fff', 0.3),
+                      },
                     }}
                   >
-                    Login
+                    {t('login')}
                   </Button>
                 )}
               </Box>
@@ -685,9 +980,10 @@ const Navbar = () => {
           </Toolbar>
         </Container>
       </AppBar>
-      
+
       {/* Mobile Drawer */}
       <Drawer
+        container={window.document.body}
         variant="temporary"
         open={mobileOpen}
         onClose={handleDrawerToggle}
@@ -698,16 +994,17 @@ const Navbar = () => {
           display: { xs: 'block', md: 'none' },
           '& .MuiDrawer-paper': { 
             boxSizing: 'border-box', 
-            width: { xs: '85%', sm: 320 },
-            maxWidth: '100%',
-            ...glassmorphism(0.9, 10, mode === 'dark'),
+            width: 280,
+            borderRadius: 0,
+            ...glassmorphism(0.95, 10, mode === 'dark')
           },
         }}
       >
         {drawer}
       </Drawer>
-      
+
       {renderMenu}
+      {languageMenu}
     </>
   );
 };

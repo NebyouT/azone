@@ -14,7 +14,8 @@ import {
   serverTimestamp,
   runTransaction,
   setDoc,
-  writeBatch
+  writeBatch,
+  Timestamp
 } from 'firebase/firestore';
 import { app } from './config';
 import { getCurrentUser } from './services';
@@ -702,6 +703,31 @@ export const getTransactionHistory = async (userId, limitCount = 50) => {
     }
   } catch (error) {
     console.error('Error getting transaction history:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get transactions for a user
+ * @param {string} userId - The user ID
+ * @returns {Promise<Array>} - Array of transaction objects
+ */
+export const getTransactions = async (userId) => {
+  try {
+    const transactionsQuery = query(
+      collection(db, 'transactions'),
+      where('userId', '==', userId)
+    );
+    
+    const transactionsSnap = await getDocs(transactionsQuery);
+    
+    return transactionsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      timestamp: doc.data().timestamp?.toDate()
+    }));
+  } catch (error) {
+    console.error('Error getting transactions:', error);
     throw error;
   }
 };

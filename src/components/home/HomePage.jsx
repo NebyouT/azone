@@ -34,6 +34,8 @@ import ProductCard from '../products/ProductCard';
 import { getProducts } from '../../firebase/services';
 import { useColorMode } from '../../theme/ThemeProvider';
 import { glassmorphism, cardHoverEffect } from '../../theme/futuristicTheme';
+import { useLanguage } from '../../contexts/LanguageContext';
+import TranslationWrapper from '../common/TranslationWrapper';
 
 // Simple Carousel Component
 const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
@@ -155,6 +157,7 @@ const HomePage = () => {
   const isDark = mode === 'dark';
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isMedium = useMediaQuery(theme.breakpoints.down('md'));
+  const { language } = useLanguage();
   
   useEffect(() => {
     const fetchProducts = async () => {
@@ -344,165 +347,76 @@ const HomePage = () => {
   ));
   
   return (
-    <Box sx={{ width: '100%', overflowX: 'hidden' }}>
-      {/* Hero Banner Carousel */}
-      <Box sx={{ mb: { xs: 4, md: 8 } }}>
-        <SimpleCarousel items={bannerItems} />
-      </Box>
-      
-      {/* Features Section */}
-      <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
-        <Grid container spacing={3}>
-          {features.map(feature => (
-            <Grid item xs={6} md={3} key={feature.id}>
-              <Paper
-                elevation={0}
-                sx={{
-                  ...glassmorphism(0.7, 5, isDark),
-                  p: { xs: 2, md: 3 },
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  borderRadius: 4,
-                  ...cardHoverEffect,
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: { xs: 50, md: 60 },
-                    height: { xs: 50, md: 60 },
-                    borderRadius: '50%',
-                    mb: 2,
-                    background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.8)}, ${alpha(theme.palette.secondary.main, 0.8)})`,
-                    color: 'white',
-                  }}
-                >
-                  {feature.icon}
-                </Box>
-                <Typography 
-                  variant="h6" 
-                  component="h3" 
-                  gutterBottom
-                  sx={{ 
-                    fontWeight: 600,
-                    fontSize: { xs: '1rem', md: '1.25rem' }
-                  }}
-                >
-                  {feature.title}
-                </Typography>
-                <Typography 
-                  variant="body2" 
-                  color="text.secondary"
-                  sx={{ 
-                    fontSize: { xs: '0.8rem', md: '0.875rem' }
-                  }}
-                >
-                  {feature.description}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-      </Container>
-      
-      {/* Categories Section */}
-      <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
-        <Box sx={{ mb: 4, textAlign: 'center' }}>
-          <Typography 
-            variant="h4" 
-            component="h2" 
-            gutterBottom
-            sx={{ 
-              fontWeight: 700,
-              background: theme.palette.gradients.primary,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              display: 'inline-block',
-              mb: 1
-            }}
-          >
-            Shop by Category
-          </Typography>
-          <Typography 
-            variant="body1" 
-            color="text.secondary"
-            sx={{ 
-              maxWidth: 700,
-              mx: 'auto',
-              mb: 3,
-              px: 2
-            }}
-          >
-            Explore our wide range of products across different categories
-          </Typography>
+    <TranslationWrapper>
+      <Box sx={{ width: '100%', overflowX: 'hidden' }}>
+        {/* Hero Banner Carousel */}
+        <Box sx={{ mb: { xs: 4, md: 8 } }}>
+          <SimpleCarousel items={bannerItems} />
         </Box>
         
-        <Grid container spacing={3}>
-          {categories.map(category => (
-            <Grid item xs={6} md={3} key={category.id}>
-              <Card 
-                sx={{ 
-                  height: '100%',
-                  borderRadius: 4,
-                  overflow: 'hidden',
-                  ...cardHoverEffect,
-                  position: 'relative',
-                }}
-                onClick={() => navigate(`/products?category=${category.name.toLowerCase()}`)}
-              >
-                <CardMedia
-                  component="img"
-                  image={category.image}
-                  alt={category.name}
-                  sx={{ 
-                    height: { xs: 140, sm: 180, md: 220 },
-                    transition: 'transform 0.5s ease',
-                    '&:hover': {
-                      transform: 'scale(1.05)',
-                    },
-                  }}
-                />
-                <Box
+        {/* Features Section */}
+        <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
+          <Grid container spacing={3}>
+            {features.map(feature => (
+              <Grid item xs={6} md={3} key={feature.id}>
+                <Paper
+                  elevation={0}
                   sx={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, rgba(0,0,0,0) 100%)',
-                    p: 2,
+                    ...glassmorphism(0.7, 5, isDark),
+                    p: { xs: 2, md: 3 },
+                    height: '100%',
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    textAlign: 'center',
+                    borderRadius: 4,
+                    ...cardHoverEffect,
                   }}
                 >
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: { xs: 50, md: 60 },
+                      height: { xs: 50, md: 60 },
+                      borderRadius: '50%',
+                      mb: 2,
+                      background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.8)}, ${alpha(theme.palette.secondary.main, 0.8)})`,
+                      color: 'white',
+                    }}
+                  >
+                    {feature.icon}
+                  </Box>
                   <Typography 
                     variant="h6" 
                     component="h3" 
-                    color="white"
+                    gutterBottom
                     sx={{ 
                       fontWeight: 600,
-                      textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                       fontSize: { xs: '1rem', md: '1.25rem' }
                     }}
                   >
-                    {category.name}
+                    {feature.title}
                   </Typography>
-                </Box>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Container>
-      
-      {/* Featured Products Section */}
-      <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap' }}>
-          <Box>
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ 
+                      fontSize: { xs: '0.8rem', md: '0.875rem' }
+                    }}
+                  >
+                    {feature.description}
+                  </Typography>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        </Container>
+        
+        {/* Categories Section */}
+        <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
+          <Box sx={{ mb: 4, textAlign: 'center' }}>
             <Typography 
               variant="h4" 
               component="h2" 
@@ -516,225 +430,316 @@ const HomePage = () => {
                 mb: 1
               }}
             >
-              Featured Products
+              Shop by Category
             </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Our most popular products based on sales
-            </Typography>
-          </Box>
-          
-          <Button
-            variant="outlined"
-            color="primary"
-            endIcon={<ArrowForwardIcon />}
-            onClick={() => navigate('/products')}
-            sx={{
-              mt: { xs: 2, sm: 0 },
-              borderRadius: 2,
-              borderWidth: 2,
-              '&:hover': {
-                borderWidth: 2,
-              }
-            }}
-          >
-            View All
-          </Button>
-        </Box>
-        
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            {featuredProducts.map(product => (
-              <Grid item xs={6} sm={6} md={3} key={product.id}>
-                <ProductCard product={product} />
-              </Grid>
-            ))}
-          </Grid>
-        )}
-      </Container>
-      
-      {/* New Arrivals Section */}
-      <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap' }}>
-          <Box>
             <Typography 
-              variant="h4" 
-              component="h2" 
-              gutterBottom
+              variant="body1" 
+              color="text.secondary"
               sx={{ 
-                fontWeight: 700,
-                background: theme.palette.gradients.secondary,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                display: 'inline-block',
-                mb: 1
+                maxWidth: 700,
+                mx: 'auto',
+                mb: 3,
+                px: 2
               }}
             >
-              New Arrivals
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Check out our latest products
+              Explore our wide range of products across different categories
             </Typography>
           </Box>
           
-          <Button
-            variant="outlined"
-            color="secondary"
-            endIcon={<ArrowForwardIcon />}
-            onClick={() => navigate('/products?sort=newest')}
-            sx={{
-              mt: { xs: 2, sm: 0 },
-              borderRadius: 2,
-              borderWidth: 2,
-              '&:hover': {
-                borderWidth: 2,
-              }
-            }}
-          >
-            View All
-          </Button>
-        </Box>
-        
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
           <Grid container spacing={3}>
-            {newArrivals.slice(0, isMobile ? 4 : 8).map(product => (
-              <Grid item xs={6} sm={6} md={3} key={product.id}>
-                <ProductCard product={product} />
+            {categories.map(category => (
+              <Grid item xs={6} md={3} key={category.id}>
+                <Card 
+                  sx={{ 
+                    height: '100%',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    ...cardHoverEffect,
+                    position: 'relative',
+                  }}
+                  onClick={() => navigate(`/products?category=${category.name.toLowerCase()}`)}
+                >
+                  <CardMedia
+                    component="img"
+                    image={category.image}
+                    alt={category.name}
+                    sx={{ 
+                      height: { xs: 140, sm: 180, md: 220 },
+                      transition: 'transform 0.5s ease',
+                      '&:hover': {
+                        transform: 'scale(1.05)',
+                      },
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, rgba(0,0,0,0) 100%)',
+                      p: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography 
+                      variant="h6" 
+                      component="h3" 
+                      color="white"
+                      sx={{ 
+                        fontWeight: 600,
+                        textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                        fontSize: { xs: '1rem', md: '1.25rem' }
+                      }}
+                    >
+                      {category.name}
+                    </Typography>
+                  </Box>
+                </Card>
               </Grid>
             ))}
           </Grid>
-        )}
-      </Container>
-      
-      {/* Call to Action */}
-      <Box 
-        sx={{ 
-          position: 'relative',
-          py: { xs: 6, md: 10 },
-          mb: { xs: 4, md: 8 },
-          overflow: 'hidden',
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.9)}, ${alpha(theme.palette.secondary.main, 0.9)})`,
-            zIndex: -1,
-          }}
-        />
+        </Container>
         
-        <Container maxWidth="lg">
-          <Grid container spacing={4} alignItems="center" justifyContent="center">
-            <Grid item xs={12} md={7} sx={{ textAlign: { xs: 'center', md: 'left' } }}>
+        {/* Featured Products Section */}
+        <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap' }}>
+            <Box>
               <Typography 
-                variant="h3" 
+                variant="h4" 
                 component="h2" 
-                color="white" 
                 gutterBottom
                 sx={{ 
                   fontWeight: 700,
-                  fontSize: { xs: '1.75rem', sm: '2.25rem', md: '2.75rem' },
-                  mb: 2,
-                  textShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                  background: theme.palette.gradients.primary,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  display: 'inline-block',
+                  mb: 1
                 }}
               >
-                Ready to Start Selling on Azone?
+                Featured Products
               </Typography>
-              
-              <Typography 
-                variant="h6" 
-                color="white" 
-                sx={{ 
-                  mb: 4,
-                  opacity: 0.9,
-                  maxWidth: { md: '80%' },
-                  fontSize: { xs: '1rem', md: '1.25rem' },
-                }}
-              >
-                Join thousands of sellers and reach millions of customers worldwide. Start your seller journey today!
+              <Typography variant="body1" color="text.secondary">
+                Our most popular products based on sales
               </Typography>
-              
-              <Button
-                variant="contained"
-                size="large"
-                color="secondary"
-                endIcon={<StoreIcon />}
-                onClick={() => navigate('/seller/register')}
-                sx={{
-                  bgcolor: 'white',
-                  color: theme.palette.primary.main,
-                  px: 4,
-                  py: 1.5,
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
-                  '&:hover': {
-                    bgcolor: 'white',
-                    boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
-                  }
-                }}
-              >
-                Become a Seller
-              </Button>
-            </Grid>
+            </Box>
             
-            <Grid item xs={12} md={5} sx={{ display: { xs: 'none', md: 'block' } }}>
-              <Box
-                sx={{
-                  position: 'relative',
-                  height: 400,
-                  width: '100%',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
+            <Button
+              variant="outlined"
+              color="primary"
+              endIcon={<ArrowForwardIcon />}
+              onClick={() => navigate('/products')}
+              sx={{
+                mt: { xs: 2, sm: 0 },
+                borderRadius: 2,
+                borderWidth: 2,
+                '&:hover': {
+                  borderWidth: 2,
+                }
+              }}
+            >
+              View All
+            </Button>
+          </Box>
+          
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              {featuredProducts.map(product => (
+                <Grid item xs={6} sm={6} md={3} key={product.id}>
+                  <ProductCard product={product} />
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Container>
+        
+        {/* New Arrivals Section */}
+        <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap' }}>
+            <Box>
+              <Typography 
+                variant="h4" 
+                component="h2" 
+                gutterBottom
+                sx={{ 
+                  fontWeight: 700,
+                  background: theme.palette.gradients.secondary,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  display: 'inline-block',
+                  mb: 1
                 }}
               >
+                New Arrivals
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                Check out our latest products
+              </Typography>
+            </Box>
+            
+            <Button
+              variant="outlined"
+              color="secondary"
+              endIcon={<ArrowForwardIcon />}
+              onClick={() => navigate('/products?sort=newest')}
+              sx={{
+                mt: { xs: 2, sm: 0 },
+                borderRadius: 2,
+                borderWidth: 2,
+                '&:hover': {
+                  borderWidth: 2,
+                }
+              }}
+            >
+              View All
+            </Button>
+          </Box>
+          
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              {newArrivals.slice(0, isMobile ? 4 : 8).map(product => (
+                <Grid item xs={6} sm={6} md={3} key={product.id}>
+                  <ProductCard product={product} />
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Container>
+        
+        {/* Call to Action */}
+        <Box 
+          sx={{ 
+            position: 'relative',
+            py: { xs: 6, md: 10 },
+            mb: { xs: 4, md: 8 },
+            overflow: 'hidden',
+          }}
+        >
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.9)}, ${alpha(theme.palette.secondary.main, 0.9)})`,
+              zIndex: -1,
+            }}
+          />
+          
+          <Container maxWidth="lg">
+            <Grid container spacing={4} alignItems="center" justifyContent="center">
+              <Grid item xs={12} md={7} sx={{ textAlign: { xs: 'center', md: 'left' } }}>
+                <Typography 
+                  variant="h3" 
+                  component="h2" 
+                  color="white" 
+                  gutterBottom
+                  sx={{ 
+                    fontWeight: 700,
+                    fontSize: { xs: '1.75rem', sm: '2.25rem', md: '2.75rem' },
+                    mb: 2,
+                    textShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                  }}
+                >
+                  Ready to Start Selling on Azone?
+                </Typography>
+                
+                <Typography 
+                  variant="h6" 
+                  color="white" 
+                  sx={{ 
+                    mb: 4,
+                    opacity: 0.9,
+                    maxWidth: { md: '80%' },
+                    fontSize: { xs: '1rem', md: '1.25rem' },
+                  }}
+                >
+                  Join thousands of sellers and reach millions of customers worldwide. Start your seller journey today!
+                </Typography>
+                
+                <Button
+                  variant="contained"
+                  size="large"
+                  color="secondary"
+                  endIcon={<StoreIcon />}
+                  onClick={() => navigate('/seller/register')}
+                  sx={{
+                    bgcolor: 'white',
+                    color: theme.palette.primary.main,
+                    px: 4,
+                    py: 1.5,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+                    '&:hover': {
+                      bgcolor: 'white',
+                      boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
+                    }
+                  }}
+                >
+                  Become a Seller
+                </Button>
+              </Grid>
+              
+              <Grid item xs={12} md={5} sx={{ display: { xs: 'none', md: 'block' } }}>
                 <Box
                   sx={{
-                    position: 'absolute',
-                    width: 300,
-                    height: 300,
-                    borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.1)',
-                    backdropFilter: 'blur(10px)',
+                    position: 'relative',
+                    height: 400,
+                    width: '100%',
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
-                    animation: 'pulse 3s infinite',
-                    '@keyframes pulse': {
-                      '0%': {
-                        transform: 'scale(1)',
-                        boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
-                      },
-                      '50%': {
-                        transform: 'scale(1.05)',
-                        boxShadow: '0 25px 60px rgba(0,0,0,0.2)',
-                      },
-                      '100%': {
-                        transform: 'scale(1)',
-                        boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
-                      },
-                    },
                   }}
                 >
-                  <ShoppingBagIcon sx={{ fontSize: 100, color: 'white' }} />
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      width: 300,
+                      height: 300,
+                      borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.1)',
+                      backdropFilter: 'blur(10px)',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
+                      animation: 'pulse 3s infinite',
+                      '@keyframes pulse': {
+                        '0%': {
+                          transform: 'scale(1)',
+                          boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
+                        },
+                        '50%': {
+                          transform: 'scale(1.05)',
+                          boxShadow: '0 25px 60px rgba(0,0,0,0.2)',
+                        },
+                        '100%': {
+                          transform: 'scale(1)',
+                          boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
+                        },
+                      },
+                    }}
+                  >
+                    <ShoppingBagIcon sx={{ fontSize: 100, color: 'white' }} />
+                  </Box>
                 </Box>
-              </Box>
+              </Grid>
             </Grid>
-          </Grid>
-        </Container>
+          </Container>
+        </Box>
       </Box>
-    </Box>
+    </TranslationWrapper>
   );
 };
 

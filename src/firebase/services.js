@@ -537,7 +537,7 @@ export const getProductById = async (productId) => {
   }
 };
 
-export const addProduct = async (productData, imageFile) => {
+export const addProduct = async (productData, imageFile, additionalImageFiles = []) => {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('You must be logged in to add a product');
@@ -549,10 +549,26 @@ export const addProduct = async (productData, imageFile) => {
       imageUrl = await uploadImage(imageFile, `products/${currentUser.uid}`);
     }
     
+    // Upload additional images if provided
+    let additionalImages = [];
+    if (additionalImageFiles && additionalImageFiles.length > 0) {
+      // Process each additional image
+      const uploadPromises = additionalImageFiles.map(file => 
+        uploadImage(file, `products/${currentUser.uid}/additional`)
+      );
+      
+      // Wait for all uploads to complete
+      additionalImages = await Promise.all(uploadPromises);
+    } else if (productData.additionalImages && productData.additionalImages.length > 0) {
+      // Use existing additional images from form data if available (e.g., from data URLs)
+      additionalImages = productData.additionalImages;
+    }
+    
     // Create product document in Firestore
     const productRef = await addDoc(collection(db, 'products'), {
       ...productData,
       imageUrl,
+      additionalImages,
       sellerId: currentUser.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
@@ -565,38 +581,56 @@ export const addProduct = async (productData, imageFile) => {
   }
 };
 
-export const updateProduct = async (productId, productData, newImageFile) => {
+export const updateProduct = async (productId, productData, newImageFile, additionalImageFiles = []) => {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('You must be logged in to update a product');
     
-    // Get the current product data
-    const productRef = doc(db, 'products', productId);
-    const productSnap = await getDoc(productRef);
+    // Get the product document
+    const productDoc = await getDoc(doc(db, 'products', productId));
     
-    if (!productSnap.exists()) {
+    if (!productDoc.exists()) {
       throw new Error('Product not found');
     }
     
-    const productDetails = productSnap.data();
+    const productData_old = productDoc.data();
     
-    // Verify that the current user is the seller of this product
-    if (productDetails.sellerId !== currentUser.uid) {
-      throw new Error('You do not have permission to update this product');
+    // Check if the product belongs to this seller
+    if (productData_old.sellerId !== currentUser.uid) {
+      throw new Error("You don't have permission to update this product");
     }
     
-    // Upload new image to Cloudinary if provided
+    // Upload new main image if provided
     let imageUrl = productData.imageUrl;
     if (newImageFile) {
-      // We don't need to delete the old image from Cloudinary as it will be handled by Cloudinary's auto cleanup
-      // Just upload the new image
       imageUrl = await uploadImage(newImageFile, `products/${currentUser.uid}`);
     }
     
-    // Update product document in Firestore
-    await updateDoc(productRef, {
+    // Process additional images
+    let additionalImages = productData.additionalImages || [];
+    
+    // If new additional image files are provided, upload them
+    if (additionalImageFiles && additionalImageFiles.length > 0) {
+      const uploadPromises = additionalImageFiles.map(file => 
+        uploadImage(file, `products/${currentUser.uid}/additional`)
+      );
+      
+      // Get new image URLs and append to existing ones
+      const newAdditionalImages = await Promise.all(uploadPromises);
+      
+      // Filter out data URLs from existing additionalImages (they're newly added in the form but not yet uploaded)
+      const existingCloudinaryImages = additionalImages.filter(url => 
+        url.startsWith('http') && !url.startsWith('data:')
+      );
+      
+      additionalImages = [...existingCloudinaryImages, ...newAdditionalImages];
+    }
+    
+    // Update product in Firestore
+    await updateDoc(doc(db, 'products', productId), {
       ...productData,
       imageUrl,
+      additionalImages,
       updatedAt: serverTimestamp()
     });
     
@@ -926,6 +960,7 @@ export const getSellerProducts = async (sellerId) => {
         // Handle missing createdAt fields
         const dateA = a.createdAt ? new Date(a.createdAt.seconds * 1000) : new Date(0);
         const dateB = b.createdAt ? new Date(b.createdAt.seconds * 1000) : new Date(0);
+        
         return dateB - dateA; // descending order
       });
       
@@ -1905,5 +1940,65 @@ export const getHiddenOrders = async (userId) => {
   } catch (error) {
     console.error('Error getting hidden orders:', error);
     throw error;
+  }
+};
+
+// Get related products based on category and excluding current product
+export const getRelatedProducts = async (categoryId, currentProductId, limitCount = 4) => {
+  try {
+    if (!categoryId || !currentProductId) {
+      return [];
+    }
+    
+    // Use a simpler query that doesn't require a composite index
+    const productsRef = collection(db, 'products');
+    
+    // First, get products with the same category
+    const categoryQuery = query(
+      productsRef,
+      where('category', '==', categoryId),
+      limit(limitCount + 1) // Get one extra to account for possible current product
+    );
+    
+    const querySnapshot = await getDocs(categoryQuery);
+    
+    // Filter out the current product in JavaScript instead of in the query
+    let relatedProducts = querySnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .filter(product => product.id !== currentProductId)
+      .slice(0, limitCount);
+    
+    // If we don't have enough products, get random products as fallback
+    if (relatedProducts.length < limitCount) {
+      // Get random products
+      const fallbackQuery = query(
+        productsRef,
+        limit(limitCount + 10) // Get extra to ensure we have enough after filtering
+      );
+      
+      const fallbackSnapshot = await getDocs(fallbackQuery);
+      const fallbackProducts = fallbackSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(product => product.id !== currentProductId && 
+                          !relatedProducts.some(p => p.id === product.id));
+      
+      // Add fallback products to fill up to the limit
+      relatedProducts = [
+        ...relatedProducts,
+        ...fallbackProducts.slice(0, limitCount - relatedProducts.length)
+      ];
+    }
+    
+    return relatedProducts;
+  } catch (error) {
+    console.error('Error fetching related products:', error);
+    // Return empty array to prevent UI errors
+    return [];
   }
 };

@@ -7,7 +7,7 @@ import Footer from './Footer';
 const Layout = () => {
   const theme = useTheme();
   const { mode } = useColorMode();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isDark = mode === 'dark';
 
   return (
@@ -49,6 +49,7 @@ const Layout = () => {
             md: '32px',
             lg: '40px'
           },
+          paddingBottom: isMobile ? '80px' : undefined, 
           position: 'relative',
           zIndex: 1,
           '&::before': {
