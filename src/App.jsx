@@ -1,8 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
+import ThemeProvider from './theme/ThemeProvider';
 
 // Layout
 import Layout from './components/layout/Layout';
@@ -25,27 +24,6 @@ import ProductForm from './components/seller/ProductForm';
 import SellerOrderDetail from './components/seller/SellerOrderDetail';
 import WalletPage from './components/wallet/WalletPage';
 
-// Create a theme instance
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#f50057',
-    },
-  },
-  typography: {
-    fontFamily: [
-      'Poppins',
-      'Roboto',
-      '"Helvetica Neue"',
-      'Arial',
-      'sans-serif',
-    ].join(','),
-  },
-});
-
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { currentUser, userDetails, loading } = useAuth();
@@ -65,11 +43,10 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   return children;
 };
 
-function App() {
+const App = () => {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
+    <AuthProvider>
+      <ThemeProvider>
         <CartProvider>
           <Router>
             <Routes>
@@ -80,8 +57,6 @@ function App() {
                 <Route path="cart" element={<Cart />} />
                 <Route path="login" element={<Login />} />
                 <Route path="register" element={<Register />} />
-                
-                {/* Protected Routes */}
                 <Route 
                   path="checkout" 
                   element={
@@ -90,7 +65,6 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
                 <Route 
                   path="profile" 
                   element={
@@ -99,7 +73,6 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
                 <Route 
                   path="orders" 
                   element={
@@ -108,8 +81,6 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
-                {/* Order Detail Route */}
                 <Route 
                   path="orders/:id" 
                   element={
@@ -118,8 +89,14 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
-                {/* Seller Routes */}
+                <Route 
+                  path="wallet" 
+                  element={
+                    <ProtectedRoute>
+                      <WalletPage />
+                    </ProtectedRoute>
+                  } 
+                />
                 <Route 
                   path="seller/dashboard" 
                   element={
@@ -129,7 +106,7 @@ function App() {
                   } 
                 />
                 <Route 
-                  path="seller/products/add" 
+                  path="seller/products/new" 
                   element={
                     <ProtectedRoute requiredRole="seller">
                       <ProductForm />
@@ -137,7 +114,7 @@ function App() {
                   } 
                 />
                 <Route 
-                  path="seller/products/:productId/edit" 
+                  path="seller/products/edit/:id" 
                   element={
                     <ProtectedRoute requiredRole="seller">
                       <ProductForm />
@@ -152,25 +129,13 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                
-                {/* Wallet Route */}
-                <Route 
-                  path="wallet" 
-                  element={
-                    <ProtectedRoute>
-                      <WalletPage />
-                    </ProtectedRoute>
-                  } 
-                />
-                
-                {/* Add more routes as needed */}
               </Route>
             </Routes>
           </Router>
         </CartProvider>
-      </AuthProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
-}
+};
 
 export default App;

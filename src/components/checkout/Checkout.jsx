@@ -13,7 +13,11 @@ import {
   Grid,
   TextField,
   CircularProgress,
-  Alert
+  Alert,
+  useTheme,
+  useMediaQuery,
+  alpha,
+  StepIcon
 } from '@mui/material';
 import {
   ShoppingCart as CartIcon,
@@ -43,10 +47,40 @@ const steps = [
   { label: 'Confirm Order', icon: <ConfirmIcon /> }
 ];
 
+// Custom StepIcon component
+const CustomStepIcon = (props) => {
+  const { active, completed, icon } = props;
+  const theme = useTheme();
+  
+  return (
+    <Box
+      sx={{
+        borderRadius: '50%',
+        width: 40,
+        height: 40,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: active || completed 
+          ? theme.palette.primary.gradient
+          : alpha(theme.palette.text.disabled, 0.1),
+        color: active || completed ? 'white' : theme.palette.text.disabled,
+        boxShadow: active || completed ? theme.shadows[2] : 'none',
+        transition: 'all 0.3s ease'
+      }}
+    >
+      {steps[icon - 1].icon}
+    </Box>
+  );
+};
+
 const Checkout = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { cart, clearCart } = useCart();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   
   // State
   const [activeStep, setActiveStep] = useState(0);
@@ -225,7 +259,7 @@ const Checkout = () => {
       case 0:
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
               Review Your Cart
             </Typography>
             
@@ -233,26 +267,62 @@ const Checkout = () => {
               <Alert severity="info">Your cart is empty</Alert>
             ) : (
               <>
-                <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: { xs: 1, sm: 2 }, 
+                    mb: 3,
+                    borderRadius: 2,
+                    background: alpha(theme.palette.background.paper, 0.7),
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
                   {cart.items.map((item) => (
-                    <Box key={item.id} sx={{ display: 'flex', mb: 2, pb: 2, borderBottom: '1px solid #eee' }}>
+                    <Box 
+                      key={item.id} 
+                      sx={{ 
+                        display: 'flex', 
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        mb: 2, 
+                        pb: 2, 
+                        borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`
+                      }}
+                    >
                       <Box
                         component="img"
                         src={item.imageUrl}
                         alt={item.name}
-                        sx={{ width: 80, height: 80, objectFit: 'cover', mr: 2 }}
+                        sx={{ 
+                          width: { xs: '100%', sm: 80 }, 
+                          height: { xs: 120, sm: 80 }, 
+                          objectFit: 'cover', 
+                          mr: { xs: 0, sm: 2 },
+                          mb: { xs: 1, sm: 0 },
+                          borderRadius: 1
+                        }}
                       />
                       <Box sx={{ flexGrow: 1 }}>
-                        <Typography variant="subtitle1">{item.name}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Quantity: {item.quantity}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Price: {formatCurrency(item.price)}
-                        </Typography>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>{item.name}</Typography>
+                        <Box sx={{ display: 'flex', justifyContent: { xs: 'space-between', sm: 'flex-start' }, mt: 1 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
+                            Quantity: {item.quantity}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Price: {formatCurrency(item.price)}
+                          </Typography>
+                        </Box>
                       </Box>
-                      <Box>
-                        <Typography variant="subtitle1">
+                      <Box sx={{ mt: { xs: 1, sm: 0 }, alignSelf: { xs: 'flex-end', sm: 'center' } }}>
+                        <Typography 
+                          variant="subtitle1"
+                          sx={{ 
+                            fontWeight: 'bold',
+                            background: theme.palette.primary.gradient,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                          }}
+                        >
                           {formatCurrency(item.price * item.quantity)}
                         </Typography>
                       </Box>
@@ -260,7 +330,15 @@ const Checkout = () => {
                   ))}
                 </Paper>
                 
-                <Paper variant="outlined" sx={{ p: 2 }}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: { xs: 2, sm: 3 },
+                    borderRadius: 2,
+                    background: alpha(theme.palette.background.paper, 0.7),
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body1">Subtotal</Typography>
                     <Typography variant="body1">{formatCurrency(subtotal)}</Typography>
@@ -281,8 +359,18 @@ const Checkout = () => {
                   <Divider sx={{ my: 2 }} />
                   
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="h6">Total</Typography>
-                    <Typography variant="h6">{formatCurrency(total)}</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Total</Typography>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        background: theme.palette.primary.gradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                      }}
+                    >
+                      {formatCurrency(total)}
+                    </Typography>
                   </Box>
                 </Paper>
               </>
@@ -293,11 +381,19 @@ const Checkout = () => {
       case 1:
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
               Shipping Details
             </Typography>
             
-            <Paper variant="outlined" sx={{ p: 2 }}>
+            <Paper 
+              variant="outlined" 
+              sx={{ 
+                p: { xs: 2, sm: 3 },
+                borderRadius: 2,
+                background: alpha(theme.palette.background.paper, 0.7),
+                backdropFilter: 'blur(10px)',
+              }}
+            >
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -309,6 +405,15 @@ const Checkout = () => {
                     onChange={handleShippingChange}
                     error={error && !shippingDetails.fullName}
                     helperText={error && !shippingDetails.fullName ? 'Full name is required' : ''}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
                 
@@ -322,6 +427,15 @@ const Checkout = () => {
                     onChange={handleShippingChange}
                     error={error && !shippingDetails.phoneNumber}
                     helperText={error && !shippingDetails.phoneNumber ? 'Phone number is required' : ''}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
                 
@@ -335,6 +449,15 @@ const Checkout = () => {
                     onChange={handleShippingChange}
                     error={error && !shippingDetails.address}
                     helperText={error && !shippingDetails.address ? 'Address is required' : ''}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
                 
@@ -348,6 +471,15 @@ const Checkout = () => {
                     onChange={handleShippingChange}
                     error={error && !shippingDetails.city}
                     helperText={error && !shippingDetails.city ? 'City is required' : ''}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
                 
@@ -358,6 +490,15 @@ const Checkout = () => {
                     name="region"
                     value={shippingDetails.region}
                     onChange={handleShippingChange}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
                 
@@ -368,6 +509,15 @@ const Checkout = () => {
                     name="zipCode"
                     value={shippingDetails.zipCode}
                     onChange={handleShippingChange}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
                 
@@ -380,6 +530,15 @@ const Checkout = () => {
                     onChange={handleShippingChange}
                     multiline
                     rows={2}
+                    variant="outlined"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: theme.palette.primary.main,
+                        },
+                      },
+                    }}
                   />
                 </Grid>
               </Grid>
@@ -393,9 +552,25 @@ const Checkout = () => {
             <PaymentOptions
               onPaymentMethodChange={handlePaymentMethodChange}
               totalAmount={total}
+              walletBalance={walletBalance}
+              theme={theme}
+              isMobile={isMobile}
             />
             
-            <Paper variant="outlined" sx={{ p: 2 }}>
+            <Paper 
+              variant="outlined" 
+              sx={{ 
+                p: { xs: 2, sm: 3 },
+                mt: 3,
+                borderRadius: 2,
+                background: alpha(theme.palette.background.paper, 0.7),
+                backdropFilter: 'blur(10px)',
+              }}
+            >
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Order Summary
+              </Typography>
+              
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body1">Subtotal</Typography>
                 <Typography variant="body1">{formatCurrency(subtotal)}</Typography>
@@ -416,8 +591,18 @@ const Checkout = () => {
               <Divider sx={{ my: 2 }} />
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="h6">Total</Typography>
-                <Typography variant="h6">{formatCurrency(total)}</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Total</Typography>
+                <Typography 
+                  variant="h6" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    background: theme.palette.primary.gradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  {formatCurrency(total)}
+                </Typography>
               </Box>
             </Paper>
           </Box>
@@ -427,10 +612,30 @@ const Checkout = () => {
         return (
           <Box>
             {orderComplete ? (
-              <Box sx={{ textAlign: 'center', py: 3 }}>
-                <ConfirmIcon color="success" sx={{ fontSize: 64, mb: 2 }} />
+              <Box 
+                sx={{ 
+                  textAlign: 'center', 
+                  py: 3,
+                  px: { xs: 2, sm: 3 },
+                  borderRadius: 2,
+                  background: alpha(theme.palette.background.paper, 0.7),
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: theme.shadows[1],
+                }}
+              >
+                <ConfirmIcon 
+                  color="success" 
+                  sx={{ 
+                    fontSize: { xs: 48, sm: 64 }, 
+                    mb: 2,
+                    background: theme.palette.success.light,
+                    borderRadius: '50%',
+                    p: 1,
+                    boxShadow: theme.shadows[2],
+                  }} 
+                />
                 
-                <Typography variant="h5" gutterBottom>
+                <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
                   Thank You For Your Order!
                 </Typography>
                 
@@ -442,11 +647,16 @@ const Checkout = () => {
                   Order ID: {orderId}
                 </Typography>
                 
-                <Box sx={{ mt: 4 }}>
+                <Box sx={{ mt: 4, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'center', gap: 2 }}>
                   <Button
                     variant="contained"
                     onClick={() => navigate('/orders')}
-                    sx={{ mr: 2 }}
+                    sx={{ 
+                      background: theme.palette.primary.gradient,
+                      '&:hover': {
+                        background: theme.palette.primary.gradientDark,
+                      },
+                    }}
                   >
                     View Orders
                   </Button>
@@ -454,6 +664,14 @@ const Checkout = () => {
                   <Button
                     variant="outlined"
                     onClick={() => navigate('/')}
+                    sx={{
+                      borderColor: theme.palette.primary.main,
+                      color: theme.palette.primary.main,
+                      '&:hover': {
+                        borderColor: theme.palette.primary.dark,
+                        background: alpha(theme.palette.primary.main, 0.1),
+                      },
+                    }}
                   >
                     Continue Shopping
                   </Button>
@@ -461,12 +679,21 @@ const Checkout = () => {
               </Box>
             ) : (
               <Box>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
                   Order Summary
                 </Typography>
                 
-                <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                  <Typography variant="subtitle1" gutterBottom>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: { xs: 2, sm: 3 }, 
+                    mb: 3,
+                    borderRadius: 2,
+                    background: alpha(theme.palette.background.paper, 0.7),
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
                     Shipping Details
                   </Typography>
                   
@@ -492,7 +719,7 @@ const Checkout = () => {
                   
                   <Divider sx={{ my: 2 }} />
                   
-                  <Typography variant="subtitle1" gutterBottom>
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
                     Payment Method
                   </Typography>
                   
@@ -500,22 +727,52 @@ const Checkout = () => {
                     Wallet Payment
                   </Typography>
                   
-                  <Alert severity="info" sx={{ mt: 2 }}>
+                  <Alert 
+                    severity="info" 
+                    sx={{ 
+                      mt: 2,
+                      borderRadius: 1,
+                      '& .MuiAlert-icon': {
+                        color: theme.palette.primary.main,
+                      },
+                    }}
+                  >
                     {formatCurrency(total)} will be deducted from your wallet balance.
                   </Alert>
                 </Paper>
                 
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="subtitle1" gutterBottom>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: { xs: 2, sm: 3 },
+                    borderRadius: 2,
+                    background: alpha(theme.palette.background.paper, 0.7),
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
                     Order Items
                   </Typography>
                   
                   {cart.items.map((item) => (
-                    <Box key={item.id} sx={{ display: 'flex', mb: 2 }}>
+                    <Box 
+                      key={item.id} 
+                      sx={{ 
+                        display: 'flex', 
+                        mb: 2,
+                        pb: 1,
+                        borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                      }}
+                    >
                       <Typography variant="body2" sx={{ flexGrow: 1 }}>
                         {item.name} x {item.quantity}
                       </Typography>
-                      <Typography variant="body2">
+                      <Typography 
+                        variant="body2"
+                        sx={{ 
+                          fontWeight: 'medium',
+                        }}
+                      >
                         {formatCurrency(item.price * item.quantity)}
                       </Typography>
                     </Box>
@@ -543,8 +800,18 @@ const Checkout = () => {
                   <Divider sx={{ my: 1 }} />
                   
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="subtitle1">Total</Typography>
-                    <Typography variant="subtitle1">{formatCurrency(total)}</Typography>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>Total</Typography>
+                    <Typography 
+                      variant="subtitle1" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        background: theme.palette.primary.gradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                      }}
+                    >
+                      {formatCurrency(total)}
+                    </Typography>
                   </Box>
                 </Paper>
               </Box>
@@ -558,46 +825,134 @@ const Checkout = () => {
   };
   
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
+    <Container 
+      maxWidth="md" 
+      sx={{ 
+        py: { xs: 2, sm: 4 },
+        px: { xs: 2, sm: 3 },
+      }}
+    >
+      <Paper 
+        sx={{ 
+          p: { xs: 2, sm: 3 }, 
+          mb: 4,
+          borderRadius: 2,
+          background: alpha(theme.palette.background.paper, 0.8),
+          backdropFilter: 'blur(10px)',
+          boxShadow: theme.shadows[3],
+        }}
+      >
+        <Typography 
+          variant={isMobile ? "h5" : "h4"} 
+          gutterBottom
+          sx={{ 
+            fontWeight: 'bold',
+            mb: 3,
+            background: theme.palette.primary.gradient,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            textAlign: { xs: 'center', sm: 'left' },
+          }}
+        >
           Checkout
         </Typography>
         
-        <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+        <Stepper 
+          activeStep={activeStep} 
+          sx={{ 
+            mb: 4,
+            display: { xs: 'none', sm: 'flex' }
+          }}
+        >
           {steps.map((step) => (
             <Step key={step.label}>
-              <StepLabel StepIconComponent={() => step.icon}>
+              <StepLabel StepIconComponent={CustomStepIcon}>
                 {step.label}
               </StepLabel>
             </Step>
           ))}
         </Stepper>
         
+        {/* Mobile Stepper - just shows current step */}
+        <Box 
+          sx={{ 
+            display: { xs: 'flex', sm: 'none' }, 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            mb: 3,
+          }}
+        >
+          <Typography variant="body1" color="text.secondary" sx={{ mr: 1 }}>
+            Step {activeStep + 1} of {steps.length}:
+          </Typography>
+          <Typography variant="body1" fontWeight="bold">
+            {steps[activeStep].label}
+          </Typography>
+          <Box sx={{ ml: 1 }}>
+            {steps[activeStep].icon}
+          </Box>
+        </Box>
+        
         {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
+          <Alert 
+            severity="error" 
+            sx={{ 
+              mb: 3,
+              borderRadius: 1,
+              '& .MuiAlert-icon': {
+                color: theme.palette.error.main,
+              },
+            }}
+          >
             {error}
           </Alert>
         )}
         
         {getStepContent(activeStep)}
         
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            mt: 4,
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 2, sm: 0 },
+          }}
+        >
           <Button
             variant="outlined"
             disabled={activeStep === 0 || loading || orderComplete}
             onClick={handleBack}
+            sx={{
+              order: { xs: 2, sm: 1 },
+              borderColor: theme.palette.primary.main,
+              color: theme.palette.primary.main,
+              '&:hover': {
+                borderColor: theme.palette.primary.dark,
+                background: alpha(theme.palette.primary.main, 0.1),
+              },
+              '&.Mui-disabled': {
+                borderColor: alpha(theme.palette.text.disabled, 0.3),
+              },
+            }}
           >
             Back
           </Button>
           
-          <Box>
+          <Box sx={{ order: { xs: 1, sm: 2 } }}>
             {activeStep === steps.length - 1 && !orderComplete ? (
               <Button
                 variant="contained"
                 color="primary"
                 onClick={placeOrder}
                 disabled={loading}
+                sx={{ 
+                  background: theme.palette.primary.gradient,
+                  '&:hover': {
+                    background: theme.palette.primary.gradientDark,
+                  },
+                  minWidth: { xs: '100%', sm: 'auto' },
+                }}
               >
                 {loading ? (
                   <CircularProgress size={24} color="inherit" />
@@ -610,7 +965,14 @@ const Checkout = () => {
                 variant="contained"
                 color="primary"
                 onClick={handleNext}
-                disabled={activeStep === steps.length - 1 || loading || (cart.items && cart.items.length === 0)}
+                disabled={activeStep === steps.length - 1 || loading || orderComplete}
+                sx={{ 
+                  background: theme.palette.primary.gradient,
+                  '&:hover': {
+                    background: theme.palette.primary.gradientDark,
+                  },
+                  minWidth: { xs: '100%', sm: 'auto' },
+                }}
               >
                 Next
               </Button>

@@ -7,7 +7,14 @@ import {
   GoogleAuthProvider,
   FacebookAuthProvider,
   OAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  applyActionCode,
+  verifyPasswordResetCode,
+  confirmPasswordReset,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -104,7 +111,7 @@ export const formatEthiopianPhoneNumber = (phoneNumber) => {
   return phoneNumber; // Return as is if it doesn't match expected formats
 };
 
-// Authentication services
+// User Registration
 export const registerUser = async (email, password, displayName, phoneNumber, role = 'buyer') => {
   try {
     // Create user with email and password
@@ -129,6 +136,7 @@ export const registerUser = async (email, password, displayName, phoneNumber, ro
       email,
       phoneNumber: formattedPhoneNumber,
       role,
+      emailVerified: false,
       createdAt: serverTimestamp()
     };
     
@@ -137,6 +145,18 @@ export const registerUser = async (email, password, displayName, phoneNumber, ro
     // Initialize wallet for the new user
     await initializeWallet(user.uid, role);
     
+    // Send email verification
+    try {
+      await sendEmailVerification(user, {
+        url: window.location.origin + '/login?verified=true',
+        handleCodeInApp: false
+      });
+      console.log('Verification email sent to', email);
+    } catch (verificationError) {
+      console.error('Error sending verification email:', verificationError);
+      // Don't throw here, as the user is still created
+    }
+    
     return user;
   } catch (error) {
     console.error("Registration error:", error);
@@ -144,16 +164,143 @@ export const registerUser = async (email, password, displayName, phoneNumber, ro
   }
 };
 
-export const loginUser = async (email, password) => {
+// Check if user's email is verified
+export const isEmailVerified = (user) => {
+  if (!user) return false;
+  
+  // Reload the user to get the most current data
+  return user.emailVerified;
+};
+
+// Reload user to get fresh data (including emailVerified status)
+export const reloadUser = async (user) => {
+  if (!user) throw new Error('User is required');
+  
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return userCredential.user;
+    await user.reload();
+    return user;
   } catch (error) {
-    console.error("Error logging in:", error);
+    console.error('Error reloading user:', error);
     throw error;
   }
 };
 
+// Resend verification email
+export const resendVerificationEmail = async (user) => {
+  if (!user) throw new Error('User is required');
+  
+  try {
+    await sendEmailVerification(user, {
+      url: window.location.origin + '/login?verified=true',
+      handleCodeInApp: false
+    });
+    return true;
+  } catch (error) {
+    console.error('Error resending verification email:', error);
+    throw error;
+  }
+};
+
+// Update user's email verification status in Firestore
+export const updateEmailVerificationStatus = async (userId, isVerified) => {
+  if (!userId) throw new Error('User ID is required');
+  
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      emailVerified: isVerified,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating email verification status:', error);
+    throw error;
+  }
+};
+
+// Login user
+export const loginUser = async (email, password) => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    
+    // Update the verification status in Firestore if it's changed
+    const user = userCredential.user;
+    if (user.emailVerified) {
+      try {
+        await updateEmailVerificationStatus(user.uid, true);
+      } catch (updateError) {
+        console.error('Error updating verification status:', updateError);
+        // Don't throw here as login was successful
+      }
+    }
+    
+    return user;
+  } catch (error) {
+    console.error("Login error:", error);
+    throw error;
+  }
+};
+
+// Send password reset email
+export const sendPasswordReset = async (email) => {
+  try {
+    await sendPasswordResetEmail(auth, email, {
+      url: window.location.origin + '/login',
+      handleCodeInApp: false
+    });
+    return true;
+  } catch (error) {
+    console.error("Password reset error:", error);
+    throw error;
+  }
+};
+
+// Confirm password reset with code and new password
+export const confirmPasswordResetWithCode = async (code, newPassword) => {
+  try {
+    await confirmPasswordReset(auth, code, newPassword);
+    return true;
+  } catch (error) {
+    console.error("Password reset confirmation error:", error);
+    throw error;
+  }
+};
+
+// Verify password reset code
+export const verifyPasswordResetWithCode = async (code) => {
+  try {
+    const email = await verifyPasswordResetCode(auth, code);
+    return email;
+  } catch (error) {
+    console.error("Password reset code verification error:", error);
+    throw error;
+  }
+};
+
+// Apply action code (for email verification, password reset, etc.)
+export const applyActionCodeHandler = async (code) => {
+  try {
+    await applyActionCode(auth, code);
+    return true;
+  } catch (error) {
+    console.error("Apply action code error:", error);
+    throw error;
+  }
+};
+
+// Reauthenticate user (required for sensitive operations)
+export const reauthenticateUser = async (user, password) => {
+  try {
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+    return true;
+  } catch (error) {
+    console.error("Reauthentication error:", error);
+    throw error;
+  }
+};
+
+// Authentication services
 export const logoutUser = async () => {
   try {
     await signOut(auth);
@@ -613,72 +760,81 @@ export const getUserOrders = async (userId, includeHidden = false) => {
     }
 
     const ordersRef = collection(db, 'orders');
-    let q;
     
-    if (includeHidden) {
-      // Include all orders regardless of hidden status
-      q = query(
-        ordersRef,
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      // Only include non-hidden orders
-      q = query(
-        ordersRef,
-        where('userId', '==', userId),
-        where('isHidden', '==', false),
-        orderBy('createdAt', 'desc')
-      );
-    }
-
+    // First try: Simple query without compound conditions to avoid index errors
     try {
-      const querySnapshot = await getDocs(q);
-      const orders = [];
+      // Use a simple query that doesn't require a composite index
+      const simpleQuery = query(
+        ordersRef,
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(simpleQuery);
+      const allOrders = [];
       
       querySnapshot.forEach((doc) => {
-        orders.push({
+        allOrders.push({
           id: doc.id,
           ...doc.data()
         });
       });
       
-      return orders;
-    } catch (indexError) {
-      // If we get an index error, try the fallback approach
-      if (indexError.message && indexError.message.includes('index')) {
-        console.warn('Index error occurred, using fallback method:', indexError.message);
-        
-        // Fallback: Get all orders for the user and filter in memory
-        const fallbackQuery = query(
-          ordersRef,
-          where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
-        );
-        
-        const querySnapshot = await getDocs(fallbackQuery);
-        const orders = [];
-        
-        querySnapshot.forEach((doc) => {
-          const orderData = doc.data();
-          // Only include orders that match our hidden criteria
-          if (includeHidden || orderData.isHidden !== true) {
-            orders.push({
-              id: doc.id,
-              ...orderData
-            });
-          }
+      // Filter in memory based on the includeHidden parameter
+      return includeHidden 
+        ? allOrders 
+        : allOrders.filter(order => order.isHidden !== true);
+    } 
+    catch (error) {
+      // If even the simple query fails, try an even more basic approach
+      console.warn('Error with simple query, using most basic approach:', error.message);
+      
+      // Get all orders for the user without any ordering
+      const basicQuery = query(
+        ordersRef,
+        where('userId', '==', userId)
+      );
+      
+      const basicSnapshot = await getDocs(basicQuery);
+      const basicOrders = [];
+      
+      basicSnapshot.forEach((doc) => {
+        basicOrders.push({
+          id: doc.id,
+          ...doc.data()
         });
+      });
+      
+      // Sort in memory
+      basicOrders.sort((a, b) => {
+        // Handle cases where createdAt might be missing
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
         
-        return orders;
-      } else {
-        // If it's not an index error, rethrow
-        throw indexError;
+        // Convert to timestamps if they are Firestore timestamps
+        const timeA = a.createdAt.toDate ? a.createdAt.toDate().getTime() : a.createdAt;
+        const timeB = b.createdAt.toDate ? b.createdAt.toDate().getTime() : b.createdAt;
+        
+        return timeB - timeA; // descending order
+      });
+      
+      // Filter in memory based on the includeHidden parameter
+      return includeHidden 
+        ? basicOrders 
+        : basicOrders.filter(order => order.isHidden !== true);
+    }
+  } catch (err) {
+    console.error('Failed to fetch user orders:', err);
+    
+    // Provide helpful information about creating the required index
+    if (err.message && err.message.includes('index')) {
+      const indexUrl = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
+      if (indexUrl) {
+        console.info('Please create the required Firestore index using this link:', indexUrl);
       }
     }
-  } catch (error) {
-    console.error('Error getting user orders:', error);
-    throw error;
+    
+    throw err;
   }
 };
 
@@ -1499,6 +1655,12 @@ export const cancelOrder = async (orderId) => {
         try {
           // Process refund from seller to buyer
           await processRefund(sellerId, currentUser.uid, sellerTotal, orderId);
+          
+          // Update order payment status to 'refunded'
+          await updateDoc(orderRef, {
+            paymentStatus: 'refunded',
+            updatedAt: serverTimestamp()
+          });
         } catch (refundError) {
           console.error(`Error processing refund for order ${orderId} from seller ${sellerId}:`, refundError);
           // Continue with other refunds even if one fails

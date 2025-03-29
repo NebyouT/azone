@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Box,
@@ -15,7 +15,12 @@ import {
   InputAdornment,
   IconButton,
   Checkbox,
-  FormControlLabel
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -24,18 +29,23 @@ import {
   VisibilityOff as VisibilityOffIcon,
   Google as GoogleIcon,
   Facebook as FacebookIcon,
-  Apple as AppleIcon
+  Apple as AppleIcon,
+  MarkEmailRead as MarkEmailReadIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   loginUser, 
   signInWithGoogle, 
   signInWithFacebook, 
-  signInWithApple 
+  signInWithApple,
+  resendVerificationEmail,
+  reloadUser,
+  isEmailVerified 
 } from '../../firebase/services';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   
   // Form state
@@ -49,18 +59,29 @@ const Login = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  
+  // Check for verification success from URL params
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const verified = queryParams.get('verified');
+    
+    if (verified === 'true') {
+      setVerificationSuccess(true);
+      // Remove the query parameter from the URL without reloading the page
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, [location]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-  
-  const handleTogglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
-  };
-  
-  const handleRememberMeChange = (e) => {
-    setRememberMe(e.target.checked);
+    setFormData({
+      ...formData,
+      [name]: value
+    });
   };
   
   const handleSubmit = async (e) => {
@@ -74,7 +95,20 @@ const Login = () => {
     
     try {
       setLoading(true);
-      await loginUser(formData.email, formData.password, rememberMe);
+      const user = await loginUser(formData.email, formData.password, rememberMe);
+      
+      // Store the user for potential verification resend
+      setCurrentUser(user);
+      
+      // Check if email is verified
+      if (!user.emailVerified) {
+        // Show verification dialog if email is not verified
+        setVerificationDialogOpen(true);
+        setLoading(false);
+        return;
+      }
+      
+      // Navigate to home page after successful login
       navigate('/');
     } catch (err) {
       console.error("Login error:", err);
@@ -106,79 +140,101 @@ const Login = () => {
           await signInWithApple();
           break;
         default:
-          throw new Error(`Unsupported provider: ${provider}`);
+          throw new Error('Invalid provider');
       }
       
       // Navigate to home page after successful sign-in
       navigate('/');
     } catch (err) {
       console.error(`${provider} sign-in error:`, err);
-      
-      // Handle specific errors
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in was cancelled.');
-      } else if (err.code === 'auth/account-exists-with-different-credential') {
-        setError('An account already exists with the same email address but different sign-in credentials.');
-      } else {
-        setError(`Failed to sign in with ${provider}. ${err.message || 'Please try again.'}`);
-      }
+      setError(err.message || `Failed to sign in with ${provider}. Please try again.`);
+      setLoading(false);
+    }
+  };
+  
+  const handleResendVerification = async () => {
+    if (!currentUser) return;
+    
+    try {
+      setLoading(true);
+      await resendVerificationEmail(currentUser);
+      // Show success message
+      setError('');
+      alert('Verification email has been resent. Please check your inbox.');
+    } catch (err) {
+      console.error('Error resending verification email:', err);
+      setError(err.message || 'Failed to resend verification email. Please try again.');
     } finally {
       setLoading(false);
     }
   };
   
+  const handleCheckVerification = async () => {
+    if (!currentUser) return;
+    
+    try {
+      setLoading(true);
+      // Reload user to get fresh data
+      const updatedUser = await reloadUser(currentUser);
+      setCurrentUser(updatedUser);
+      
+      if (updatedUser.emailVerified) {
+        setVerificationDialogOpen(false);
+        navigate('/');
+      } else {
+        alert('Your email is not verified yet. Please check your inbox and click the verification link.');
+      }
+    } catch (err) {
+      console.error('Error checking verification status:', err);
+      setError(err.message || 'Failed to check verification status. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleCloseVerificationDialog = () => {
+    setVerificationDialogOpen(false);
+  };
+  
+  const handleTogglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+  
   return (
-    <Container component="main" maxWidth="sm" sx={{ mb: 4 }}>
-      <Paper variant="outlined" sx={{ my: { xs: 3, md: 6 }, p: { xs: 2, md: 3 } }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Typography component="h1" variant="h5" sx={{ mb: 2 }}>
-            Sign In
+    <Container component="main" maxWidth="sm">
+      <Box
+        sx={{
+          mt: 8,
+          mb: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        <Paper
+          elevation={3}
+          sx={{
+            p: 4,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            borderRadius: 2,
+          }}
+        >
+          <Typography component="h1" variant="h4" gutterBottom>
+            Welcome Back
           </Typography>
           
-          {/* Social Sign-in Options */}
-          <Box sx={{ width: '100%', mb: 3 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<GoogleIcon />}
-                  onClick={() => handleSocialSignIn('Google')}
-                  sx={{ py: 1 }}
-                >
-                  Google
-                </Button>
-              </Grid>
-              <Grid item xs={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<FacebookIcon />}
-                  onClick={() => handleSocialSignIn('Facebook')}
-                  sx={{ py: 1 }}
-                >
-                  Facebook
-                </Button>
-              </Grid>
-              <Grid item xs={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<AppleIcon />}
-                  onClick={() => handleSocialSignIn('Apple')}
-                  sx={{ py: 1 }}
-                >
-                  Apple
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Sign in to continue to Azone
+          </Typography>
           
-          <Divider sx={{ width: '100%', mb: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              OR
-            </Typography>
-          </Divider>
+          {verificationSuccess && (
+            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+              Your email has been verified successfully! You can now log in.
+            </Alert>
+          )}
           
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
@@ -242,9 +298,10 @@ const Login = () => {
               <FormControlLabel
                 control={
                   <Checkbox 
-                    checked={rememberMe} 
-                    onChange={handleRememberMeChange} 
+                    value="remember" 
                     color="primary" 
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
                   />
                 }
                 label="Remember me"
@@ -259,23 +316,106 @@ const Login = () => {
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+              sx={{ mt: 3, mb: 2, py: 1.5 }}
               disabled={loading}
             >
               {loading ? <CircularProgress size={24} /> : 'Sign In'}
             </Button>
             
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Typography variant="body2">
-                Don't have an account?{' '}
-                <Link component={RouterLink} to="/register" variant="body2">
-                  Sign up
-                </Link>
+            <Grid container justifyContent="center">
+              <Grid item>
+                <Typography variant="body2">
+                  Don't have an account?{' '}
+                  <Link component={RouterLink} to="/register" variant="body2">
+                    Sign Up
+                  </Link>
+                </Typography>
+              </Grid>
+            </Grid>
+            
+            <Divider sx={{ my: 3 }}>
+              <Typography variant="body2" color="text.secondary">
+                OR
               </Typography>
-            </Box>
+            </Divider>
+            
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<GoogleIcon />}
+                  onClick={() => handleSocialSignIn('Google')}
+                  disabled={loading}
+                  sx={{ py: 1 }}
+                >
+                  Google
+                </Button>
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<FacebookIcon />}
+                  onClick={() => handleSocialSignIn('Facebook')}
+                  disabled={loading}
+                  sx={{ py: 1 }}
+                >
+                  Facebook
+                </Button>
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<AppleIcon />}
+                  onClick={() => handleSocialSignIn('Apple')}
+                  disabled={loading}
+                  sx={{ py: 1 }}
+                >
+                  Apple
+                </Button>
+              </Grid>
+            </Grid>
           </Box>
-        </Box>
-      </Paper>
+        </Paper>
+      </Box>
+      
+      {/* Email Verification Dialog */}
+      <Dialog
+        open={verificationDialogOpen}
+        onClose={handleCloseVerificationDialog}
+        aria-labelledby="verification-dialog-title"
+        aria-describedby="verification-dialog-description"
+      >
+        <DialogTitle id="verification-dialog-title" sx={{ display: 'flex', alignItems: 'center' }}>
+          <MarkEmailReadIcon color="primary" sx={{ mr: 1 }} />
+          Email Verification Required
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="verification-dialog-description">
+            Your email address has not been verified yet. Please check your inbox for a verification email and click the link to verify your account.
+          </DialogContentText>
+          <Box sx={{ mt: 2, mb: 1 }}>
+            <Alert severity="info">
+              While you can continue using Azone with limited functionality, some features may be restricted until you verify your email.
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleResendVerification} disabled={loading}>
+            {loading ? 'Sending...' : 'Resend Email'}
+          </Button>
+          <Button onClick={handleCheckVerification} disabled={loading}>
+            {loading ? 'Checking...' : 'I\'ve Verified My Email'}
+          </Button>
+          <Button onClick={handleCloseVerificationDialog} variant="contained" color="primary">
+            Continue Anyway
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

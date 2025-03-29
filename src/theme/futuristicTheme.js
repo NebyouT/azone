@@ -2,11 +2,11 @@ import { createTheme } from '@mui/material/styles';
 
 // Define gradient colors
 const gradients = {
-  primary: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-  secondary: 'linear-gradient(135deg, #10B981 0%, #3B82F6 100%)',
+  primary: 'linear-gradient(135deg, #00BCD4 0%, #2196F3 100%)',
+  secondary: 'linear-gradient(135deg, #FF9800 0%, #FF5722 100%)',
   dark: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
   light: 'linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)',
-  accent: 'linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)',
+  accent: 'linear-gradient(135deg, #FF9800 0%, #F44336 100%)',
   glass: 'rgba(255, 255, 255, 0.1)',
   glassDark: 'rgba(0, 0, 0, 0.1)',
 };
@@ -16,15 +16,15 @@ const lightTheme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#6366F1',
-      light: '#818CF8',
-      dark: '#4F46E5',
+      main: '#00BCD4',
+      light: '#4DD0E1',
+      dark: '#0097A7',
       contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#10B981',
-      light: '#34D399',
-      dark: '#059669',
+      main: '#FF9800',
+      light: '#FFB74D',
+      dark: '#F57C00',
       contrastText: '#FFFFFF',
     },
     background: {
@@ -38,16 +38,16 @@ const lightTheme = createTheme({
       disabled: '#94A3B8',
     },
     error: {
-      main: '#EF4444',
+      main: '#F44336',
     },
     warning: {
-      main: '#F59E0B',
+      main: '#FF9800',
     },
     info: {
-      main: '#3B82F6',
+      main: '#2196F3',
     },
     success: {
-      main: '#10B981',
+      main: '#4CAF50',
     },
     divider: 'rgba(100, 116, 139, 0.12)',
     gradients,
@@ -215,33 +215,77 @@ const lightTheme = createTheme({
         },
       },
     },
-    MuiDialog: {
+    MuiTab: {
       styleOverrides: {
-        paper: {
-          borderRadius: 16,
-          boxShadow: '0px 16px 32px rgba(0, 0, 0, 0.1)',
+        root: {
+          textTransform: 'none',
+          fontWeight: 600,
+          minWidth: 'auto',
+        },
+      },
+    },
+    MuiTabs: {
+      styleOverrides: {
+        indicator: {
+          height: 3,
+          borderRadius: 3,
+        },
+      },
+    },
+    MuiContainer: {
+      styleOverrides: {
+        root: {
+          paddingLeft: 16,
+          paddingRight: 16,
+          '@media (min-width: 600px)': {
+            paddingLeft: 24,
+            paddingRight: 24,
+          },
+          maxWidth: '100%',
+          width: '100%',
+        },
+      },
+    },
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: {
+          scrollBehavior: 'smooth',
+        },
+        body: {
+          overflowX: 'hidden',
+          width: '100%',
+          maxWidth: '100vw',
         },
       },
     },
   },
+  breakpoints: {
+    values: {
+      xs: 0,
+      sm: 600,
+      md: 900,
+      lg: 1200,
+      xl: 1536,
+    },
+  },
 });
 
-// Create dark theme
+// Create dark theme based on light theme
 const darkTheme = createTheme({
   ...lightTheme,
   palette: {
     ...lightTheme.palette,
     mode: 'dark',
     primary: {
-      main: '#818CF8',
-      light: '#A5B4FC',
-      dark: '#6366F1',
+      main: '#00BCD4',
+      light: '#4DD0E1',
+      dark: '#0097A7',
       contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#34D399',
-      light: '#6EE7B7',
-      dark: '#10B981',
+      main: '#FF9800',
+      light: '#FFB74D',
+      dark: '#F57C00',
       contrastText: '#FFFFFF',
     },
     background: {
@@ -250,11 +294,11 @@ const darkTheme = createTheme({
       gradient: gradients.dark,
     },
     text: {
-      primary: '#F1F5F9',
+      primary: '#F8FAFC',
       secondary: '#CBD5E1',
-      disabled: '#94A3B8',
+      disabled: '#64748B',
     },
-    divider: 'rgba(203, 213, 225, 0.12)',
+    divider: 'rgba(255, 255, 255, 0.12)',
   },
   components: {
     ...lightTheme.components,
@@ -270,19 +314,14 @@ const darkTheme = createTheme({
   },
 });
 
-// Export both themes
-export { lightTheme, darkTheme };
-
 // Helper functions for glassmorphism and other effects
 export const glassmorphism = (opacity = 0.1, blur = 8, isDark = false) => ({
+  background: isDark
+    ? `rgba(15, 23, 42, ${opacity})`
+    : `rgba(255, 255, 255, ${opacity})`,
   backdropFilter: `blur(${blur}px)`,
-  backgroundColor: isDark ? `rgba(15, 23, 42, ${opacity})` : `rgba(255, 255, 255, ${opacity})`,
-  boxShadow: isDark 
-    ? '0 4px 30px rgba(0, 0, 0, 0.1)' 
-    : '0 4px 30px rgba(0, 0, 0, 0.05)',
-  border: isDark 
-    ? '1px solid rgba(255, 255, 255, 0.05)' 
-    : '1px solid rgba(255, 255, 255, 0.3)',
+  WebkitBackdropFilter: `blur(${blur}px)`,
+  borderRadius: 16,
 });
 
 export const gradientText = (gradient) => ({
@@ -291,15 +330,14 @@ export const gradientText = (gradient) => ({
   WebkitTextFillColor: 'transparent',
   backgroundClip: 'text',
   textFillColor: 'transparent',
-  display: 'inline-block',
 });
 
 export const cardHoverEffect = {
   transition: 'all 0.3s ease-in-out',
   '&:hover': {
     transform: 'translateY(-8px)',
-    boxShadow: '0px 20px 40px rgba(0, 0, 0, 0.1)',
+    boxShadow: '0px 16px 32px rgba(0, 0, 0, 0.1)',
   },
 };
 
-export default lightTheme;
+export { lightTheme, darkTheme };

@@ -20,7 +20,12 @@ import {
   CircularProgress,
   Alert,
   InputAdornment,
-  IconButton
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -31,7 +36,8 @@ import {
   Phone as PhoneIcon,
   Google as GoogleIcon,
   Facebook as FacebookIcon,
-  Apple as AppleIcon
+  Apple as AppleIcon,
+  MarkEmailRead as MarkEmailReadIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
@@ -39,7 +45,8 @@ import {
   validateEthiopianPhoneNumber,
   signInWithGoogle,
   signInWithFacebook,
-  signInWithApple
+  signInWithApple,
+  resendVerificationEmail
 } from '../../firebase/services';
 
 const Register = () => {
@@ -66,6 +73,8 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [phoneError, setPhoneError] = useState('');
+  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
+  const [registeredUser, setRegisteredUser] = useState(null);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -129,7 +138,7 @@ const Register = () => {
       }
       
       // Register the user
-      await registerUser(
+      const user = await registerUser(
         formData.email,
         formData.password,
         formData.displayName || formData.email.split('@')[0], // Use part of email as display name if not provided
@@ -137,8 +146,11 @@ const Register = () => {
         formData.role
       );
       
-      // Navigate to home page after successful registration
-      navigate('/');
+      // Store the registered user for potential resend verification
+      setRegisteredUser(user);
+      
+      // Show verification dialog
+      setVerificationDialogOpen(true);
     } catch (err) {
       console.error('Registration error:', err);
       setError(err.message || 'Failed to register. Please try again.');
@@ -182,6 +194,28 @@ const Register = () => {
     } finally {
       setLoading(false);
     }
+  };
+  
+  const handleResendVerification = async () => {
+    if (!registeredUser) return;
+    
+    try {
+      setLoading(true);
+      await resendVerificationEmail(registeredUser);
+      // Show success message
+      setError('');
+      alert('Verification email has been resent. Please check your inbox.');
+    } catch (err) {
+      console.error('Error resending verification email:', err);
+      setError(err.message || 'Failed to resend verification email. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleCloseVerificationDialog = () => {
+    setVerificationDialogOpen(false);
+    navigate('/login');
   };
   
   // Render step content based on active step
@@ -443,6 +477,37 @@ const Register = () => {
           </Box>
         </Box>
       </Paper>
+      
+      {/* Email Verification Dialog */}
+      <Dialog
+        open={verificationDialogOpen}
+        onClose={handleCloseVerificationDialog}
+        aria-labelledby="verification-dialog-title"
+        aria-describedby="verification-dialog-description"
+      >
+        <DialogTitle id="verification-dialog-title" sx={{ display: 'flex', alignItems: 'center' }}>
+          <MarkEmailReadIcon color="primary" sx={{ mr: 1 }} />
+          Verify Your Email
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="verification-dialog-description">
+            We've sent a verification email to <strong>{formData.email}</strong>. Please check your inbox and click the verification link to activate your account.
+          </DialogContentText>
+          <Box sx={{ mt: 2, mb: 1 }}>
+            <Alert severity="info">
+              You can still log in to your account, but some features may be limited until you verify your email.
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleResendVerification} disabled={loading}>
+            {loading ? 'Sending...' : 'Resend Email'}
+          </Button>
+          <Button onClick={handleCloseVerificationDialog} variant="contained" autoFocus>
+            Go to Login
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
