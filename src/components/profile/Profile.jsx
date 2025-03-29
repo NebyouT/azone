@@ -25,7 +25,9 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  Tooltip,
+  LinearProgress
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -36,10 +38,12 @@ import {
   Edit as EditIcon,
   AccountBalanceWallet as WalletIcon,
   Save as SaveIcon,
-  Cancel as CancelIcon
+  Cancel as CancelIcon,
+  CheckCircle as CheckCircleIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserOrders, updateUserProfile, validateEthiopianPhoneNumber } from '../../firebase/services';
+import { getUserOrders, updateUserProfile, validateEthiopianPhoneNumber, getUserStatistics } from '../../firebase/services';
 import WalletSummary from '../wallet/WalletSummary';
 
 const Profile = () => {
@@ -58,11 +62,21 @@ const Profile = () => {
   const [saving, setSaving] = useState(false);
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
-  
+  const [userStats, setUserStats] = useState({
+    totalOrders: 0,
+    completedOrders: 0,
+    cancelledOrders: 0,
+    completionRate: 0,
+    cancellationRate: 0
+  });
+  const [loadingStats, setLoadingStats] = useState(false);
+
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         if (!currentUser) return;
+        
+        setLoading(true);
         
         // Get user document from Firestore
         const userDoc = await updateUserProfile.getUserDocument(currentUser.uid);
@@ -90,6 +104,17 @@ const Profile = () => {
             role: 'buyer'
           });
         }
+        
+        // Fetch user statistics
+        try {
+          setLoadingStats(true);
+          const statistics = await getUserStatistics(currentUser.uid);
+          setUserStats(statistics);
+        } catch (statsErr) {
+          console.error('Error fetching user statistics:', statsErr);
+        } finally {
+          setLoadingStats(false);
+        }
       } catch (err) {
         console.error('Error fetching user data:', err);
         setError('Failed to load user data');
@@ -100,7 +125,7 @@ const Profile = () => {
     
     fetchUserData();
   }, [currentUser]);
-  
+
   useEffect(() => {
     const fetchOrders = async () => {
       try {
@@ -120,11 +145,11 @@ const Profile = () => {
       fetchOrders();
     }
   }, [currentUser, activeTab]);
-  
+
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
-  
+
   const handleEditDialogOpen = () => {
     setEditFormData({
       displayName: userData?.displayName || '',
@@ -134,11 +159,11 @@ const Profile = () => {
     setPhoneError('');
     setEditDialogOpen(true);
   };
-  
+
   const handleEditDialogClose = () => {
     setEditDialogOpen(false);
   };
-  
+
   const handleEditFormChange = (e) => {
     const { name, value } = e.target;
     setEditFormData(prev => ({
@@ -150,7 +175,7 @@ const Profile = () => {
       setPhoneError('');
     }
   };
-  
+
   const handleSaveProfile = async () => {
     try {
       setSaving(true);
@@ -187,7 +212,7 @@ const Profile = () => {
       setSaving(false);
     }
   };
-  
+
   const formatDate = (timestamp) => {
     if (!timestamp) return 'N/A';
     
@@ -204,7 +229,7 @@ const Profile = () => {
       minute: '2-digit'
     });
   };
-  
+
   const getOrderStatusColor = (status) => {
     switch (status) {
       case 'completed':
@@ -221,7 +246,7 @@ const Profile = () => {
         return 'text.secondary';
     }
   };
-  
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -231,7 +256,7 @@ const Profile = () => {
       </Container>
     );
   }
-  
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       {error && (
@@ -297,14 +322,97 @@ const Profile = () => {
               
               <ListItem>
                 <ListItemIcon>
-                  {userData?.role === 'seller' ? <StoreIcon /> : <ShoppingBagIcon />}
+                  <PersonIcon />
                 </ListItemIcon>
                 <ListItemText
-                  primary="Account Type"
-                  secondary={userData?.role === 'seller' ? 'Seller' : 'Buyer'}
+                  primary="Member Since"
+                  secondary={userData?.createdAt ? formatDate(userData.createdAt) : 'N/A'}
                 />
               </ListItem>
             </List>
+          </Paper>
+          
+          {/* User Statistics */}
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              Order Statistics
+              <Tooltip title="Statistics about your order history">
+                <InfoIcon fontSize="small" sx={{ ml: 1, color: 'text.secondary' }} />
+              </Tooltip>
+            </Typography>
+            
+            {loadingStats ? (
+              <Box sx={{ width: '100%', mt: 2 }}>
+                <LinearProgress />
+              </Box>
+            ) : (
+              <>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Total Orders
+                  </Typography>
+                  <Typography variant="h4">
+                    {userStats.totalOrders}
+                  </Typography>
+                </Box>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        Completion Rate
+                        <CheckCircleIcon fontSize="small" sx={{ ml: 0.5, color: 'success.main' }} />
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: '100%', mr: 1 }}>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={userStats.completionRate} 
+                            color="success"
+                            sx={{ height: 8, borderRadius: 5 }}
+                          />
+                        </Box>
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {userStats.completionRate}%
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {userStats.completedOrders} completed orders
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  
+                  <Grid item xs={6}>
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        Cancellation Rate
+                        <CancelIcon fontSize="small" sx={{ ml: 0.5, color: 'error.main' }} />
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: '100%', mr: 1 }}>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={userStats.cancellationRate} 
+                            color="error"
+                            sx={{ height: 8, borderRadius: 5 }}
+                          />
+                        </Box>
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {userStats.cancellationRate}%
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {userStats.cancelledOrders} cancelled orders
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </>
+            )}
           </Paper>
           
           {/* Wallet Summary */}

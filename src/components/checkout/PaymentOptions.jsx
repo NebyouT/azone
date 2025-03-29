@@ -8,13 +8,13 @@ import {
   Paper,
   Divider,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Button
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import {
   AccountBalanceWallet as WalletIcon,
-  Payment as PaymentIcon,
-  AccountBalance as BankIcon,
-  CreditCard as CardIcon
+  Add as AddIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { getWalletBalance } from '../../firebase/walletServices';
@@ -30,8 +30,8 @@ const formatCurrency = (amount) => {
 
 const PaymentOptions = ({ onPaymentMethodChange, totalAmount }) => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   
-  const [paymentMethod, setPaymentMethod] = useState('cash_on_delivery');
   const [walletBalance, setWalletBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -43,6 +43,9 @@ const PaymentOptions = ({ onPaymentMethodChange, totalAmount }) => {
       try {
         const balance = await getWalletBalance(currentUser.uid);
         setWalletBalance(balance);
+        
+        // Automatically set payment method to wallet
+        onPaymentMethodChange('wallet');
       } catch (err) {
         console.error('Error fetching wallet balance:', err);
         setError('Failed to load wallet balance');
@@ -52,15 +55,13 @@ const PaymentOptions = ({ onPaymentMethodChange, totalAmount }) => {
     };
     
     fetchWalletBalance();
-  }, [currentUser]);
-  
-  const handlePaymentMethodChange = (event) => {
-    const method = event.target.value;
-    setPaymentMethod(method);
-    onPaymentMethodChange(method);
-  };
+  }, [currentUser, onPaymentMethodChange]);
   
   const insufficientBalance = walletBalance < totalAmount;
+  
+  const handleAddFunds = () => {
+    navigate('/wallet');
+  };
   
   return (
     <Paper elevation={0} variant="outlined" sx={{ p: 2, mb: 3 }}>
@@ -70,100 +71,42 @@ const PaymentOptions = ({ onPaymentMethodChange, totalAmount }) => {
       
       <Divider sx={{ mb: 2 }} />
       
-      <RadioGroup
-        value={paymentMethod}
-        onChange={handlePaymentMethodChange}
-      >
-        <FormControlLabel
-          value="wallet"
-          control={<Radio />}
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <WalletIcon color="primary" sx={{ mr: 1 }} />
-              <Box>
-                <Typography variant="body1">
-                  Wallet Payment
-                </Typography>
-                {loading ? (
-                  <CircularProgress size={16} sx={{ ml: 1 }} />
-                ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    Available Balance: {formatCurrency(walletBalance)}
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-          }
-          disabled={loading || insufficientBalance}
-        />
-        
-        {!loading && insufficientBalance && (
-          <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
-            Insufficient wallet balance. Please add funds or choose another payment method.
-          </Alert>
-        )}
-        
-        <FormControlLabel
-          value="credit_card"
-          control={<Radio />}
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <CardIcon color="primary" sx={{ mr: 1 }} />
-              <Typography variant="body1">
-                Credit/Debit Card
-              </Typography>
-            </Box>
-          }
-        />
-        
-        <FormControlLabel
-          value="bank_transfer"
-          control={<Radio />}
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <BankIcon color="primary" sx={{ mr: 1 }} />
-              <Typography variant="body1">
-                Bank Transfer
-              </Typography>
-            </Box>
-          }
-        />
-        
-        <FormControlLabel
-          value="cash_on_delivery"
-          control={<Radio />}
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <PaymentIcon color="primary" sx={{ mr: 1 }} />
-              <Typography variant="body1">
-                Cash on Delivery
-              </Typography>
-            </Box>
-          }
-        />
-      </RadioGroup>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <WalletIcon color="primary" sx={{ mr: 1 }} />
+        <Box>
+          <Typography variant="body1">
+            Wallet Payment
+          </Typography>
+          {loading ? (
+            <CircularProgress size={16} sx={{ ml: 1 }} />
+          ) : (
+            <Typography variant="caption" color="text.secondary">
+              Available Balance: {formatCurrency(walletBalance)}
+            </Typography>
+          )}
+        </Box>
+      </Box>
       
-      {paymentMethod === 'wallet' && (
+      {!loading && insufficientBalance ? (
+        <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <Typography variant="body2" gutterBottom>
+              Insufficient wallet balance. You need {formatCurrency(totalAmount - walletBalance)} more to complete this purchase.
+            </Typography>
+            <Button 
+              variant="contained" 
+              size="small" 
+              startIcon={<AddIcon />} 
+              onClick={handleAddFunds}
+              sx={{ mt: 1 }}
+            >
+              Add Funds to Wallet
+            </Button>
+          </Box>
+        </Alert>
+      ) : (
         <Alert severity="info" sx={{ mt: 2 }}>
           The amount will be deducted from your wallet balance immediately upon order confirmation.
-        </Alert>
-      )}
-      
-      {paymentMethod === 'bank_transfer' && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          You will receive bank transfer instructions after placing your order.
-        </Alert>
-      )}
-      
-      {paymentMethod === 'credit_card' && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          You will be redirected to a secure payment gateway after placing your order.
-        </Alert>
-      )}
-      
-      {paymentMethod === 'cash_on_delivery' && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          Pay with cash when your order is delivered.
         </Alert>
       )}
     </Paper>

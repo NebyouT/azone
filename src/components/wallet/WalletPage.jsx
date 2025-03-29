@@ -159,6 +159,11 @@ const WalletPage = () => {
   const [showChapaForm, setShowChapaForm] = useState(false);
   const [chapaPaymentData, setChapaPaymentData] = useState(null);
   
+  // State for checkout redirection
+  const [returnToCheckout, setReturnToCheckout] = useState(false);
+  const [requiredAmount, setRequiredAmount] = useState(0);
+  const [sufficientFundsForCheckout, setSufficientFundsForCheckout] = useState(false);
+  
   // Withdrawal form state
   const [withdrawalStep, setWithdrawalStep] = useState(0);
   const [bankDetails, setBankDetails] = useState({
@@ -311,8 +316,37 @@ const WalletPage = () => {
     }
     
     fetchAllData();
-  }, [currentUser, navigate]);
+    
+    // Check if redirected from checkout page
+    if (location.state?.returnToCheckout) {
+      setReturnToCheckout(true);
+      setRequiredAmount(location.state.requiredAmount || 0);
+      // Open deposit dialog automatically
+      setOpenDepositDialog(true);
+      // Set amount to the required amount
+      setAmount(String(location.state.requiredAmount || 0));
+    }
+  }, [currentUser, navigate, location.state]);
   
+  // Check if wallet balance is sufficient for checkout after wallet data is loaded
+  useEffect(() => {
+    if (returnToCheckout && wallet && requiredAmount > 0) {
+      const hasEnoughFunds = wallet.balance >= requiredAmount;
+      setSufficientFundsForCheckout(hasEnoughFunds);
+      
+      // If user now has enough funds, show a notification
+      if (hasEnoughFunds && !sufficientFundsForCheckout) {
+        setDepositSuccess(true);
+        setTimeout(() => setDepositSuccess(false), 5000);
+      }
+    }
+  }, [wallet, returnToCheckout, requiredAmount, sufficientFundsForCheckout]);
+
+  // Return to checkout if funds are sufficient
+  const handleReturnToCheckout = () => {
+    navigate('/checkout');
+  };
+
   // Handle tab change
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -1121,6 +1155,54 @@ const WalletPage = () => {
   
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
+      {/* Success messages */}
+      {depositSuccess && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          {returnToCheckout && sufficientFundsForCheckout ? 
+            'You now have sufficient funds to complete your checkout!' : 
+            'Funds added to your wallet successfully!'}
+          {returnToCheckout && sufficientFundsForCheckout && (
+            <Button 
+              variant="contained" 
+              color="success" 
+              size="small" 
+              sx={{ ml: 2 }}
+              onClick={handleReturnToCheckout}
+            >
+              Return to Checkout
+            </Button>
+          )}
+        </Alert>
+      )}
+      
+      {withdrawalSuccess && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          Withdrawal request submitted successfully!
+        </Alert>
+      )}
+      
+      {/* Checkout redirection message */}
+      {returnToCheckout && !sufficientFundsForCheckout && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="body2" gutterBottom>
+              You need to add at least {formatCurrency(requiredAmount - (wallet?.balance || 0))} more to your wallet to complete your purchase.
+            </Typography>
+            {wallet && (
+              <Typography variant="body2">
+                Current balance: {formatCurrency(wallet.balance)} | Required: {formatCurrency(requiredAmount)}
+              </Typography>
+            )}
+          </Box>
+        </Alert>
+      )}
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+      
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <WalletIcon fontSize="large" color="primary" sx={{ mr: 2 }} />
@@ -1132,12 +1214,6 @@ const WalletPage = () => {
             <RefreshIcon />
           </IconButton>
         </Box>
-        
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
         
         <Box sx={{ 
           display: 'flex', 

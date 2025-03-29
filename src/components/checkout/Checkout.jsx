@@ -12,10 +12,6 @@ import {
   Divider,
   Grid,
   TextField,
-  FormControl,
-  FormControlLabel,
-  RadioGroup,
-  Radio,
   CircularProgress,
   Alert
 } from '@mui/material';
@@ -63,7 +59,7 @@ const Checkout = () => {
     zipCode: '',
     deliveryInstructions: ''
   });
-  const [paymentMethod, setPaymentMethod] = useState('cash_on_delivery');
+  const [paymentMethod, setPaymentMethod] = useState('wallet');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [orderComplete, setOrderComplete] = useState(false);
@@ -94,13 +90,26 @@ const Checkout = () => {
         // Get wallet balance
         const balance = await getWalletBalance(currentUser.uid);
         setWalletBalance(balance);
+        
+        // If wallet balance is insufficient, redirect to wallet page
+        if (balance < total) {
+          setError('Insufficient wallet balance. You will be redirected to add funds.');
+          setTimeout(() => {
+            navigate('/wallet', { 
+              state: { 
+                returnToCheckout: true, 
+                requiredAmount: total 
+              } 
+            });
+          }, 2000);
+        }
       } catch (err) {
         console.error('Error fetching user data:', err);
       }
     };
     
     fetchUserData();
-  }, [currentUser]);
+  }, [currentUser, navigate, total]);
   
   // Check if cart is empty
   useEffect(() => {
@@ -136,9 +145,17 @@ const Checkout = () => {
     }
     
     if (activeStep === 2) {
-      // Validate payment method
-      if (paymentMethod === 'wallet' && walletBalance < total) {
+      // Validate wallet balance
+      if (walletBalance < total) {
         setError('Insufficient wallet balance');
+        setTimeout(() => {
+          navigate('/wallet', { 
+            state: { 
+              returnToCheckout: true, 
+              requiredAmount: total 
+            } 
+          });
+        }, 2000);
         return;
       }
     }
@@ -153,49 +170,40 @@ const Checkout = () => {
     setError('');
   };
   
-  // Handle order submission
-  const handlePlaceOrder = async () => {
+  // Place order
+  const placeOrder = async () => {
+    if (walletBalance < total) {
+      setError('Insufficient wallet balance');
+      setTimeout(() => {
+        navigate('/wallet', { 
+          state: { 
+            returnToCheckout: true, 
+            requiredAmount: total 
+          } 
+        });
+      }, 2000);
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    
     try {
-      setLoading(true);
-      setError('');
-      
-      // Validate cart items to ensure all required fields exist
-      const validItems = cart.items.map(item => ({
-        productId: item.id || '',
-        sellerId: item.sellerId || '',  // This might be undefined
-        name: item.name || '',
-        price: item.price || 0,
-        quantity: item.quantity || 1,
-        imageUrl: item.imageUrl || ''
-      }));
-      
-      // Create order object with validated data
+      // Create order
       const orderData = {
-        items: validItems,
-        shippingDetails: {
-          fullName: shippingDetails.fullName || '',
-          phoneNumber: shippingDetails.phoneNumber || '',
-          address: shippingDetails.address || '',
-          city: shippingDetails.city || 'Addis Ababa',
-          region: shippingDetails.region || 'Addis Ababa',
-          zipCode: shippingDetails.zipCode || '',
-          deliveryInstructions: shippingDetails.deliveryInstructions || ''
-        },
-        paymentMethod,
-        subtotal: subtotal || 0,
-        shippingCost: shippingCost || 0,
-        tax: tax || 0,
-        total: total || 0,
-        paymentStatus: paymentMethod === 'wallet' ? 'paid' : 'pending',
-        orderDate: new Date(),
-        status: 'pending'
+        items: cart.items,
+        subtotal,
+        shippingCost,
+        tax,
+        total,
+        paymentMethod: 'wallet',
+        shippingAddress: shippingDetails,
+        status: 'pending',
+        paymentStatus: 'pending' // Will be updated when the order is completed
       };
       
-      // Create order in Firestore
-      const order = await createOrder(currentUser.uid, orderData);
-      
-      // Set order ID and mark as complete
-      setOrderId(order.id);
+      const { id } = await createOrder(currentUser.uid, orderData);
+      setOrderId(id);
       setOrderComplete(true);
       
       // Clear cart
@@ -253,10 +261,6 @@ const Checkout = () => {
                 </Paper>
                 
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Order Summary
-                  </Typography>
-                  
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body1">Subtotal</Typography>
                     <Typography variant="body1">{formatCurrency(subtotal)}</Typography>
@@ -270,7 +274,7 @@ const Checkout = () => {
                   </Box>
                   
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body1">Tax (15% VAT)</Typography>
+                    <Typography variant="body1">Tax</Typography>
                     <Typography variant="body1">{formatCurrency(tax)}</Typography>
                   </Box>
                   
@@ -293,106 +297,107 @@ const Checkout = () => {
               Shipping Details
             </Typography>
             
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  label="Full Name"
-                  name="fullName"
-                  value={shippingDetails.fullName}
-                  onChange={handleShippingChange}
-                />
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    required
+                    fullWidth
+                    label="Full Name"
+                    name="fullName"
+                    value={shippingDetails.fullName}
+                    onChange={handleShippingChange}
+                    error={error && !shippingDetails.fullName}
+                    helperText={error && !shippingDetails.fullName ? 'Full name is required' : ''}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    required
+                    fullWidth
+                    label="Phone Number"
+                    name="phoneNumber"
+                    value={shippingDetails.phoneNumber}
+                    onChange={handleShippingChange}
+                    error={error && !shippingDetails.phoneNumber}
+                    helperText={error && !shippingDetails.phoneNumber ? 'Phone number is required' : ''}
+                  />
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <TextField
+                    required
+                    fullWidth
+                    label="Address"
+                    name="address"
+                    value={shippingDetails.address}
+                    onChange={handleShippingChange}
+                    error={error && !shippingDetails.address}
+                    helperText={error && !shippingDetails.address ? 'Address is required' : ''}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    required
+                    fullWidth
+                    label="City"
+                    name="city"
+                    value={shippingDetails.city}
+                    onChange={handleShippingChange}
+                    error={error && !shippingDetails.city}
+                    helperText={error && !shippingDetails.city ? 'City is required' : ''}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Region"
+                    name="region"
+                    value={shippingDetails.region}
+                    onChange={handleShippingChange}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Zip Code"
+                    name="zipCode"
+                    value={shippingDetails.zipCode}
+                    onChange={handleShippingChange}
+                  />
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Delivery Instructions (Optional)"
+                    name="deliveryInstructions"
+                    value={shippingDetails.deliveryInstructions}
+                    onChange={handleShippingChange}
+                    multiline
+                    rows={2}
+                  />
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  label="Phone Number"
-                  name="phoneNumber"
-                  value={shippingDetails.phoneNumber}
-                  onChange={handleShippingChange}
-                />
-              </Grid>
-              
-              <Grid item xs={12}>
-                <TextField
-                  required
-                  fullWidth
-                  label="Address"
-                  name="address"
-                  value={shippingDetails.address}
-                  onChange={handleShippingChange}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  label="City"
-                  name="city"
-                  value={shippingDetails.city}
-                  onChange={handleShippingChange}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  label="Region"
-                  name="region"
-                  value={shippingDetails.region}
-                  onChange={handleShippingChange}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Zip Code"
-                  name="zipCode"
-                  value={shippingDetails.zipCode}
-                  onChange={handleShippingChange}
-                />
-              </Grid>
-              
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Delivery Instructions (Optional)"
-                  name="deliveryInstructions"
-                  value={shippingDetails.deliveryInstructions}
-                  onChange={handleShippingChange}
-                  multiline
-                  rows={3}
-                />
-              </Grid>
-            </Grid>
+            </Paper>
           </Box>
         );
       
       case 2:
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
-              Payment Method
-            </Typography>
-            
-            <PaymentOptions 
-              onPaymentMethodChange={handlePaymentMethodChange} 
+            <PaymentOptions
+              onPaymentMethodChange={handlePaymentMethodChange}
               totalAmount={total}
             />
             
-            <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Order Summary
-              </Typography>
-              
+            <Paper variant="outlined" sx={{ p: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body1">Items ({cart.items && cart.items.length})</Typography>
+                <Typography variant="body1">Subtotal</Typography>
                 <Typography variant="body1">{formatCurrency(subtotal)}</Typography>
               </Box>
               
@@ -461,59 +466,87 @@ const Checkout = () => {
                 </Typography>
                 
                 <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Shipping To
+                  <Typography variant="subtitle1" gutterBottom>
+                    Shipping Details
+                  </Typography>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2">
+                      {shippingDetails.fullName}
+                    </Typography>
+                    <Typography variant="body2">
+                      {shippingDetails.address}
+                    </Typography>
+                    <Typography variant="body2">
+                      {shippingDetails.city}, {shippingDetails.region} {shippingDetails.zipCode}
+                    </Typography>
+                    <Typography variant="body2">
+                      Phone: {shippingDetails.phoneNumber}
+                    </Typography>
+                    {shippingDetails.deliveryInstructions && (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Instructions: {shippingDetails.deliveryInstructions}
                       </Typography>
-                      <Typography variant="body1">
-                        {shippingDetails.fullName}
-                      </Typography>
-                      <Typography variant="body2">
-                        {shippingDetails.address}
-                      </Typography>
-                      <Typography variant="body2">
-                        {shippingDetails.city}, {shippingDetails.region} {shippingDetails.zipCode}
-                      </Typography>
-                      <Typography variant="body2">
-                        Phone: {shippingDetails.phoneNumber}
-                      </Typography>
-                    </Grid>
-                    
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Payment Method
-                      </Typography>
-                      <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>
-                        {paymentMethod.replace(/_/g, ' ')}
-                      </Typography>
-                      
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                          Order Total
-                        </Typography>
-                        <Typography variant="h6">
-                          {formatCurrency(total)}
-                        </Typography>
-                      </Box>
-                    </Grid>
-                  </Grid>
+                    )}
+                  </Box>
+                  
+                  <Divider sx={{ my: 2 }} />
+                  
+                  <Typography variant="subtitle1" gutterBottom>
+                    Payment Method
+                  </Typography>
+                  
+                  <Typography variant="body2">
+                    Wallet Payment
+                  </Typography>
+                  
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    {formatCurrency(total)} will be deducted from your wallet balance.
+                  </Alert>
                 </Paper>
                 
-                <Alert severity="info" sx={{ mb: 3 }}>
-                  Please review your order details before placing the order.
-                </Alert>
-                
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  fullWidth
-                  onClick={handlePlaceOrder}
-                  disabled={loading}
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Place Order'}
-                </Button>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Order Items
+                  </Typography>
+                  
+                  {cart.items.map((item) => (
+                    <Box key={item.id} sx={{ display: 'flex', mb: 2 }}>
+                      <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                        {item.name} x {item.quantity}
+                      </Typography>
+                      <Typography variant="body2">
+                        {formatCurrency(item.price * item.quantity)}
+                      </Typography>
+                    </Box>
+                  ))}
+                  
+                  <Divider sx={{ my: 2 }} />
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">Subtotal</Typography>
+                    <Typography variant="body2">{formatCurrency(subtotal)}</Typography>
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">Shipping</Typography>
+                    <Typography variant="body2">
+                      {shippingCost === 0 ? 'Free' : formatCurrency(shippingCost)}
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">Tax</Typography>
+                    <Typography variant="body2">{formatCurrency(tax)}</Typography>
+                  </Box>
+                  
+                  <Divider sx={{ my: 1 }} />
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="subtitle1">Total</Typography>
+                    <Typography variant="subtitle1">{formatCurrency(total)}</Typography>
+                  </Box>
+                </Paper>
               </Box>
             )}
           </Box>
@@ -525,14 +558,14 @@ const Checkout = () => {
   };
   
   return (
-    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom align="center">
+    <Container maxWidth="md" sx={{ py: 4 }}>
+      <Paper sx={{ p: 3, mb: 4 }}>
+        <Typography variant="h4" gutterBottom>
           Checkout
         </Typography>
         
-        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-          {steps.map((step, index) => (
+        <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+          {steps.map((step) => (
             <Step key={step.label}>
               <StepLabel StepIconComponent={() => step.icon}>
                 {step.label}
@@ -549,24 +582,41 @@ const Checkout = () => {
         
         {getStepContent(activeStep)}
         
-        {!orderComplete && activeStep !== steps.length - 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-            <Button
-              disabled={activeStep === 0}
-              onClick={handleBack}
-              variant="outlined"
-            >
-              Back
-            </Button>
-            
-            <Button
-              variant="contained"
-              onClick={handleNext}
-            >
-              {activeStep === steps.length - 2 ? 'Review Order' : 'Next'}
-            </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+          <Button
+            variant="outlined"
+            disabled={activeStep === 0 || loading || orderComplete}
+            onClick={handleBack}
+          >
+            Back
+          </Button>
+          
+          <Box>
+            {activeStep === steps.length - 1 && !orderComplete ? (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={placeOrder}
+                disabled={loading}
+              >
+                {loading ? (
+                  <CircularProgress size={24} color="inherit" />
+                ) : (
+                  'Place Order'
+                )}
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleNext}
+                disabled={activeStep === steps.length - 1 || loading || (cart.items && cart.items.length === 0)}
+              >
+                Next
+              </Button>
+            )}
           </Box>
-        )}
+        </Box>
       </Paper>
     </Container>
   );

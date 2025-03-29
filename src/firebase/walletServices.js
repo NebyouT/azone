@@ -13,7 +13,8 @@ import {
   limit,
   serverTimestamp,
   runTransaction,
-  setDoc
+  setDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { app } from './config';
 import { getCurrentUser } from './services';
@@ -342,130 +343,128 @@ export const processPayment = async (buyerId, sellerId, amount, orderId) => {
       throw new Error('Amount must be greater than zero');
     }
     
-    return await runTransaction(db, async (transaction) => {
-      // Get buyer wallet
-      const buyerWalletRef = doc(db, 'wallets', buyerId);
-      const buyerWalletDoc = await transaction.get(buyerWalletRef);
-      
-      if (!buyerWalletDoc.exists()) {
-        throw new Error('Buyer wallet not found');
-      }
-      
-      const buyerWalletData = buyerWalletDoc.data();
-      
-      // Calculate new balance
-      let buyerCurrentBalance;
-      
-      // If balance is encrypted, decrypt it first
-      if (buyerWalletData.encryptedBalance) {
-        buyerCurrentBalance = parseFloat(decrypt(buyerWalletData.encryptedBalance));
-      } else {
-        // Backward compatibility
-        buyerCurrentBalance = buyerWalletData.balance || 0;
-      }
-      
-      // Check if sufficient funds
-      if (buyerCurrentBalance < amount) {
-        throw new Error('Insufficient funds');
-      }
-      
-      // Calculate new balance
-      const buyerNewBalance = buyerCurrentBalance - amount;
-      
-      // Encrypt the new balance
-      const buyerEncryptedBalance = encrypt(buyerNewBalance.toString());
-      
-      // Update buyer wallet with encrypted balance
-      transaction.update(buyerWalletRef, {
-        encryptedBalance: buyerEncryptedBalance,
-        balance: buyerNewBalance, // For backward compatibility
-        updatedAt: serverTimestamp()
-      });
-      
-      // Get seller wallet
-      const sellerWalletRef = doc(db, 'wallets', sellerId);
-      const sellerWalletDoc = await transaction.get(sellerWalletRef);
-      
-      if (!sellerWalletDoc.exists()) {
-        throw new Error('Seller wallet not found');
-      }
-      
-      const sellerWalletData = sellerWalletDoc.data();
-      
-      // Calculate new balance
-      let sellerCurrentBalance;
-      
-      // If balance is encrypted, decrypt it first
-      if (sellerWalletData.encryptedBalance) {
-        sellerCurrentBalance = parseFloat(decrypt(sellerWalletData.encryptedBalance));
-      } else {
-        // Backward compatibility
-        sellerCurrentBalance = sellerWalletData.balance || 0;
-      }
-      
-      // Calculate new balance
-      const sellerNewBalance = sellerCurrentBalance + amount;
-      
-      // Encrypt the new balance
-      const sellerEncryptedBalance = encrypt(sellerNewBalance.toString());
-      
-      // Update seller wallet with encrypted balance
-      transaction.update(sellerWalletRef, {
-        encryptedBalance: sellerEncryptedBalance,
-        balance: sellerNewBalance, // For backward compatibility
-        updatedAt: serverTimestamp()
-      });
-      
-      // Create buyer transaction record with encrypted amount
-      const encryptedAmount = encrypt(amount.toString());
-      const buyerTransactionData = {
-        userId: buyerId,
-        relatedUserId: sellerId,
-        type: TRANSACTION_TYPES.PURCHASE,
-        encryptedAmount,
-        amount: -amount, // Negative for buyer (backward compatibility)
-        currency: 'ETB',
-        orderId,
-        status: TRANSACTION_STATUS.COMPLETED,
-        description: `Payment for order #${orderId}`,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      
-      const buyerTransactionRef = doc(collection(db, 'transactions'));
-      transaction.set(buyerTransactionRef, buyerTransactionData);
-      
-      // Create seller transaction record with encrypted amount
-      const sellerTransactionData = {
-        userId: sellerId,
-        relatedUserId: buyerId,
-        type: TRANSACTION_TYPES.SALE,
-        encryptedAmount,
-        amount, // Positive for seller (backward compatibility)
-        currency: 'ETB',
-        orderId,
-        status: TRANSACTION_STATUS.COMPLETED,
-        description: `Payment received for order #${orderId}`,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      
-      const sellerTransactionRef = doc(collection(db, 'transactions'));
-      transaction.set(sellerTransactionRef, sellerTransactionData);
-      
-      return {
-        buyerTransaction: {
-          id: buyerTransactionRef.id,
-          ...buyerTransactionData,
-          amount: -amount // Return unencrypted amount
-        },
-        sellerTransaction: {
-          id: sellerTransactionRef.id,
-          ...sellerTransactionData,
-          amount // Return unencrypted amount
-        }
-      };
+    // First, get all the data we need outside the transaction
+    // This ensures we don't mix reads and writes in the transaction
+    const buyerWalletRef = doc(db, 'wallets', buyerId);
+    const buyerWalletSnap = await getDoc(buyerWalletRef);
+    
+    if (!buyerWalletSnap.exists()) {
+      throw new Error('Buyer wallet not found');
+    }
+    
+    const buyerWalletData = buyerWalletSnap.data();
+    
+    // Calculate buyer balance
+    let buyerCurrentBalance;
+    if (buyerWalletData.encryptedBalance) {
+      buyerCurrentBalance = parseFloat(decrypt(buyerWalletData.encryptedBalance));
+    } else {
+      buyerCurrentBalance = buyerWalletData.balance || 0;
+    }
+    
+    // Check if sufficient funds
+    if (buyerCurrentBalance < amount) {
+      throw new Error('Insufficient funds');
+    }
+    
+    // Calculate new buyer balance
+    const buyerNewBalance = buyerCurrentBalance - amount;
+    const buyerEncryptedBalance = encrypt(buyerNewBalance.toString());
+    
+    // Get seller wallet data
+    const sellerWalletRef = doc(db, 'wallets', sellerId);
+    const sellerWalletSnap = await getDoc(sellerWalletRef);
+    
+    if (!sellerWalletSnap.exists()) {
+      throw new Error('Seller wallet not found');
+    }
+    
+    const sellerWalletData = sellerWalletSnap.data();
+    
+    // Calculate seller balance
+    let sellerCurrentBalance;
+    if (sellerWalletData.encryptedBalance) {
+      sellerCurrentBalance = parseFloat(decrypt(sellerWalletData.encryptedBalance));
+    } else {
+      sellerCurrentBalance = sellerWalletData.balance || 0;
+    }
+    
+    // Calculate new seller balance
+    const sellerNewBalance = sellerCurrentBalance + amount;
+    const sellerEncryptedBalance = encrypt(sellerNewBalance.toString());
+    
+    // Prepare transaction data
+    const encryptedAmount = encrypt(amount.toString());
+    
+    // Now perform all writes in a batch instead of a transaction
+    // This avoids the transaction read-before-write requirement
+    const batch = writeBatch(db);
+    
+    // Update buyer wallet
+    batch.update(buyerWalletRef, {
+      encryptedBalance: buyerEncryptedBalance,
+      balance: buyerNewBalance,
+      updatedAt: serverTimestamp()
     });
+    
+    // Update seller wallet
+    batch.update(sellerWalletRef, {
+      encryptedBalance: sellerEncryptedBalance,
+      balance: sellerNewBalance,
+      updatedAt: serverTimestamp()
+    });
+    
+    // Create buyer transaction record
+    const buyerTransactionData = {
+      userId: buyerId,
+      relatedUserId: sellerId,
+      type: TRANSACTION_TYPES.PURCHASE,
+      encryptedAmount,
+      amount: -amount,
+      currency: 'ETB',
+      orderId,
+      status: TRANSACTION_STATUS.COMPLETED,
+      description: `Payment for order #${orderId}`,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const buyerTransactionRef = doc(collection(db, 'transactions'));
+    batch.set(buyerTransactionRef, buyerTransactionData);
+    
+    // Create seller transaction record
+    const sellerTransactionData = {
+      userId: sellerId,
+      relatedUserId: buyerId,
+      type: TRANSACTION_TYPES.SALE,
+      encryptedAmount,
+      amount,
+      currency: 'ETB',
+      orderId,
+      status: TRANSACTION_STATUS.COMPLETED,
+      description: `Payment received for order #${orderId}`,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const sellerTransactionRef = doc(collection(db, 'transactions'));
+    batch.set(sellerTransactionRef, sellerTransactionData);
+    
+    // Commit all the writes
+    await batch.commit();
+    
+    return {
+      buyerTransaction: {
+        id: buyerTransactionRef.id,
+        ...buyerTransactionData,
+        amount: -amount // Return unencrypted amount
+      },
+      sellerTransaction: {
+        id: sellerTransactionRef.id,
+        ...sellerTransactionData,
+        amount // Return unencrypted amount
+      }
+    };
   } catch (error) {
     console.error('Error processing payment:', error);
     throw error;
@@ -850,5 +849,82 @@ export const transferFunds = async (senderId, recipientId, amount, description) 
   } catch (error) {
     console.error('Error transferring funds:', error);
     throw error;
+  }
+};
+
+/**
+ * Transfer funds to seller when an order is completed
+ * This function is called when an order status is changed to 'completed'
+ * @param {string} orderId - The order ID
+ * @param {string} sellerId - The seller's user ID
+ * @returns {Promise<boolean>} - True if successful
+ */
+export const transferFundsToSellerForCompletedOrder = async (orderId, sellerId) => {
+  try {
+    // Get the order details from sellerOrders collection
+    const sellerOrdersRef = collection(db, 'sellerOrders');
+    const q = query(sellerOrdersRef, where('mainOrderId', '==', orderId), where('sellerId', '==', sellerId));
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      console.warn(`No seller order found for orderId: ${orderId} and sellerId: ${sellerId}`);
+      return false;
+    }
+    
+    // Get the first matching seller order
+    const sellerOrderDoc = querySnapshot.docs[0];
+    const sellerOrderData = sellerOrderDoc.data();
+    
+    // Check if the order is already completed and funds transferred
+    if (sellerOrderData.fundsTransferred) {
+      console.log(`Funds already transferred for order: ${orderId}`);
+      return true;
+    }
+    
+    // Get the buyer ID and total amount
+    const { buyerId, total } = sellerOrderData;
+    
+    if (!buyerId || !total) {
+      console.error(`Missing buyerId or total in seller order: ${sellerOrderDoc.id}`);
+      return false;
+    }
+    
+    try {
+      // Process the payment from buyer to seller
+      await processPayment(buyerId, sellerId, total, orderId);
+      
+      // Mark the seller order as funds transferred
+      await updateDoc(doc(db, 'sellerOrders', sellerOrderDoc.id), {
+        fundsTransferred: true,
+        fundsTransferredAt: serverTimestamp()
+      });
+      
+      console.log(`Funds transferred successfully for order: ${orderId}`);
+      return true;
+    } catch (paymentError) {
+      // If the payment fails, check if it's due to insufficient funds
+      if (paymentError.message === 'Insufficient funds') {
+        console.warn(`Buyer has insufficient funds for order: ${orderId}. Will retry later.`);
+        
+        // Update the order with a note about the failed payment
+        await updateDoc(doc(db, 'sellerOrders', sellerOrderDoc.id), {
+          paymentFailureReason: 'insufficient_funds',
+          lastPaymentAttempt: serverTimestamp()
+        });
+      } else {
+        console.error(`Payment processing error for order: ${orderId}`, paymentError);
+        
+        // Update the order with a note about the general payment error
+        await updateDoc(doc(db, 'sellerOrders', sellerOrderDoc.id), {
+          paymentFailureReason: 'processing_error',
+          lastPaymentAttempt: serverTimestamp()
+        });
+      }
+      
+      return false;
+    }
+  } catch (error) {
+    console.error(`Error transferring funds for completed order: ${orderId}`, error);
+    return false;
   }
 };
