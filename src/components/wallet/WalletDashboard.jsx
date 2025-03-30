@@ -1,63 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Container,
-  Typography,
-  Paper,
-  Grid,
-  Button,
-  TextField,
-  Dialog,
+import { 
+  Box, 
+  Container, 
+  Typography, 
+  Paper, 
+  Grid, 
+  Button, 
+  TextField, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
   DialogActions,
-  DialogContent,
   DialogContentText,
-  DialogTitle,
+  CircularProgress,
+  Divider,
   Card,
   CardContent,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  CircularProgress,
+  IconButton,
+  Tooltip,
   Alert,
   useTheme,
   alpha,
-  Chip,
-  IconButton,
-  Tooltip,
   Link,
   Tab,
   Tabs,
-  InputAdornment,
-  MenuItem,
   Select,
   FormControl,
   InputLabel,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  InputAdornment,
+  Chip
 } from '@mui/material';
-import {
+import { 
   AccountBalanceWallet as WalletIcon,
   Add as AddIcon,
   Remove as RemoveIcon,
+  Refresh as RefreshIcon,
   History as HistoryIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
+  BarChart as BarChartIcon,
+  CreditCard as CreditCardIcon,
+  Settings as SettingsIcon,
   AccessTime as AccessTimeIcon,
   Payment as PaymentIcon,
   Search as SearchIcon,
   FilterList as FilterListIcon,
   DateRange as DateRangeIcon,
   Category as CategoryIcon,
-  CreditCard as CreditCardIcon,
   Timeline as TimelineIcon,
-  BarChart as BarChartIcon,
-  Settings as SettingsIcon,
-  Notifications as NotificationsIcon,
+  Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import { useWallet } from '../../contexts/WalletContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { format, subDays, subMonths } from 'date-fns';
 import { glassmorphism } from '../../theme/futuristicTheme';
 import ChapaPaymentForm from './ChapaPaymentForm';
+import { initializeDeposit, saveTransactionReference } from '../../chapa/services';
+import CHAPA_CONFIG from '../../chapa/config';
 
 // Custom TabPanel component
 function TabPanel(props) {
@@ -93,6 +97,7 @@ const WalletDashboard = () => {
     updateWalletData,
   } = useWallet();
   const { t } = useLanguage();
+  const { currentUser } = useAuth();
   const theme = useTheme();
 
   // State variables
@@ -151,29 +156,57 @@ const WalletDashboard = () => {
       setLocalError('Please enter a valid amount');
       return;
     }
-
+    
     setProcessing(true);
+    setLocalError(null);
+    
     try {
       const amountToAdd = parseFloat(amount);
-      console.log('Initializing deposit with amount:', amountToAdd);
-
-      // Call the addFunds function from WalletContext
-      const formData = await addFunds(amountToAdd);
+      console.log(`Initializing deposit of ${amountToAdd} ETB`);
       
-      if (formData) {
-        console.log('Received form data from Chapa:', formData);
-        
-        // Set the form data to trigger the ChapaPaymentForm
-        setChapaFormData(formData);
-        
-        // Close the deposit dialog
-        handleCloseDeposit();
-      } else {
-        setLocalError('Failed to initialize payment. Please try again.');
-      }
+      // Get user data for the payment form
+      const userEmail = currentUser.email || '';
+      const userName = currentUser.displayName || '';
+      const [firstName, lastName] = userName.split(' ').length > 1 
+        ? [userName.split(' ')[0], userName.split(' ').slice(1).join(' ')] 
+        : [userName, ''];
+      
+      // Generate a unique transaction reference
+      const randomNumbers = Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
+      const txRef = `negade-tx-${randomNumbers}`;
+      
+      // Initialize the deposit with Chapa
+      const result = await initializeDeposit(
+        currentUser.uid,
+        amountToAdd,
+        userEmail,
+        firstName,
+        lastName,
+        currentUser.phoneNumber || ''
+      );
+      
+      // The result contains the transaction reference and other data
+      // Set the form data for the Chapa payment form
+      setChapaFormData({
+        public_key: CHAPA_CONFIG.PUBLIC_KEY,
+        tx_ref: result.txRef,
+        amount: amountToAdd,
+        currency: 'ETB',
+        email: userEmail,
+        first_name: firstName,
+        last_name: lastName,
+        description: `Add ${amountToAdd} ETB to your Azone wallet`,
+        callback_url: `${window.location.origin}/wallet`,
+        return_url: `${window.location.origin}/wallet?tx_ref=${result.txRef}&status=success`
+      });
+      
+      // Close the deposit dialog
+      handleCloseDeposit();
+      
+      setAmount('');
     } catch (error) {
-      console.error('Error initializing payment:', error);
-      setLocalError('Failed to initialize payment. Please try again.');
+      console.error('Error initializing deposit:', error);
+      setLocalError('Failed to initialize deposit. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -265,16 +298,29 @@ const WalletDashboard = () => {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       {/* Chapa payment form - hidden */}
       {chapaFormData && (
-        <ChapaPaymentForm
-          formData={chapaFormData}
-          onSuccess={() => {
-            setChapaFormData(null);
-            updateWalletData();
-          }}
-          onCancel={() => {
-            setChapaFormData(null);
-          }}
-        />
+        <Box sx={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 9999, bgcolor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Paper sx={{ p: 3, maxWidth: 500, width: '100%', borderRadius: 0 }}>
+            <Typography variant="h6" gutterBottom>
+              Processing Payment
+            </Typography>
+            <Typography variant="body2" paragraph>
+              You are being redirected to Chapa payment gateway. Please do not close this window.
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+              <CircularProgress />
+            </Box>
+            <ChapaPaymentForm
+              formData={chapaFormData}
+              onSuccess={() => {
+                setChapaFormData(null);
+                updateWalletData();
+              }}
+              onCancel={() => {
+                setChapaFormData(null);
+              }}
+            />
+          </Paper>
+        </Box>
       )}
 
       <Box sx={{ mb: 4 }}>

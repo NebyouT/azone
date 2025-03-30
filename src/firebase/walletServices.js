@@ -193,6 +193,7 @@ export const addFunds = async (userId, amount, method, description = 'Deposit vi
     }
     
     const parsedAmount = parseFloat(amount);
+    console.log(`Adding ${parsedAmount} ETB to wallet for user ${userId} via ${method}`);
     
     // Get current wallet data
     let walletData;
@@ -212,52 +213,57 @@ export const addFunds = async (userId, amount, method, description = 'Deposit vi
     
     // Calculate new balance
     const newBalance = currentBalance + parsedAmount;
+    console.log(`Current balance: ${currentBalance} ETB, New balance: ${newBalance} ETB`);
     
     // Encrypt new balance
     const encryptedBalance = encrypt(newBalance.toString());
     
-    // Update wallet with new balance
-    const walletRef = doc(db, 'wallets', userId);
-    
-    await updateDoc(walletRef, {
-      encryptedBalance,
-      balance: newBalance, // For backward compatibility
-      updatedAt: serverTimestamp()
-    });
-    
-    // Create transaction record
-    const transactionData = {
-      userId,
-      walletId: userId, // Use userId as walletId
-      type: TRANSACTION_TYPES.DEPOSIT,
-      amount: parsedAmount,
-      method: method || 'chapa',
-      description: description || `Deposit of ${parsedAmount} ETB via ${method || 'Chapa'}`,
-      status: TRANSACTION_STATUS.COMPLETED,
-      timestamp: serverTimestamp(),
-      reference: `dep-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      metadata: {
-        previousBalance: currentBalance,
-        newBalance: newBalance,
-        paymentMethod: method || 'chapa'
-      }
-    };
-    
-    const transactionRef = collection(db, 'transactions');
-    await addDoc(transactionRef, transactionData);
-    
-    console.log(`Successfully added ${parsedAmount} ETB to wallet. New balance: ${newBalance} ETB`);
-    
-    // Return updated wallet data
-    return {
-      ...walletData,
-      balance: newBalance,
-      lastTransaction: {
+    // Use a transaction to ensure atomicity
+    return await runTransaction(db, async (transaction) => {
+      // Update wallet with new balance
+      const walletRef = doc(db, 'wallets', userId);
+      
+      transaction.update(walletRef, {
+        encryptedBalance,
+        balance: newBalance, // For backward compatibility
+        updatedAt: serverTimestamp()
+      });
+      
+      // Create transaction record
+      const transactionData = {
+        userId,
+        walletId: userId, // Use userId as walletId
         type: TRANSACTION_TYPES.DEPOSIT,
         amount: parsedAmount,
-        timestamp: new Date()
-      }
-    };
+        method: method || 'chapa',
+        description: description || `Deposit of ${parsedAmount} ETB via ${method || 'Chapa'}`,
+        status: TRANSACTION_STATUS.COMPLETED,
+        timestamp: serverTimestamp(),
+        reference: `dep-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        metadata: {
+          previousBalance: currentBalance,
+          newBalance: newBalance,
+          paymentMethod: method || 'chapa'
+        }
+      };
+      
+      const transactionRef = doc(collection(db, 'transactions'));
+      transaction.set(transactionRef, transactionData);
+      
+      console.log(`Successfully added ${parsedAmount} ETB to wallet. New balance: ${newBalance} ETB`);
+      
+      // Return updated wallet data
+      return {
+        ...walletData,
+        balance: newBalance,
+        lastTransaction: {
+          id: transactionRef.id,
+          type: TRANSACTION_TYPES.DEPOSIT,
+          amount: parsedAmount,
+          timestamp: new Date()
+        }
+      };
+    });
   } catch (error) {
     console.error('Error adding funds to wallet:', error);
     throw error;

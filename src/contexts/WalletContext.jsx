@@ -30,40 +30,69 @@ export const WalletProvider = ({ children }) => {
       // Check if we're returning from a payment
       const urlParams = new URLSearchParams(window.location.search);
       const txRef = urlParams.get('tx_ref');
-      const status = urlParams.get('status');
+      
+      // Check for both 'status' and 'satus' (to handle typo in URL)
+      let status = urlParams.get('status');
+      if (!status) {
+        status = urlParams.get('satus'); // Handle typo in URL parameter
+      }
       
       if (txRef && status) {
+        console.log(`Detected return from Chapa payment. txRef: ${txRef}, status: ${status}`);
         setProcessingPayment(true);
+        
         try {
           // Verify the payment with status
           const result = await handlePaymentVerification(txRef, status);
           
           if (result.success) {
             // Update wallet balance with the returned value if available
-            if (result.balance) {
+            if (result.balance !== undefined) {
+              console.log(`Setting new balance from payment result: ${result.balance}`);
               setBalance(result.balance);
+              
+              // Force refresh wallet data to ensure everything is up to date
+              setTimeout(() => {
+                fetchWalletData();
+              }, 1000);
             } else {
-              // Otherwise refresh wallet data
+              // Otherwise refresh wallet data immediately
+              console.log('No balance in result, refreshing wallet data immediately');
               await fetchWalletData();
             }
+            
+            // Also fetch transactions to show the new transaction
+            await fetchTransactions(currentUser.uid).then(txs => {
+              console.log('Updated transactions after payment:', txs.length);
+              setTransactions(txs);
+            }).catch(err => {
+              console.error('Error fetching transactions after payment:', err);
+            });
             
             // Navigate back to wallet page without query params
             window.history.replaceState({}, '', '/wallet');
             
             // Show success message
             setError(null);
-            setSuccess(`Payment successful! Your wallet has been updated with ${result.amount} ETB.`);
+            setSuccess(`Payment successful! Your wallet has been updated with ${result.amount || 'your deposit'} ETB.`);
             
             // Clear success message after 5 seconds
             setTimeout(() => {
               setSuccess('');
             }, 5000);
           } else {
+            console.error('Payment verification failed:', result.message);
             setError(result.message || 'Payment verification failed. Please try again.');
+            
+            // Still refresh wallet data to ensure it's up-to-date
+            await fetchWalletData();
           }
         } catch (err) {
           console.error('Error verifying payment:', err);
           setError('Payment verification failed. Please try again.');
+          
+          // Still refresh wallet data to ensure it's up-to-date
+          await fetchWalletData();
         } finally {
           setProcessingPayment(false);
         }
