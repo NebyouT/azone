@@ -21,7 +21,7 @@ import Checkout from './components/checkout/Checkout';
 import Profile from './components/profile/Profile';
 import Orders from './components/orders/Orders';
 import OrderDetail from './components/orders/OrderDetail';
-import Wallet from './components/wallet/Wallet';
+import WalletDashboard from './components/wallet/WalletDashboard';
 
 // Seller Components
 import SellerDashboard from './components/seller/SellerDashboard';
@@ -101,7 +101,7 @@ const App = () => {
                       path="wallet" 
                       element={
                         <ProtectedRoute>
-                          <Wallet />
+                          <WalletDashboard />
                         </ProtectedRoute>
                       } 
                     />

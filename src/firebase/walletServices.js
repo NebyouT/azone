@@ -61,19 +61,27 @@ export const initializeWallet = async (userId, role) => {
       // If balance is encrypted, decrypt it for return value
       if (walletData.encryptedBalance) {
         return {
+          id: walletDoc.id, // Ensure wallet ID is included
           ...walletData,
           balance: parseFloat(decrypt(walletData.encryptedBalance))
         };
       }
       
-      return walletData;
+      return {
+        id: walletDoc.id, // Ensure wallet ID is included
+        ...walletData
+      };
     }
     
     // Encrypt initial balance (0)
     const encryptedBalance = encrypt('0');
     
+    // Generate a unique wallet ID (using userId as the document ID)
+    const walletId = userId;
+    
     // Create new wallet with encrypted balance
     const walletData = {
+      id: walletId, // Add explicit wallet ID field
       userId,
       role,
       encryptedBalance,
@@ -81,14 +89,23 @@ export const initializeWallet = async (userId, role) => {
       currency: 'ETB', // Ethiopian Birr
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      isActive: true
+      isActive: true,
+      paymentMethods: [], // Array to store payment methods
+      settings: {
+        notificationsEnabled: true,
+        lowBalanceAlert: false,
+        lowBalanceThreshold: 100
+      }
     };
     
     // Use setDoc instead of updateDoc for creating a new document
     await setDoc(walletRef, walletData);
-    console.log('Wallet initialized successfully');
+    console.log('Wallet initialized successfully with ID:', walletId);
     
-    return walletData;
+    return {
+      ...walletData,
+      id: walletId
+    };
   } catch (error) {
     console.error('Error initializing wallet:', error);
     throw error;
@@ -112,7 +129,9 @@ export const getWallet = async (userId) => {
     const walletDoc = await getDoc(walletRef);
     
     if (!walletDoc.exists()) {
-      throw new Error('Wallet not found');
+      // Auto-initialize wallet if it doesn't exist
+      console.log('Wallet not found, initializing new wallet for user:', userId);
+      return await initializeWallet(userId, 'buyer');
     }
     
     const walletData = walletDoc.data();
@@ -161,81 +180,86 @@ export const getWalletBalance = async (userId) => {
  * Add funds to a user's wallet
  * @param {string} userId - The user ID
  * @param {number} amount - The amount to add
- * @param {string} method - The payment method used
- * @returns {Promise<object>} - The transaction object
+ * @param {string} method - The payment method
+ * @param {string} description - Optional description
+ * @returns {Promise<object>} - The updated wallet
  */
-export const addFunds = async (userId, amount, method) => {
+export const addFunds = async (userId, amount, method, description = 'Deposit via Chapa') => {
   try {
-    if (!userId) {
-      const currentUser = getCurrentUser();
-      if (!currentUser) throw new Error('User not authenticated');
-      userId = currentUser.uid;
+    // Validate inputs
+    if (!userId) throw new Error('User ID is required');
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      throw new Error('Valid amount is required');
     }
     
-    if (amount <= 0) {
-      throw new Error('Amount must be greater than zero');
-    }
+    const parsedAmount = parseFloat(amount);
     
-    return await runTransaction(db, async (transaction) => {
-      // Get wallet
-      const walletRef = doc(db, 'wallets', userId);
-      const walletDoc = await transaction.get(walletRef);
-      
-      if (!walletDoc.exists()) {
-        throw new Error('Wallet not found');
-      }
-      
-      const walletData = walletDoc.data();
-      
-      // Calculate new balance
-      let newBalance;
-      
-      // If balance is encrypted, decrypt it first
-      if (walletData.encryptedBalance) {
-        const currentBalance = parseFloat(decrypt(walletData.encryptedBalance));
-        newBalance = currentBalance + amount;
+    // Get current wallet data
+    let walletData;
+    try {
+      walletData = await getWallet(userId);
+    } catch (error) {
+      // If wallet doesn't exist, initialize it
+      if (error.message === 'Wallet not found') {
+        walletData = await initializeWallet(userId, 'buyer');
       } else {
-        // Backward compatibility
-        newBalance = (walletData.balance || 0) + amount;
+        throw error;
       }
-      
-      // Encrypt the new balance
-      const encryptedBalance = encrypt(newBalance.toString());
-      
-      // Update wallet with encrypted balance
-      transaction.update(walletRef, {
-        encryptedBalance,
-        balance: newBalance, // For backward compatibility
-        updatedAt: serverTimestamp()
-      });
-      
-      // Create transaction record with encrypted amount
-      const encryptedAmount = encrypt(amount.toString());
-      const transactionData = {
-        userId,
-        type: TRANSACTION_TYPES.DEPOSIT,
-        encryptedAmount,
-        amount, // For backward compatibility
-        currency: 'ETB',
-        method: method || 'bank_transfer',
-        status: TRANSACTION_STATUS.COMPLETED,
-        description: `Deposit of ${amount} ETB`,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      
-      const transactionRef = collection(db, 'transactions');
-      const newTransactionRef = doc(transactionRef);
-      transaction.set(newTransactionRef, transactionData);
-      
-      return {
-        id: newTransactionRef.id,
-        ...transactionData,
-        amount // Return unencrypted amount
-      };
+    }
+    
+    // Get current balance
+    const currentBalance = walletData.balance || 0;
+    
+    // Calculate new balance
+    const newBalance = currentBalance + parsedAmount;
+    
+    // Encrypt new balance
+    const encryptedBalance = encrypt(newBalance.toString());
+    
+    // Update wallet with new balance
+    const walletRef = doc(db, 'wallets', userId);
+    
+    await updateDoc(walletRef, {
+      encryptedBalance,
+      balance: newBalance, // For backward compatibility
+      updatedAt: serverTimestamp()
     });
+    
+    // Create transaction record
+    const transactionData = {
+      userId,
+      walletId: userId, // Use userId as walletId
+      type: TRANSACTION_TYPES.DEPOSIT,
+      amount: parsedAmount,
+      method: method || 'chapa',
+      description: description || `Deposit of ${parsedAmount} ETB via ${method || 'Chapa'}`,
+      status: TRANSACTION_STATUS.COMPLETED,
+      timestamp: serverTimestamp(),
+      reference: `dep-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      metadata: {
+        previousBalance: currentBalance,
+        newBalance: newBalance,
+        paymentMethod: method || 'chapa'
+      }
+    };
+    
+    const transactionRef = collection(db, 'transactions');
+    await addDoc(transactionRef, transactionData);
+    
+    console.log(`Successfully added ${parsedAmount} ETB to wallet. New balance: ${newBalance} ETB`);
+    
+    // Return updated wallet data
+    return {
+      ...walletData,
+      balance: newBalance,
+      lastTransaction: {
+        type: TRANSACTION_TYPES.DEPOSIT,
+        amount: parsedAmount,
+        timestamp: new Date()
+      }
+    };
   } catch (error) {
-    console.error('Error adding funds:', error);
+    console.error('Error adding funds to wallet:', error);
     throw error;
   }
 };

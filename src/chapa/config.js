@@ -9,6 +9,7 @@ const CHAPA_CONFIG = {
   BASE_URL: 'https://api.chapa.co',
   INITIALIZE_URL: '/v1/transaction/initialize',
   VERIFY_URL: '/v1/transaction/verify',
+  CHECKOUT_URL: 'https://checkout.chapa.co',
   
   // Callback URL (update this with your actual callback URL)
   CALLBACK_URL: 'http://localhost:3000/wallet/deposit/callback',

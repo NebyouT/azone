@@ -234,7 +234,7 @@ const Footer = () => {
     >
       <Container maxWidth="xl" sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
         <Grid container spacing={{ xs: 3, md: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item grid={{ xs: 12, sm: 6, md: 3 }}>
             <Typography 
               variant="h5" 
               gutterBottom
@@ -279,7 +279,7 @@ const Footer = () => {
             </Box>
           </Grid>
 
-          <Grid item xs={6} sm={6} md={3}>
+          <Grid item grid={{ xs: 6, sm: 6, md: 3 }}>
             <Typography variant="h6" gutterBottom fontWeight={600}>
               <TranslationWrapper translationKey="quickLinks">Quick Links</TranslationWrapper>
             </Typography>
@@ -316,7 +316,7 @@ const Footer = () => {
             </Box>
           </Grid>
 
-          <Grid item xs={6} sm={6} md={3}>
+          <Grid item grid={{ xs: 6, sm: 6, md: 3 }}>
             <Typography variant="h6" gutterBottom fontWeight={600}>
               <TranslationWrapper translationKey="customerService">Customer Service</TranslationWrapper>
             </Typography>
@@ -353,7 +353,7 @@ const Footer = () => {
             </Box>
           </Grid>
 
-          <Grid item xs={12} sm={12} md={3}>
+          <Grid item grid={{ xs: 12, sm: 12, md: 3 }}>
             <Typography variant="h6" gutterBottom fontWeight={600}>
               <TranslationWrapper translationKey="contactUs">Contact Us</TranslationWrapper>
             </Typography>

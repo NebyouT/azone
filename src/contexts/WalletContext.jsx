@@ -7,6 +7,7 @@ import {
   getTransactions as fetchTransactions 
 } from '../firebase/walletServices';
 import { initializeDeposit, handlePaymentVerification } from '../chapa/services';
+import CHAPA_CONFIG from '../chapa/config';
 
 const WalletContext = createContext();
 
@@ -38,10 +39,17 @@ export const WalletProvider = ({ children }) => {
           const result = await handlePaymentVerification(txRef, status);
           
           if (result.success) {
-            // Refresh wallet data
-            await fetchWalletData();
+            // Update wallet balance with the returned value if available
+            if (result.balance) {
+              setBalance(result.balance);
+            } else {
+              // Otherwise refresh wallet data
+              await fetchWalletData();
+            }
+            
             // Navigate back to wallet page without query params
             window.history.replaceState({}, '', '/wallet');
+            
             // Show success message
             setError(null);
             setSuccess(`Payment successful! Your wallet has been updated with ${result.amount} ETB.`);
@@ -87,6 +95,14 @@ export const WalletProvider = ({ children }) => {
     try {
       // Get wallet balance
       const walletData = await getWallet(currentUser.uid);
+      
+      // Ensure we have a valid wallet with an ID
+      if (!walletData || !walletData.id) {
+        console.error('Invalid wallet data received:', walletData);
+        throw new Error('Invalid wallet data');
+      }
+      
+      console.log('Wallet data fetched successfully:', walletData.id);
       setBalance(walletData.balance);
       
       // Get transactions
@@ -107,6 +123,12 @@ export const WalletProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Update wallet data - can be called after successful payment
+  const updateWalletData = () => {
+    console.log('Updating wallet data after payment');
+    fetchWalletData();
   };
   
   const addFunds = async (amount) => {
@@ -140,14 +162,16 @@ export const WalletProvider = ({ children }) => {
       
       console.log('Deposit initialized successfully:', formData);
       
-      // Return the form data for the component to create the form
+      // We no longer need to redirect here, just return the form data
+      // The ChapaPaymentForm component will handle the actual payment submission
+      
+      // Return the form data for the component to handle
       return formData;
     } catch (err) {
       console.error('Error adding funds:', err);
-      setError('Failed to add funds. Please try again.');
-      return false;
-    } finally {
+      setError('Failed to initialize payment. Please try again.');
       setProcessingPayment(false);
+      return false;
     }
   };
   
@@ -202,10 +226,11 @@ export const WalletProvider = ({ children }) => {
         loading,
         error,
         success,
-        addFunds,
-        withdrawFunds,
         processingPayment,
         checkoutUrl,
+        addFunds,
+        withdrawFunds,
+        updateWalletData,
         resetCheckoutUrl,
         refreshWallet: fetchWalletData
       }}
