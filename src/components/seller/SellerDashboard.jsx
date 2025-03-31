@@ -38,7 +38,9 @@ import {
   DialogContentText,
   DialogActions,
   Snackbar,
-  Badge
+  Badge,
+  InputAdornment,
+  FormHelperText
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -56,14 +58,18 @@ import {
   Refresh as RefreshIcon,
   Notifications as NotificationsIcon,
   Message as MessageIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   getSellerProducts, 
   getSellerOrders, 
   updateSellerOrderStatus,
-  getBuyerInfoForOrder
+  getBuyerInfoForOrder,
+  updateShopSettings,
+  getShopSettings,
+  deleteProduct
 } from '../../firebase/services';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 
@@ -125,6 +131,31 @@ const SellerDashboard = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
+  // State for shop settings
+  const [shopSettings, setShopSettings] = useState({
+    name: '',
+    url: '',
+    description: '',
+    email: '',
+    phone: '',
+    paymentMethod: '',
+    accountName: '',
+    bankName: '',
+    accountNumber: '',
+    mobileNumber: '',
+    paypalEmail: '',
+    returnPolicy: '',
+    shippingPolicy: ''
+  });
+  const [shopSettingsLoading, setShopSettingsLoading] = useState(false);
+  const [shopSettingsError, setShopSettingsError] = useState('');
+  const [shopSettingsSuccess, setShopSettingsSuccess] = useState(false);
+
+  // Product delete states
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   useEffect(() => {
     // Redirect if not a seller
     if (currentUser && userDetails && !isSeller) {
@@ -145,6 +176,10 @@ const SellerDashboard = () => {
         // Fetch seller's orders
         const sellerOrders = await getSellerOrders(currentUser.uid);
         setOrders(sellerOrders);
+        
+        // Fetch shop settings
+        const settings = await getShopSettings(currentUser.uid);
+        setShopSettings(settings);
         
         setError('');
       } catch (err) {
@@ -278,16 +313,68 @@ const SellerDashboard = () => {
     }
   };
 
+  const handleSaveShopSettings = async () => {
+    try {
+      setShopSettingsLoading(true);
+      setShopSettingsError('');
+      
+      await updateShopSettings(shopSettings, currentUser.uid);
+      
+      setShopSettingsSuccess(true);
+    } catch (error) {
+      console.error('Error saving shop settings:', error);
+      setShopSettingsError(error.message || 'Failed to save shop settings');
+    } finally {
+      setShopSettingsLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (product) => {
+    setProductToDelete(product);
+    setDeleteDialogOpen(true);
+  };
+  
+  const handleDeleteConfirm = async () => {
+    if (!productToDelete) return;
+    
+    try {
+      setDeleteLoading(true);
+      await deleteProduct(productToDelete.id);
+      
+      // Update products list
+      setProducts(products.filter(p => p.id !== productToDelete.id));
+      
+      // Show success message
+      setSnackbarMessage('Product deleted successfully');
+      setSnackbarOpen(true);
+      
+      // Close dialog
+      setDeleteDialogOpen(false);
+      setProductToDelete(null);
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      setSnackbarMessage(`Error deleting product: ${error.message}`);
+      setSnackbarOpen(true);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+  
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setProductToDelete(null);
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-        <CircularProgress />
+        <CircularProgress size={60} />
       </Box>
     );
   }
-
+  
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Dashboard Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography variant="h4" component="h1">
@@ -327,6 +414,7 @@ const SellerDashboard = () => {
           <Tab icon={<MessageIcon />} label="Messages" />
           <Tab icon={<SettingsIcon />} label="Shop Settings" />
         </Tabs>
+        </Box>
 
         {/* Products Tab */}
         <TabPanel value={activeTab} index={0}>
@@ -519,6 +607,7 @@ const SellerDashboard = () => {
                             <IconButton 
                               size="small" 
                               color="error"
+                              onClick={() => handleDeleteClick(product)}
                               sx={{ borderRadius: 0 }}
                             >
                               <DeleteIcon fontSize="small" />
@@ -892,133 +981,405 @@ const SellerDashboard = () => {
         
         {/* Shop Settings Tab */}
         <TabPanel value={activeTab} index={3}>
-          <Typography variant="h6" gutterBottom>
-            Shop Settings
-          </Typography>
-          
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="body1" paragraph>
-              Configure your shop settings, including shop name, description, and payment information.
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6">
+              Shop Settings
             </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph>
-              This feature is coming soon.
-            </Typography>
-          </Paper>
-        </TabPanel>
-      </Box>
-      
-      {/* Order Status Update Dialog */}
-      <Dialog 
-        open={statusDialogOpen} 
-        onClose={() => setStatusDialogOpen(false)}
-        PaperProps={{ sx: { borderRadius: 0 } }}
-      >
-        <DialogTitle>
-          Update Order Status
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Update the status for order #{selectedOrder?.id?.substring(0, 8)}
-          </DialogContentText>
-          
-          {buyerInfoLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : buyerInfo ? (
-            <Paper sx={{ p: 2, mb: 3, bgcolor: alpha(theme.palette.background.paper, 0.5), borderRadius: 0 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Buyer Information
-              </Typography>
-              <Grid container spacing={1}>
-                <Grid item xs={4}>
-                  <Typography variant="body2" color="text.secondary">Name:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <Typography variant="body2">{buyerInfo.name}</Typography>
-                </Grid>
-                
-                <Grid item xs={4}>
-                  <Typography variant="body2" color="text.secondary">Email:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <Typography variant="body2">{buyerInfo.email}</Typography>
-                </Grid>
-                
-                <Grid item xs={4}>
-                  <Typography variant="body2" color="text.secondary">Phone:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <Typography variant="body2">{buyerInfo.phone}</Typography>
-                </Grid>
-                
-                <Grid item xs={4}>
-                  <Typography variant="body2" color="text.secondary">Address:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <Typography variant="body2">
-                    {buyerInfo.address?.street}, {buyerInfo.address?.city}, {buyerInfo.address?.state} {buyerInfo.address?.zip}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </Paper>
-          ) : null}
-          
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>New Status</InputLabel>
-            <Select
-              value={newStatus}
-              label="New Status"
-              onChange={(e) => setNewStatus(e.target.value)}
+            <Button 
+              variant="contained" 
+              startIcon={<SaveIcon />}
+              onClick={handleSaveShopSettings}
+              disabled={shopSettingsLoading}
               sx={{ borderRadius: 0 }}
             >
-              <MenuItem value="pending">Pending</MenuItem>
-              <MenuItem value="confirmed">Confirmed</MenuItem>
-              <MenuItem value="shipped">Shipped</MenuItem>
-              <MenuItem value="delivered">Delivered</MenuItem>
-            </Select>
-          </FormControl>
+              Save Changes
+            </Button>
+          </Box>
           
-          {statusUpdateError && (
-            <Alert severity="error" sx={{ mt: 2, borderRadius: 0 }}>
-              {statusUpdateError}
+          {shopSettingsError && (
+            <Alert severity="error" sx={{ mb: 3, borderRadius: 0 }}>
+              {shopSettingsError}
             </Alert>
           )}
           
-          {statusUpdateSuccess && (
-            <Alert severity="success" sx={{ mt: 2, borderRadius: 0 }}>
-              Order status updated successfully!
+          {shopSettingsSuccess && (
+            <Alert severity="success" sx={{ mb: 3, borderRadius: 0 }}>
+              Shop settings saved successfully!
             </Alert>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={() => setStatusDialogOpen(false)}
-            sx={{ borderRadius: 0 }}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleUpdateOrderStatus} 
-            variant="contained" 
-            color="primary"
-            disabled={statusUpdateLoading || !newStatus}
-            sx={{ borderRadius: 0 }}
-          >
-            {statusUpdateLoading ? 'Updating...' : 'Update Status'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={6000}
-        onClose={() => setSnackbarOpen(false)}
-        message={snackbarMessage}
-      />
-    </Container>
-  );
-};
+          
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'medium', color: 'primary.main' }}>
+              Basic Information
+            </Typography>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Shop Name"
+                  fullWidth
+                  value={shopSettings.name}
+                  onChange={(e) => setShopSettings({...shopSettings, name: e.target.value})}
+                  helperText="This is how your shop will appear to customers"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Shop URL"
+                  fullWidth
+                  value={shopSettings.url}
+                  onChange={(e) => setShopSettings({...shopSettings, url: e.target.value})}
+                  helperText="Custom URL for your shop (letters, numbers, and hyphens only)"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ 
+                    startAdornment: <InputAdornment position="start">azone.com/shop/</InputAdornment>,
+                    sx: { borderRadius: 0 } 
+                  }}
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <TextField
+                  label="Shop Description"
+                  fullWidth
+                  multiline
+                  rows={4}
+                  value={shopSettings.description}
+                  onChange={(e) => setShopSettings({...shopSettings, description: e.target.value})}
+                  helperText="Tell customers about your shop and what you sell"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Email Address"
+                  fullWidth
+                  type="email"
+                  value={shopSettings.email}
+                  onChange={(e) => setShopSettings({...shopSettings, email: e.target.value})}
+                  helperText="Email for customer inquiries (can be different from your account email)"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Phone Number"
+                  fullWidth
+                  value={shopSettings.phone}
+                  onChange={(e) => setShopSettings({...shopSettings, phone: e.target.value})}
+                  helperText="Phone number for customer inquiries"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+            </Grid>
+          </Paper>
+          
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'medium', color: 'primary.main' }}>
+              Payment Information
+            </Typography>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth margin="normal">
+                  <InputLabel>Payment Method</InputLabel>
+                  <Select
+                    value={shopSettings.paymentMethod}
+                    onChange={(e) => setShopSettings({...shopSettings, paymentMethod: e.target.value})}
+                    label="Payment Method"
+                    sx={{ borderRadius: 0 }}
+                  >
+                    <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                    <MenuItem value="mobile_money">Mobile Money</MenuItem>
+                    <MenuItem value="paypal">PayPal</MenuItem>
+                  </Select>
+                  <FormHelperText>How you want to receive payments from Azone</FormHelperText>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Account Name"
+                  fullWidth
+                  value={shopSettings.accountName}
+                  onChange={(e) => setShopSettings({...shopSettings, accountName: e.target.value})}
+                  helperText="Name on your payment account"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+              
+              {shopSettings.paymentMethod === 'bank_transfer' && (
+                <>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="Bank Name"
+                      fullWidth
+                      value={shopSettings.bankName}
+                      onChange={(e) => setShopSettings({...shopSettings, bankName: e.target.value})}
+                      margin="normal"
+                      variant="outlined"
+                      InputProps={{ sx: { borderRadius: 0 } }}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="Account Number"
+                      fullWidth
+                      value={shopSettings.accountNumber}
+                      onChange={(e) => setShopSettings({...shopSettings, accountNumber: e.target.value})}
+                      margin="normal"
+                      variant="outlined"
+                      InputProps={{ sx: { borderRadius: 0 } }}
+                    />
+                  </Grid>
+                </>
+              )}
+              
+              {shopSettings.paymentMethod === 'mobile_money' && (
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Mobile Money Number"
+                    fullWidth
+                    value={shopSettings.mobileNumber}
+                    onChange={(e) => setShopSettings({...shopSettings, mobileNumber: e.target.value})}
+                    margin="normal"
+                    variant="outlined"
+                    InputProps={{ sx: { borderRadius: 0 } }}
+                  />
+                </Grid>
+              )}
+              
+              {shopSettings.paymentMethod === 'paypal' && (
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="PayPal Email"
+                    fullWidth
+                    type="email"
+                    value={shopSettings.paypalEmail}
+                    onChange={(e) => setShopSettings({...shopSettings, paypalEmail: e.target.value})}
+                    margin="normal"
+                    variant="outlined"
+                    InputProps={{ sx: { borderRadius: 0 } }}
+                  />
+                </Grid>
+              )}
+            </Grid>
+          </Paper>
+          
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'medium', color: 'primary.main' }}>
+              Shop Policies
+            </Typography>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <TextField
+                  label="Return Policy"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={shopSettings.returnPolicy}
+                  onChange={(e) => setShopSettings({...shopSettings, returnPolicy: e.target.value})}
+                  helperText="Describe your return and refund policy"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <TextField
+                  label="Shipping Policy"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={shopSettings.shippingPolicy}
+                  onChange={(e) => setShopSettings({...shopSettings, shippingPolicy: e.target.value})}
+                  helperText="Describe your shipping methods, timeframes, and costs"
+                  margin="normal"
+                  variant="outlined"
+                  InputProps={{ sx: { borderRadius: 0 } }}
+                />
+              </Grid>
+            </Grid>
+          </Paper>
+          
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+            <Button 
+              variant="contained" 
+              startIcon={<SaveIcon />}
+              onClick={handleSaveShopSettings}
+              disabled={shopSettingsLoading}
+              sx={{ borderRadius: 0 }}
+            >
+              {shopSettingsLoading ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </Box>
+        </TabPanel>
+        
+        {/* Order Status Update Dialog */}
+        <Dialog 
+          open={statusDialogOpen} 
+          onClose={() => setStatusDialogOpen(false)}
+          PaperProps={{ sx: { borderRadius: 0 } }}
+        >
+          <DialogTitle>
+            Update Order Status
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Update the status for order #{selectedOrder?.id?.substring(0, 8)}
+            </DialogContentText>
+            
+            {buyerInfoLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : buyerInfo ? (
+              <Paper sx={{ p: 2, mb: 3, bgcolor: alpha(theme.palette.background.paper, 0.5), borderRadius: 0 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Buyer Information
+                </Typography>
+                <Grid container spacing={1}>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">Name:</Typography>
+                  </Grid>
+                  <Grid item xs={8}>
+                    <Typography variant="body2">{buyerInfo.name}</Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">Email:</Typography>
+                  </Grid>
+                  <Grid item xs={8}>
+                    <Typography variant="body2">{buyerInfo.email}</Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">Phone:</Typography>
+                  </Grid>
+                  <Grid item xs={8}>
+                    <Typography variant="body2">{buyerInfo.phone}</Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">Address:</Typography>
+                  </Grid>
+                  <Grid item xs={8}>
+                    <Typography variant="body2">
+                      {buyerInfo.address?.street}, {buyerInfo.address?.city}, {buyerInfo.address?.state} {buyerInfo.address?.zip}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+            ) : null}
+            
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>New Status</InputLabel>
+              <Select
+                value={newStatus}
+                label="New Status"
+                onChange={(e) => setNewStatus(e.target.value)}
+                sx={{ borderRadius: 0 }}
+              >
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="confirmed">Confirmed</MenuItem>
+                <MenuItem value="shipped">Shipped</MenuItem>
+                <MenuItem value="delivered">Delivered</MenuItem>
+              </Select>
+            </FormControl>
+            
+            {statusUpdateError && (
+              <Alert severity="error" sx={{ mt: 2, borderRadius: 0 }}>
+                {statusUpdateError}
+              </Alert>
+            )}
+            
+            {statusUpdateSuccess && (
+              <Alert severity="success" sx={{ mt: 2, borderRadius: 0 }}>
+                Order status updated successfully!
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => setStatusDialogOpen(false)}
+              sx={{ borderRadius: 0 }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleUpdateOrderStatus} 
+              variant="contained" 
+              color="primary"
+              disabled={statusUpdateLoading || !newStatus}
+              sx={{ borderRadius: 0 }}
+            >
+              {statusUpdateLoading ? 'Updating...' : 'Update Status'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        
+        {/* Product Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={handleDeleteCancel}
+          aria-labelledby="delete-dialog-title"
+          aria-describedby="delete-dialog-description"
+        >
+          <DialogTitle id="delete-dialog-title">
+            Confirm Delete
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText id="delete-dialog-description">
+              Are you sure you want to delete the product "{productToDelete?.name}"? This action cannot be undone.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={handleDeleteCancel} 
+              color="inherit"
+              disabled={deleteLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleDeleteConfirm} 
+              color="error"
+              variant="contained"
+              disabled={deleteLoading}
+              sx={{ borderRadius: 0 }}
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          onClose={() => setSnackbarOpen(false)}
+          message={snackbarMessage}
+        />
+      </Container>
+    );
+  };
 
 export default SellerDashboard;

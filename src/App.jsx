@@ -132,7 +132,7 @@ const App = () => {
                       } 
                     />
                     <Route 
-                      path="seller/products/edit/:id" 
+                      path="seller/products/:id/edit" 
                       element={
                         <ProtectedRoute requiredRole="seller">
                           <ProductForm />

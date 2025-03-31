@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   AppBar,
@@ -168,20 +168,25 @@ const MaterialUISwitch = styled(Switch)(({ theme }) => ({
 }));
 
 const Navbar = () => {
+  const navigate = useNavigate();
   const { currentUser, userDetails, isSeller, isAdmin } = useAuth();
   const { itemCount } = useCart();
-  const navigate = useNavigate();
-  const theme = useTheme();
   const { mode, toggleColorMode } = useColorMode();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
   const { language, changeLanguage, t } = useLanguage();
+  const theme = useTheme();
+  const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const [anchorEl, setAnchorEl] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
   const [languageMenuAnchorEl, setLanguageMenuAnchorEl] = useState(null);
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
 
   const handleProfileMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -191,12 +196,27 @@ const Navbar = () => {
     setAnchorEl(null);
   };
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
   const toggleSearch = () => {
     setSearchOpen(!searchOpen);
+  };
+
+  const handleSearchChange = (event) => {
+    setSearchQuery(event.target.value);
+  };
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
+      setSearchOpen(false);
+    }
+  };
+
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      handleSearchSubmit(event);
+    }
   };
 
   const handleLogout = async () => {
@@ -230,6 +250,7 @@ const Navbar = () => {
   const handleLanguageChange = (lang) => {
     changeLanguage(lang);
     handleLanguageMenuClose();
+    setMobileOpen(false); // Close mobile menu when language is changed
   };
 
   const isMenuOpen = Boolean(anchorEl);
@@ -334,23 +355,17 @@ const Navbar = () => {
       transformOrigin={{ horizontal: 'right', vertical: 'top' }}
       anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
     >
-      <MenuItem
-        onClick={() => handleLanguageChange('en')}
-        selected={language === 'en'}
-      >
+      <MenuItem onClick={() => handleLanguageChange('en')} selected={language === 'en'}>
         <ListItemIcon>
-          {language === 'en' && <CheckCircleIcon fontSize="small" color="primary" />}
+          <CheckCircleIcon fontSize="small" sx={{ visibility: language === 'en' ? 'visible' : 'hidden' }} />
         </ListItemIcon>
         English
       </MenuItem>
-      <MenuItem
-        onClick={() => handleLanguageChange('am')}
-        selected={language === 'am'}
-      >
+      <MenuItem onClick={() => handleLanguageChange('am')} selected={language === 'am'}>
         <ListItemIcon>
-          {language === 'am' && <CheckCircleIcon fontSize="small" color="primary" />}
+          <CheckCircleIcon fontSize="small" sx={{ visibility: language === 'am' ? 'visible' : 'hidden' }} />
         </ListItemIcon>
-        አማርኛ (Amharic)
+        አማርኛ
       </MenuItem>
     </Menu>
   );
@@ -565,6 +580,22 @@ const Navbar = () => {
             </ListItem>
           </>
         )}
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={handleLanguageMenuOpen}
+            sx={{
+              textAlign: 'center',
+              borderRadius: 0,
+              my: 0.5,
+              mx: 1,
+            }}
+          >
+            <ListItemIcon>
+              <TranslateIcon />
+            </ListItemIcon>
+            <ListItemText primary={t('language')} />
+          </ListItemButton>
+        </ListItem>
       </List>
 
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -671,6 +702,9 @@ const Navbar = () => {
           boxShadow: 'none',
           borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
           backgroundColor: theme.palette.mode === 'dark' ? '#1A1A1A' : '#FF4747', // AliExpress red color
+          position: { xs: 'fixed', md: 'sticky' }, // Fixed position for mobile, sticky for desktop
+          top: 0,
+          zIndex: 1100,
         }}
       >
         <Container maxWidth="xl" disableGutters={isSmall}>
@@ -821,23 +855,33 @@ const Navbar = () => {
 
             {/* Desktop Search */}
             {!isMobile && (
-              <Search sx={{
-                flexGrow: { sm: 1, md: 0 },
-                mx: { sm: 2 },
-                backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.15) : 'white',
-                '&:hover': {
-                  backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.25) : 'white',
-                },
-                borderRadius: 0,
-              }}>
-                <SearchIconWrapper>
-                  <SearchIcon />
-                </SearchIconWrapper>
-                <StyledInputBase
-                  placeholder={t('search')}
-                  inputProps={{ 'aria-label': 'search' }}
-                />
-              </Search>
+              <Box 
+                component="form" 
+                onSubmit={handleSearchSubmit}
+                sx={{ 
+                  flexGrow: { sm: 1, md: 0 },
+                  mx: { sm: 2 }
+                }}
+              >
+                <Search sx={{
+                  backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.15) : 'white',
+                  '&:hover': {
+                    backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.25) : 'white',
+                  },
+                  borderRadius: 0,
+                }}>
+                  <SearchIconWrapper>
+                    <SearchIcon />
+                  </SearchIconWrapper>
+                  <StyledInputBase
+                    placeholder={t('search')}
+                    inputProps={{ 'aria-label': 'search' }}
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    onKeyPress={handleKeyPress}
+                  />
+                </Search>
+              </Box>
             )}
 
             {/* Mobile Search Icon */}
@@ -851,22 +895,35 @@ const Navbar = () => {
               </IconButton>
             )}
 
-            {/* Mobile Search Bar (Expanded) */}
+            {/* Mobile Search Bar */}
             {isMobile && searchOpen && (
-              <Box sx={{
-                display: 'flex',
-                flexGrow: 1,
-                alignItems: 'center',
-                ml: 1,
-                mr: 1,
-              }}>
-                <Search sx={{ flexGrow: 1, borderRadius: 0 }}>
+              <Box 
+                component="form" 
+                onSubmit={handleSearchSubmit}
+                sx={{ 
+                  display: 'flex', 
+                  flexGrow: 1,
+                  alignItems: 'center',
+                  ml: 'auto'
+                }}
+              >
+                <Search sx={{
+                  flexGrow: 1,
+                  backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.15) : 'white',
+                  '&:hover': {
+                    backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.25) : 'white',
+                  },
+                  borderRadius: 0,
+                }}>
                   <SearchIconWrapper>
                     <SearchIcon />
                   </SearchIconWrapper>
                   <StyledInputBase
                     placeholder={t('search')}
                     inputProps={{ 'aria-label': 'search' }}
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    onKeyPress={handleKeyPress}
                     autoFocus
                   />
                 </Search>
@@ -910,71 +967,6 @@ const Navbar = () => {
                     <WalletIcon />
                   </IconButton>
                 )}
-
-                {/* Cart Icon */}
-                <IconButton
-                  component={RouterLink}
-                  to="/cart"
-                  size="large"
-                  aria-label="show cart items"
-                  color="inherit"
-                  sx={{
-                    ml: 1,
-                    transition: 'transform 0.2s',
-                    '&:hover': { transform: 'scale(1.1)' },
-                  }}
-                >
-                  <Badge badgeContent={itemCount} color="error">
-                    <ShoppingCartIcon />
-                  </Badge>
-                </IconButton>
-
-                {/* Profile Icon or Login Button */}
-                {currentUser ? (
-                  <Tooltip title="Account settings">
-                    <IconButton
-                      size="large"
-                      edge="end"
-                      aria-label="account of current user"
-                      aria-controls={menuId}
-                      aria-haspopup="true"
-                      onClick={handleProfileMenuOpen}
-                      color="inherit"
-                      sx={{
-                        ml: 1,
-                        transition: 'transform 0.2s',
-                        '&:hover': { transform: 'scale(1.1)' },
-                      }}
-                    >
-                      {userDetails?.photoURL ? (
-                        <Avatar
-                          src={userDetails.photoURL}
-                          alt={userDetails.displayName}
-                          sx={{ width: 32, height: 32 }}
-                        />
-                      ) : (
-                        <PersonIcon />
-                      )}
-                    </IconButton>
-                  </Tooltip>
-                ) : (
-                  <Button
-                    component={RouterLink}
-                    to="/login"
-                    color="inherit"
-                    sx={{
-                      ml: 1,
-                      display: { xs: 'none', sm: 'flex' },
-                      borderRadius: 0,
-                      backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.2) : alpha('#fff', 0.2),
-                      '&:hover': {
-                        backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.3) : alpha('#fff', 0.3),
-                      },
-                    }}
-                  >
-                    {t('login')}
-                  </Button>
-                )}
               </Box>
             )}
           </Toolbar>
@@ -995,8 +987,11 @@ const Navbar = () => {
           '& .MuiDrawer-paper': { 
             boxSizing: 'border-box', 
             width: 280,
-            borderRadius: 0,
-            ...glassmorphism(0.95, 10, mode === 'dark')
+            borderRadius: 0, // No border radius as requested
+            background: mode === 'dark' ? 'rgba(33, 33, 33, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            color: mode === 'dark' ? '#fff' : '#333',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)'
           },
         }}
       >

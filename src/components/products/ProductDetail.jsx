@@ -33,7 +33,11 @@ import {
   ListItemAvatar,
   Skeleton,
   Zoom,
-  Slide
+  Slide,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   ShoppingCart as ShoppingCartIcon,
@@ -80,6 +84,8 @@ const ProductDetail = () => {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [reviewStats, setReviewStats] = useState(null);
   const [reviewStatsLoading, setReviewStatsLoading] = useState(true);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [contactMessage, setContactMessage] = useState('');
   
   // Fetch product details
   useEffect(() => {
@@ -180,6 +186,39 @@ const ProductDetail = () => {
 
   const handleVariantChange = (variant) => {
     setSelectedVariant(variant);
+  };
+
+  const handleViewStore = () => {
+    if (product?.seller?.id) {
+      navigate(`/seller/${product.seller.id}`);
+    } else if (product?.sellerId) {
+      navigate(`/seller/${product.sellerId}`);
+    } else {
+      // If no seller ID is available, show a notification
+      alert('Store information not available');
+    }
+  };
+
+  const handleContactSeller = () => {
+    setContactDialogOpen(true);
+  };
+
+  const handleSendMessage = async () => {
+    try {
+      // TODO: Implement sending message to seller
+      // This would typically involve a Firebase function to store the message
+      console.log('Sending message to seller:', contactMessage);
+      
+      // Close the dialog and reset the message
+      setContactDialogOpen(false);
+      setContactMessage('');
+      
+      // Show success notification
+      alert('Message sent to seller');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message. Please try again.');
+    }
   };
 
   if (loading) {
@@ -569,6 +608,7 @@ const ProductDetail = () => {
                 <Button
                   variant="outlined"
                   size="small"
+                  onClick={handleViewStore}
                   sx={{ 
                     borderRadius: 1,
                     borderColor: theme.palette.divider,
@@ -584,6 +624,7 @@ const ProductDetail = () => {
                 <Button
                   variant="outlined"
                   size="small"
+                  onClick={handleContactSeller}
                   sx={{ 
                     borderRadius: 1,
                     borderColor: theme.palette.divider,
@@ -865,6 +906,53 @@ const ProductDetail = () => {
       {/* Related Products */}
       <RelatedProducts categoryId={product.category} currentProductId={id} />
 
+      {/* Contact Seller Dialog */}
+      <Dialog
+        open={contactDialogOpen}
+        onClose={() => setContactDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Typography variant="h6">
+            <TranslationWrapper>contactSeller</TranslationWrapper>: {product.seller?.name || "Seller"}
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <TranslationWrapper>contactSellerDescription</TranslationWrapper>
+          </Typography>
+          <TextField
+            autoFocus
+            margin="dense"
+            label={t('message')}
+            type="text"
+            fullWidth
+            multiline
+            rows={4}
+            value={contactMessage}
+            onChange={(e) => setContactMessage(e.target.value)}
+            placeholder={t('enterYourMessage')}
+            variant="outlined"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setContactDialogOpen(false)} 
+            color="inherit"
+          >
+            <TranslationWrapper>cancel</TranslationWrapper>
+          </Button>
+          <Button 
+            onClick={handleSendMessage} 
+            variant="contained" 
+            color="primary"
+            disabled={!contactMessage.trim()}
+          >
+            <TranslationWrapper>send</TranslationWrapper>
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

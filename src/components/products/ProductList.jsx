@@ -92,7 +92,7 @@ const ProductList = ({ category = null }) => {
   }
 
   return (
-    <Container>
+    <Container sx={{ pb: { xs: 8, sm: 4 } }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
           {category ? `${category} Products` : 'All Products'}
@@ -138,16 +138,24 @@ const ProductList = ({ category = null }) => {
           </Typography>
         ) : (
           <>
-            <Grid container spacing={3}>
+            <Grid container spacing={2}>
               {displayedProducts.map((product) => (
-                <Grid item key={product.id} xs={12} sm={6} md={4} lg={3}>
+                <Grid 
+                  item 
+                  key={product.id} 
+                  xs={6} 
+                  sm={6} 
+                  md={4} 
+                  lg={3}
+                  sx={{ display: 'flex' }}
+                >
                   <ProductCard product={product} />
                 </Grid>
               ))}
             </Grid>
             
             {totalPages > 1 && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: { xs: 10, sm: 4 } }}>
                 <Pagination 
                   count={totalPages} 
                   page={page} 

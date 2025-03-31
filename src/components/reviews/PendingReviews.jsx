@@ -95,7 +95,7 @@ const PendingReviews = () => {
             border: `1px solid ${theme.palette.divider}`
           }}
         >
-          <Box sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
+          <Box sx={{ p: 2, bgcolor: theme.palette.primary.main, opacity: 0.05 }}>
             <Typography variant="subtitle2">
               {t('orderNumber')}: {order.orderNumber}
             </Typography>
@@ -123,12 +123,23 @@ const PendingReviews = () => {
                       borderRadius: 0
                     }}
                   >
-                    <CardMedia
-                      component="img"
-                      sx={{ width: 80, height: 80, objectFit: 'cover' }}
-                      image={product.imageUrl}
-                      alt={product.name}
-                    />
+                    <Box sx={{ width: 80, height: 80, position: 'relative' }}>
+                      <CardMedia
+                        component="img"
+                        sx={{ 
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center'
+                        }}
+                        image={product.imageUrl}
+                        alt={product.name}
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = '/images/placeholder.png'; // Fallback image
+                        }}
+                      />
+                    </Box>
                     <CardContent sx={{ flex: '1 0 auto', p: 2 }}>
                       <Typography variant="subtitle2" noWrap>
                         {product.name}

@@ -2406,6 +2406,87 @@ export const getUserStatistics = async (userId) => {
   }
 };
 
+// Shop Settings Management
+export const updateShopSettings = async (shopSettings, sellerId) => {
+  try {
+    if (!sellerId) {
+      throw new Error('Seller ID is required');
+    }
+    
+    // Reference to the shop settings document
+    const shopSettingsRef = doc(db, 'shopSettings', sellerId);
+    
+    // Check if shop settings document exists
+    const shopSettingsSnap = await getDoc(shopSettingsRef);
+    
+    const updatedSettings = {
+      ...shopSettings,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (!shopSettingsSnap.exists()) {
+      // Create new shop settings document
+      await setDoc(shopSettingsRef, {
+        ...updatedSettings,
+        sellerId,
+        createdAt: serverTimestamp()
+      });
+    } else {
+      // Update existing shop settings document
+      await updateDoc(shopSettingsRef, updatedSettings);
+    }
+    
+    // Update seller profile with shop name and URL
+    const userRef = doc(db, 'users', sellerId);
+    await updateDoc(userRef, {
+      shopName: shopSettings.name,
+      shopUrl: shopSettings.url,
+      updatedAt: serverTimestamp()
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating shop settings:', error);
+    throw error;
+  }
+};
+
+// Get shop settings for a seller
+export const getShopSettings = async (sellerId) => {
+  try {
+    if (!sellerId) {
+      throw new Error('Seller ID is required');
+    }
+    
+    const shopSettingsRef = doc(db, 'shopSettings', sellerId);
+    const shopSettingsSnap = await getDoc(shopSettingsRef);
+    
+    if (!shopSettingsSnap.exists()) {
+      // Return default empty settings
+      return {
+        name: '',
+        url: '',
+        description: '',
+        email: '',
+        phone: '',
+        paymentMethod: '',
+        accountName: '',
+        bankName: '',
+        accountNumber: '',
+        mobileNumber: '',
+        paypalEmail: '',
+        returnPolicy: '',
+        shippingPolicy: ''
+      };
+    }
+    
+    return shopSettingsSnap.data();
+  } catch (error) {
+    console.error('Error getting shop settings:', error);
+    throw error;
+  }
+};
+
 // Seller Product Management
 export const getSellerProducts = async (sellerId) => {
   try {

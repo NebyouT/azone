@@ -44,7 +44,7 @@ const ProductCard = ({ product }) => {
   return (
     <Card 
       sx={{ 
-        maxWidth: 345, 
+        width: '100%',
         height: '100%', 
         display: 'flex', 
         flexDirection: 'column',
@@ -53,18 +53,26 @@ const ProductCard = ({ product }) => {
           transform: 'translateY(-5px)',
           boxShadow: 6,
         },
-        cursor: 'pointer'
+        cursor: 'pointer',
+        borderRadius: 0
       }}
       onClick={handleCardClick}
     >
-      <Box sx={{ position: 'relative' }}>
+      <Box sx={{ position: 'relative', paddingTop: '100%', overflow: 'hidden' }}>
         <CardMedia
           component="img"
-          height={200}
           image={getProductImageUrl(product)}
           alt={product.name}
           onError={(e) => handleImageError(e)}
-          sx={{ objectFit: 'cover' }}
+          sx={{ 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center'
+          }}
         />
         <IconButton
           sx={{
@@ -98,8 +106,22 @@ const ProductCard = ({ product }) => {
           />
         )}
       </Box>
-      <CardContent sx={{ flexGrow: 1 }}>
-        <Typography gutterBottom variant="h6" component="div" noWrap>
+      <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', height: 150, p: 2 }}>
+        <Typography 
+          gutterBottom 
+          variant="h6" 
+          component="div" 
+          sx={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: 1.2,
+            height: '2.4em',
+            mb: 1
+          }}
+        >
           {product.name}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -113,14 +135,34 @@ const ProductCard = ({ product }) => {
             ({product.reviewCount || 0})
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <Typography 
+          variant="body2" 
+          color="text.secondary" 
+          sx={{ 
+            mb: 1,
+            fontSize: '0.75rem'
+          }}
+        >
           {product.category}
         </Typography>
-        <Typography variant="body2" color="text.secondary" noWrap>
+        <Typography 
+          variant="body2" 
+          color="text.secondary" 
+          sx={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: 1.2,
+            height: '2.4em',
+            fontSize: '0.75rem'
+          }}
+        >
           {product.description}
         </Typography>
       </CardContent>
-      <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+      <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2, pt: 0 }}>
         <Box>
           {product.discount > 0 ? (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>

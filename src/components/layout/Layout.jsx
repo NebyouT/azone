@@ -49,6 +49,10 @@ const Layout = () => {
             md: '32px',
             lg: '40px'
           },
+          paddingTop: {
+            xs: '80px', 
+            md: '32px'  
+          },
           paddingBottom: isMobile ? '80px' : undefined, 
           position: 'relative',
           zIndex: 1,
