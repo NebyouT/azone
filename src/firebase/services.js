@@ -30,7 +30,10 @@ import {
   orderBy,
   limit,
   serverTimestamp,
-  setDoc
+  setDoc,
+  writeBatch,
+  arrayUnion,
+  Timestamp
 } from 'firebase/firestore';
 import { app } from './config';
 import { uploadImage, getPublicIdFromUrl } from '../cloudinary/services';
@@ -564,9 +567,15 @@ export const addProduct = async (productData, imageFile, additionalImageFiles = 
       additionalImages = productData.additionalImages;
     }
     
+    // Ensure hasVariants field is properly set
+    const hasVariants = productData.hasVariants === true || productData.hasVariants === false 
+      ? productData.hasVariants 
+      : false;
+    
     // Create product document in Firestore
     const productRef = await addDoc(collection(db, 'products'), {
       ...productData,
+      hasVariants, // Use the validated hasVariants value
       imageUrl,
       additionalImages,
       sellerId: currentUser.uid,
@@ -893,180 +902,8 @@ export const getOrderById = async (orderId) => {
   }
 };
 
-export const updateOrderStatus = async (orderId, status) => {
+export const updateOrderStatus = async (orderId, status, updatedBy) => {
   try {
-    const orderRef = doc(db, 'orders', orderId);
-    await updateDoc(orderRef, { 
-      status,
-      updatedAt: serverTimestamp()
-    });
-    
-    return true;
-  } catch (error) {
-    console.error("Error updating order status:", error);
-    throw error;
-  }
-};
-
-// Seller Product Management
-export const getSellerProducts = async (sellerId) => {
-  try {
-    if (!sellerId) {
-      throw new Error('Seller ID is required');
-    }
-
-    try {
-      // First attempt with ordering (requires composite index)
-      const productsQuery = query(
-        collection(db, 'products'),
-        where('sellerId', '==', sellerId),
-        orderBy('createdAt', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(productsQuery);
-      const products = [];
-      
-      querySnapshot.forEach((doc) => {
-        products.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      
-      return products;
-    } catch (indexError) {
-      // If the index error occurs, use a fallback approach
-      console.warn('Index error occurred, using fallback method:', indexError.message);
-      
-      // Fallback: Get all orders for the user without sorting
-      const productsRef = collection(db, 'products');
-      const fallbackQuery = query(
-        productsRef,
-        where('sellerId', '==', sellerId)
-      );
-      
-      const fallbackSnapshot = await getDocs(fallbackQuery);
-      let fallbackProducts = [];
-      
-      fallbackSnapshot.forEach((doc) => {
-        fallbackProducts.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      
-      // Sort the results in memory instead
-      fallbackProducts.sort((a, b) => {
-        // Handle missing createdAt fields
-        const dateA = a.createdAt ? new Date(a.createdAt.seconds * 1000) : new Date(0);
-        const dateB = b.createdAt ? new Date(b.createdAt.seconds * 1000) : new Date(0);
-        
-        return dateB - dateA; // descending order
-      });
-      
-      return fallbackProducts;
-    }
-  } catch (error) {
-    console.error("Error getting seller products:", error);
-    throw error;
-  }
-};
-
-// Order Management
-export const getSellerOrders = async (sellerId) => {
-  try {
-    try {
-      // Try the query with index first
-      const ordersQuery = query(
-        collection(db, 'orders'),
-        where('items', 'array-contains', { sellerId }),
-        orderBy('createdAt', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(ordersQuery);
-      const orders = [];
-      
-      querySnapshot.forEach((doc) => {
-        // Filter items to only include this seller's items
-        const orderData = doc.data();
-        const sellerItems = orderData.items.filter(item => item.sellerId === sellerId);
-        
-        // Calculate total for this seller's items
-        const sellerTotal = sellerItems.reduce((total, item) => {
-          return total + (item.price * item.quantity);
-        }, 0);
-        
-        orders.push({
-          id: doc.id,
-          ...orderData,
-          sellerItems,
-          sellerTotal
-        });
-      });
-      
-      return orders;
-    } catch (indexError) {
-      // If the index error occurs, use a fallback approach
-      console.warn('Index error occurred, using fallback method for seller orders:', indexError.message);
-      
-      // Fallback: Get all orders and filter in memory
-      // This query doesn't require a composite index
-      const ordersRef = collection(db, 'orders');
-      const fallbackSnapshot = await getDocs(ordersRef);
-      const orders = [];
-      
-      fallbackSnapshot.forEach((doc) => {
-        const orderData = doc.data();
-        
-        // Check if this order contains items from this seller
-        if (orderData.items && Array.isArray(orderData.items)) {
-          const sellerItems = orderData.items.filter(item => item.sellerId === sellerId);
-          
-          // Only include orders that have items from this seller
-          if (sellerItems.length > 0) {
-            // Calculate total for this seller's items
-            const sellerTotal = sellerItems.reduce((total, item) => {
-              return total + (item.price * item.quantity);
-            }, 0);
-            
-            orders.push({
-              id: doc.id,
-              ...orderData,
-              sellerItems,
-              sellerTotal
-            });
-          }
-        }
-      });
-      
-      // Sort the results in memory (not as efficient, but works without index)
-      orders.sort((a, b) => {
-        const dateA = a.createdAt?.toDate?.() || new Date(0);
-        const dateB = b.createdAt?.toDate?.() || new Date(0);
-        return dateB - dateA; // descending order
-      });
-      
-      // Display a message to create the index
-      console.info(
-        'Please create the required Firestore index using this link:',
-        indexError.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0] || 
-        'https://console.firebase.google.com/project/_/firestore/indexes'
-      );
-      
-      return orders;
-    }
-  } catch (error) {
-    console.error("Error getting seller orders:", error);
-    throw error;
-  }
-};
-
-export const updateOrderStatusForSeller = async (orderId, status, sellerId) => {
-  try {
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error('You must be logged in to update an order');
-    
-    // Get the current order data
     const orderRef = doc(db, 'orders', orderId);
     const orderSnap = await getDoc(orderRef);
     
@@ -1076,185 +913,184 @@ export const updateOrderStatusForSeller = async (orderId, status, sellerId) => {
     
     const orderData = orderSnap.data();
     
-    // Check if this seller has items in this order
-    const hasSellerItems = orderData.items.some(item => item.sellerId === sellerId);
-    
-    if (!hasSellerItems) {
-      throw new Error('You do not have permission to update this order');
-    }
-    
-    // Update the status for this seller's items
-    const updatedItems = orderData.items.map(item => {
-      if (item.sellerId === sellerId) {
-        return { ...item, status };
-      }
-      return item;
-    });
-    
-    // Create a notification for the customer
-    const notificationMessage = getStatusNotificationMessage(status, orderData.sellerName || 'Seller');
-    
-    // Add notification to the order
-    const notification = {
-      message: notificationMessage,
-      timestamp: serverTimestamp(),
+    // Create status update history
+    const statusUpdate = {
       status,
-      sellerId,
-      sellerName: currentUser.displayName || 'Seller'
+      updatedBy,
+      timestamp: serverTimestamp()
     };
-    
-    const notifications = orderData.notifications || [];
-    notifications.push(notification);
     
     // Update order document
     await updateDoc(orderRef, {
-      items: updatedItems,
-      notifications,
-      updatedAt: serverTimestamp()
+      status,
+      updatedAt: serverTimestamp(),
+      statusHistory: arrayUnion(statusUpdate)
     });
     
-    // Add a notification to the user's notifications collection if it exists
-    try {
-      if (orderData.userId) {
-        const userNotificationRef = collection(db, 'users', orderData.userId, 'notifications');
-        await addDoc(userNotificationRef, {
-          type: 'order_update',
-          orderId,
-          message: notificationMessage,
-          status,
-          read: false,
-          createdAt: serverTimestamp()
-        });
-      }
-    } catch (notificationError) {
-      // Don't fail the whole operation if notification creation fails
-      console.warn('Failed to create user notification:', notificationError);
+    // If order is delivered by seller, update product sold counts
+    if (status === 'delivered' && updatedBy === orderData.sellerId) {
+      await updateProductSoldCounts(orderId);
     }
     
-    // Update order history
-    const historyRef = collection(db, 'orders', orderId, 'history');
-    await addDoc(historyRef, {
-      status,
-      sellerId,
-      sellerName: currentUser.displayName || 'Seller',
-      timestamp: serverTimestamp(),
-      note: `Order status updated to ${status} by seller`
-    });
-    
-    return true;
   } catch (error) {
-    console.error("Error updating order status for seller:", error);
+    console.error('Error updating order status:', error);
     throw error;
   }
 };
 
-// Helper function to generate notification messages based on status
-const getStatusNotificationMessage = (status, sellerName) => {
-  switch (status) {
-    case 'processing':
-      return `Your order has been accepted by ${sellerName} and is being processed.`;
-    case 'shipped':
-      return `Your order has been shipped by ${sellerName}.`;
-    case 'completed':
-      return `Your order has been marked as delivered by ${sellerName}.`;
-    case 'cancelled':
-      return `Your order has been cancelled by ${sellerName}.`;
-    default:
-      return `Your order status has been updated to ${status} by ${sellerName}.`;
-  }
-};
-
-// Create a separate seller order when a buyer places an order
-export const createSellerOrders = async (orderData) => {
+export const confirmOrderDelivery = async (orderId) => {
   try {
-    // Ensure we have a valid order ID and items
-    if (!orderData?.id) {
-      console.error("Cannot create seller orders: Missing order ID");
-      return false;
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('You must be logged in to confirm order delivery');
+    
+    // Get the order data
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Order not found');
     }
     
-    if (!orderData?.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
-      console.error("Cannot create seller orders: No items in the order");
-      return false;
+    const orderData = orderSnap.data();
+    
+    // Check if this user owns this order
+    if (orderData.userId !== currentUser.uid) {
+      throw new Error('You do not have permission to confirm this order');
     }
     
-    // Group items by seller
-    const itemsBySeller = {};
+    // Check if order is in a status that can be confirmed
+    if (orderData.status !== 'delivered') {
+      throw new Error('Only delivered orders can be confirmed as received');
+    }
     
-    orderData.items.forEach(item => {
-      // Skip items without a sellerId
-      if (!item?.sellerId) {
-        console.warn("Skipping item without sellerId:", item);
-        return;
-      }
-      
-      if (!itemsBySeller[item.sellerId]) {
-        itemsBySeller[item.sellerId] = [];
-      }
-      itemsBySeller[item.sellerId].push(item);
+    // Create a batch for transaction
+    const batch = writeBatch(db);
+    
+    // Update order status to completed
+    const statusUpdate = {
+      status: 'completed',
+      updatedBy: currentUser.uid,
+      timestamp: new Date().toISOString() // Use ISO string instead of serverTimestamp()
+    };
+    
+    batch.update(orderRef, {
+      status: 'completed',
+      updatedAt: serverTimestamp(),
+      statusHistory: arrayUnion(statusUpdate),
+      deliveryConfirmedAt: serverTimestamp(),
+      completedBy: 'buyer',
+      buyerConfirmed: true
     });
     
-    // If no valid items with sellerIds, return
-    if (Object.keys(itemsBySeller).length === 0) {
-      console.error("No valid items with sellerIds found in the order");
-      return false;
-    }
+    // Release payment to seller
+    await releasePaymentToSeller(orderData, batch);
     
-    // Create a seller order for each seller
-    const sellerOrderPromises = Object.keys(itemsBySeller).map(async (sellerId) => {
-      const sellerItems = itemsBySeller[sellerId];
-      
-      // Calculate total for this seller's items
-      const sellerTotal = sellerItems.reduce((total, item) => {
-        return total + ((item.price || 0) * (item.quantity || 1));
-      }, 0);
-      
-      // Prepare seller order data with null checks for all fields
-      const sellerOrderData = {
-        mainOrderId: orderData.id,
-        sellerId,
-        buyerId: orderData.userId || '',
-        items: sellerItems,
-        total: sellerTotal,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        // Add notifications array with initial status
-        notifications: [{
-          message: `Order received and pending processing.`,
-          timestamp: new Date().toISOString(), // Use ISO string for array items
-          status: 'pending',
-          sellerId: sellerId,
-          sellerName: 'Seller' // Default name if not available
-        }]
-      };
-      
-      // Only add shippingAddress if it exists
-      if (orderData.shippingAddress) {
-        sellerOrderData.shippingAddress = orderData.shippingAddress;
-      } else if (orderData.shippingDetails) {
-        sellerOrderData.shippingAddress = orderData.shippingDetails;
-      }
-      
-      // Create a new seller order
-      const sellerOrderRef = collection(db, 'sellerOrders');
-      await addDoc(sellerOrderRef, sellerOrderData);
-    });
+    // Commit the batch
+    await batch.commit();
     
-    await Promise.all(sellerOrderPromises);
+    // Update user statistics
+    await updateUserCompletionStats(currentUser.uid, 'buyer');
+    
     return true;
   } catch (error) {
-    console.error("Error creating seller orders:", error);
-    // Don't throw the error, just return false to prevent the main order creation from failing
-    return false;
+    console.error('Error confirming order delivery:', error);
+    throw error;
   }
 };
 
-// Get all orders for a specific seller
-export const getSellerOrdersFromCollection = async (sellerId) => {
+export const releasePaymentToSeller = async (orderData, batch) => {
   try {
+    if (!orderData) {
+      throw new Error('Order data is required to release payment');
+    }
+    
+    // Check if this is a multi-seller order or single seller order
+    if (!orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+      throw new Error('Order has no items');
+    }
+    
+    // For now, we'll handle the case where all items are from the same seller
+    // In a multi-seller scenario, this would need to be split by seller
+    const firstItem = orderData.items[0];
+    const sellerId = firstItem.sellerId || orderData.sellerId;
+    
+    if (!sellerId) {
+      throw new Error('Seller ID could not be found in order data');
+    }
+    
+    // Safely extract order data with fallbacks
+    const totalAmount = orderData.totalAmount || orderData.total || 0;
+    const orderId = orderData.id || 'unknown';
+    const userId = orderData.userId;
+    
+    if (!userId) {
+      throw new Error('Buyer ID is required to release payment');
+    }
+    
+    console.log('Releasing payment to seller:', sellerId, 'for order:', orderId, 'amount:', totalAmount);
+    
+    // Format order ID safely for display
+    const orderIdDisplay = typeof orderId === 'string' ? orderId.substring(0, 8) : 'unknown';
+    
+    // Get seller wallet
+    const sellerWalletRef = doc(db, 'wallets', sellerId);
+    const sellerWalletSnap = await getDoc(sellerWalletRef);
+    
+    if (!sellerWalletSnap.exists()) {
+      // Create seller wallet if it doesn't exist
+      batch.set(sellerWalletRef, {
+        userId: sellerId,
+        balance: totalAmount,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Update existing seller wallet
+      const sellerWallet = sellerWalletSnap.data();
+      batch.update(sellerWalletRef, {
+        balance: (sellerWallet.balance || 0) + totalAmount,
+        updatedAt: serverTimestamp()
+      });
+    }
+    
+    // Record transaction for seller
+    const sellerTransactionRef = doc(collection(db, 'transactions'));
+    batch.set(sellerTransactionRef, {
+      userId: sellerId,
+      type: 'credit',
+      amount: totalAmount,
+      description: `Payment received for order #${orderIdDisplay}`,
+      status: 'completed',
+      orderId,
+      createdAt: serverTimestamp()
+    });
+    
+    // Record transaction for buyer
+    const buyerTransactionRef = doc(collection(db, 'transactions'));
+    batch.set(buyerTransactionRef, {
+      userId: userId,
+      type: 'debit',
+      amount: totalAmount,
+      description: `Payment released for order #${orderIdDisplay}`,
+      status: 'completed',
+      orderId,
+      createdAt: serverTimestamp()
+    });
+    
+  } catch (error) {
+    console.error('Error releasing payment to seller:', error);
+    throw error;
+  }
+};
+
+export const getSellerOrders = async (sellerId) => {
+  try {
+    if (!sellerId) {
+      throw new Error('Seller ID is required');
+    }
+    
     try {
-      // Try the query with index first
+      // First attempt with ordering (requires composite index)
       const sellerOrdersRef = collection(db, 'sellerOrders');
       const q = query(
         sellerOrdersRef,
@@ -1392,12 +1228,15 @@ export const updateSellerOrderStatus = async (orderDocId, status) => {
     notifications.push(notification);
     
     // Update seller order document
-    await updateDoc(orderRef, {
+    const sellerOrderUpdate = {
       status,
       notifications,
       updatedAt: serverTimestamp(), // serverTimestamp is fine for direct field updates
-      sellerMarkedShipped: status === 'shipped' ? true : orderData.sellerMarkedShipped
-    });
+      ...(status === 'shipped' ? { sellerMarkedShipped: true } : {}),
+      ...(status === 'delivered' ? { sellerMarkedDelivered: true } : {})
+    };
+    
+    await updateDoc(orderRef, sellerOrderUpdate);
     
     // If there's a main order, update the status of the seller's items in it
     if (orderData.mainOrderId) {
@@ -1416,147 +1255,54 @@ export const updateSellerOrderStatus = async (orderDocId, status) => {
             return item;
           });
           
-          // Update main order document
-          await updateDoc(mainOrderRef, {
-            items: updatedItems,
-            updatedAt: serverTimestamp()
-          });
-        }
-      } catch (mainOrderError) {
-        console.warn("Error updating main order:", mainOrderError);
-        // Continue even if main order update fails
-      }
-    }
-    
-    // Funds are only transferred when the buyer confirms delivery, not when seller marks as completed
-    
-    // Add a notification to the user's notifications collection if it exists
-    try {
-      if (orderData.buyerId) {
-        const userNotificationRef = collection(db, 'users', orderData.buyerId, 'notifications');
-        await addDoc(userNotificationRef, {
-          type: 'order_update',
-          orderId: doc.id,
-          mainOrderId: orderData.mainOrderId,
-          message: notificationMessage,
-          status,
-          read: false,
-          createdAt: serverTimestamp()
-        });
-      }
-    } catch (notificationError) {
-      // Don't fail the whole operation if notification creation fails
-      console.warn('Failed to create user notification:', notificationError);
-    }
-    
-    // Update order history
-    const historyRef = collection(db, 'sellerOrders', orderDocId, 'history');
-    await addDoc(historyRef, {
-      status,
-      timestamp: serverTimestamp(), // This is fine as it's not in an array
-      note: `Order status updated to ${status} by seller`
-    });
-    
-    return true;
-  } catch (error) {
-    console.error("Error updating seller order status:", error);
-    throw error;
-  }
-};
-
-// Buyer confirms order delivery
-export const confirmOrderDelivery = async (orderId) => {
-  try {
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error('You must be logged in to confirm order delivery');
-    
-    // Get the order data
-    const orderRef = doc(db, 'orders', orderId);
-    const orderSnap = await getDoc(orderRef);
-    
-    if (!orderSnap.exists()) {
-      throw new Error('Order not found');
-    }
-    
-    const orderData = orderSnap.data();
-    
-    // Check if this user owns this order
-    if (orderData.userId !== currentUser.uid) {
-      throw new Error('You do not have permission to confirm this order');
-    }
-    
-    // Check if order is in a status that can be confirmed
-    if (orderData.status !== 'shipped') {
-      throw new Error('Only shipped orders can be confirmed as delivered');
-    }
-    
-    // Update order status to completed
-    await updateDoc(orderRef, {
-      status: 'completed',
-      completedAt: serverTimestamp(),
-      completedBy: 'buyer',
-      buyerConfirmed: true,
-      updatedAt: serverTimestamp()
-    });
-    
-    // Update user statistics
-    await updateUserCompletionStats(currentUser.uid, 'buyer');
-    
-    // Update all associated seller orders and transfer funds
-    const sellerOrdersRef = collection(db, 'sellerOrders');
-    const q = query(sellerOrdersRef, where('mainOrderId', '==', orderId));
-    const sellerOrdersSnap = await getDocs(q);
-    
-    const confirmSellerOrderPromises = [];
-    sellerOrdersSnap.forEach((doc) => {
-      const sellerOrderData = doc.data();
-      
-      // Only update seller orders that are in shipped status
-      if (sellerOrderData.status === 'shipped') {
-        confirmSellerOrderPromises.push(
-          updateDoc(doc.ref, {
-            status: 'completed',
-            completedAt: serverTimestamp(),
-            completedBy: 'buyer',
-            buyerConfirmed: true,
-            updatedAt: serverTimestamp()
-          })
-        );
-        
-        // Add notification for seller
-        if (sellerOrderData.sellerId) {
-          const notification = {
-            type: 'order_update',
-            orderId: doc.id,
-            mainOrderId: orderId,
-            message: `Order #${orderId.slice(0, 8)} has been confirmed as delivered by the buyer.`,
-            status: 'completed',
-            read: false,
-            createdAt: serverTimestamp()
+          // Create status update history for the main order
+          const statusUpdate = {
+            status,
+            updatedBy: currentUser.uid,
+            updaterRole: 'seller',
+            timestamp: new Date().toISOString() // Use ISO string instead of serverTimestamp
           };
           
-          confirmSellerOrderPromises.push(
-            addDoc(collection(db, 'users', sellerOrderData.sellerId, 'notifications'), notification)
-          );
+          // Update main order document
+          const mainOrderUpdate = {
+            items: updatedItems,
+            updatedAt: serverTimestamp(),
+            statusHistory: arrayUnion(statusUpdate)
+          };
           
-          // Update seller statistics
-          confirmSellerOrderPromises.push(
-            updateUserCompletionStats(sellerOrderData.sellerId, 'seller')
-          );
+          // If the status is 'delivered', update the main order status as well
+          if (status === 'delivered') {
+            mainOrderUpdate.status = 'delivered';
+            
+            // Send notification to buyer that they need to confirm delivery
+            try {
+              // Add notification to user's notifications collection
+              if (mainOrderData.userId) {
+                const userNotificationRef = collection(db, 'users', mainOrderData.userId, 'notifications');
+                await addDoc(userNotificationRef, {
+                  type: 'delivery_confirmation',
+                  orderId: orderData.mainOrderId,
+                  message: 'Your order has been marked as delivered. Please confirm receipt to complete the transaction.',
+                  read: false,
+                  createdAt: serverTimestamp()
+                });
+              }
+            } catch (notificationError) {
+              console.warn('Failed to create delivery confirmation notification:', notificationError);
+            }
+          }
           
-          // Transfer funds to seller
-          confirmSellerOrderPromises.push(
-            transferFundsToSellerForCompletedOrder(orderId, sellerOrderData.sellerId)
-          );
+          await updateDoc(mainOrderRef, mainOrderUpdate);
         }
+      } catch (mainOrderError) {
+        console.error('Error updating main order:', mainOrderError);
+        // Don't throw here as we still want to update the seller order
       }
-    });
-    
-    await Promise.all(confirmSellerOrderPromises);
+    }
     
     return true;
   } catch (error) {
-    console.error("Error confirming order delivery:", error);
+    console.error('Error updating seller order status:', error);
     throw error;
   }
 };
@@ -1744,69 +1490,6 @@ const updateUserCancellationStats = async (userId, role) => {
   } catch (error) {
     console.error("Error updating user cancellation stats:", error);
     // Don't throw error to prevent the main operation from failing
-  }
-};
-
-// Get user statistics related to order completion and cancellation
-export const getUserStatistics = async (userId) => {
-  try {
-    if (!userId) {
-      throw new Error('User ID is required');
-    }
-
-    // Get all orders for this user
-    const ordersQuery = query(
-      collection(db, 'orders'),
-      where('userId', '==', userId)
-    );
-    
-    const ordersSnapshot = await getDocs(ordersQuery);
-    
-    if (ordersSnapshot.empty) {
-      return {
-        totalOrders: 0,
-        completedOrders: 0,
-        cancelledOrders: 0,
-        completionRate: 0,
-        cancellationRate: 0
-      };
-    }
-    
-    // Count orders by status
-    let totalOrders = 0;
-    let completedOrders = 0;
-    let cancelledOrders = 0;
-    
-    ordersSnapshot.forEach(doc => {
-      const orderData = doc.data();
-      totalOrders++;
-      
-      if (orderData.status === 'completed') {
-        completedOrders++;
-      } else if (orderData.status === 'cancelled') {
-        cancelledOrders++;
-      }
-    });
-    
-    // Calculate rates (avoid division by zero)
-    const completionRate = totalOrders > 0 
-      ? Math.round((completedOrders / totalOrders) * 100) 
-      : 0;
-      
-    const cancellationRate = totalOrders > 0 
-      ? Math.round((cancelledOrders / totalOrders) * 100) 
-      : 0;
-    
-    return {
-      totalOrders,
-      completedOrders,
-      cancelledOrders,
-      completionRate,
-      cancellationRate
-    };
-  } catch (error) {
-    console.error('Error getting user statistics:', error);
-    throw error;
   }
 };
 
@@ -2000,5 +1683,789 @@ export const getRelatedProducts = async (categoryId, currentProductId, limitCoun
     console.error('Error fetching related products:', error);
     // Return empty array to prevent UI errors
     return [];
+  }
+};
+
+// Update product sold count when an order is completed
+export const updateProductSoldCounts = async (orderId) => {
+  try {
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Order not found');
+    }
+    
+    const orderData = orderSnap.data();
+    
+    // Only update sold counts for delivered orders
+    if (orderData.status !== 'delivered') {
+      return;
+    }
+    
+    // Get batch for transaction
+    const batch = writeBatch(db);
+    
+    // Update each product's sold count
+    for (const item of orderData.items) {
+      const productRef = doc(db, 'products', item.id);
+      const productSnap = await getDoc(productRef);
+      
+      if (productSnap.exists()) {
+        const productData = productSnap.data();
+        const currentSoldCount = productData.soldCount || 0;
+        
+        // Update sold count
+        batch.update(productRef, {
+          soldCount: currentSoldCount + item.quantity
+        });
+      }
+    }
+    
+    // Commit the batch
+    await batch.commit();
+    
+  } catch (error) {
+    console.error('Error updating product sold counts:', error);
+    throw error;
+  }
+};
+
+// Create a separate seller order when a buyer places an order
+export const createSellerOrders = async (orderData) => {
+  try {
+    // Ensure we have a valid order ID and items
+    if (!orderData?.id) {
+      console.error("Cannot create seller orders: Missing order ID");
+      return false;
+    }
+    
+    if (!orderData?.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+      console.error("Cannot create seller orders: No items in the order");
+      return false;
+    }
+    
+    // Group items by seller
+    const itemsBySeller = {};
+    
+    orderData.items.forEach(item => {
+      // Skip items without a sellerId
+      if (!item?.sellerId) {
+        console.warn("Skipping item without sellerId:", item);
+        return;
+      }
+      
+      if (!itemsBySeller[item.sellerId]) {
+        itemsBySeller[item.sellerId] = [];
+      }
+      itemsBySeller[item.sellerId].push(item);
+    });
+    
+    // If no valid items with sellerIds, return
+    if (Object.keys(itemsBySeller).length === 0) {
+      console.error("No valid items with sellerIds found in the order");
+      return false;
+    }
+    
+    // Create a seller order for each seller
+    const sellerOrderPromises = Object.keys(itemsBySeller).map(async (sellerId) => {
+      const sellerItems = itemsBySeller[sellerId];
+      
+      // Calculate total for this seller's items
+      const sellerTotal = sellerItems.reduce((total, item) => {
+        return total + ((item.price || 0) * (item.quantity || 1));
+      }, 0);
+      
+      // Prepare seller order data with null checks for all fields
+      const sellerOrderData = {
+        mainOrderId: orderData.id,
+        sellerId,
+        buyerId: orderData.userId || '',
+        items: sellerItems,
+        total: sellerTotal,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        // Add notifications array with initial status
+        notifications: [{
+          message: `Order received and pending processing.`,
+          timestamp: new Date().toISOString(), // Use ISO string instead of serverTimestamp
+          status: 'pending',
+          sellerId: sellerId,
+          sellerName: 'Seller' // Default name if not available
+        }]
+      };
+      
+      // Only add shippingAddress if it exists
+      if (orderData.shippingAddress) {
+        sellerOrderData.shippingAddress = orderData.shippingAddress;
+      } else if (orderData.shippingDetails) {
+        sellerOrderData.shippingAddress = orderData.shippingDetails;
+      }
+      
+      // Create a new seller order
+      const sellerOrderRef = collection(db, 'sellerOrders');
+      await addDoc(sellerOrderRef, sellerOrderData);
+    });
+    
+    await Promise.all(sellerOrderPromises);
+    return true;
+  } catch (error) {
+    console.error("Error creating seller orders:", error);
+    // Don't throw the error, just return false to prevent the main order creation from failing
+    return false;
+  }
+};
+
+// Get buyer information for an order
+export const getBuyerInfoForOrder = async (orderId) => {
+  try {
+    // First try to get the order from sellerOrders collection
+    const sellerOrderRef = doc(db, 'sellerOrders', orderId);
+    const sellerOrderSnap = await getDoc(sellerOrderRef);
+    
+    if (sellerOrderSnap.exists()) {
+      const sellerOrderData = sellerOrderSnap.data();
+      const userId = sellerOrderData.buyerId;
+      
+      if (!userId) {
+        throw new Error('Buyer information not available');
+      }
+      
+      // Get user profile
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      
+      if (!userSnap.exists()) {
+        throw new Error('Buyer profile not found');
+      }
+      
+      const userData = userSnap.data();
+      
+      // Return only necessary buyer information
+      return {
+        id: userId,
+        name: userData.displayName || 'Anonymous',
+        email: userData.email || 'Not provided',
+        phone: userData.phoneNumber || 'Not provided',
+        shippingAddress: sellerOrderData.shippingAddress || 'Not provided'
+      };
+    }
+    
+    // If not found in sellerOrders, try the main orders collection
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Order not found');
+    }
+    
+    const orderData = orderSnap.data();
+    const userId = orderData.userId;
+    
+    if (!userId) {
+      throw new Error('Buyer information not available');
+    }
+    
+    // Get user profile
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (!userSnap.exists()) {
+      throw new Error('Buyer profile not found');
+    }
+    
+    const userData = userSnap.data();
+    
+    // Return only necessary buyer information
+    return {
+      id: userId,
+      name: userData.displayName || 'Anonymous',
+      email: userData.email || 'Not provided',
+      phone: userData.phoneNumber || 'Not provided',
+      shippingAddress: orderData.shippingAddress || 'Not provided'
+    };
+  } catch (error) {
+    console.error('Error getting buyer info:', error);
+    throw error;
+  }
+};
+
+// Update order status by seller
+export const updateOrderStatusBySeller = async (orderId, status, sellerId) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('You must be logged in to update an order');
+    
+    if (!['confirmed', 'shipped', 'delivered'].includes(status)) {
+      throw new Error('Invalid status. Must be one of: confirmed, shipped, delivered');
+    }
+    
+    // Get the order data
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Order not found');
+    }
+    
+    const orderData = orderSnap.data();
+    
+    // Verify this seller is associated with this order
+    if (orderData.sellerId !== sellerId) {
+      throw new Error('You do not have permission to update this order');
+    }
+    
+    // Create status update history
+    const statusUpdate = {
+      status,
+      updatedBy: sellerId,
+      timestamp: new Date().toISOString() // Use ISO string instead of serverTimestamp
+    };
+    
+    // Update order document
+    await updateDoc(orderRef, {
+      status,
+      updatedAt: serverTimestamp(),
+      statusHistory: arrayUnion(statusUpdate)
+    });
+    
+    // If order is delivered, update product sold counts
+    if (status === 'delivered') {
+      await updateProductSoldCounts(orderId);
+      
+      // Send notification to buyer that they need to confirm delivery
+      try {
+        // Add notification to user's notifications collection
+        if (orderData.userId) {
+          const userNotificationRef = collection(db, 'users', orderData.userId, 'notifications');
+          await addDoc(userNotificationRef, {
+            type: 'delivery_confirmation',
+            orderId,
+            message: 'Your order has been marked as delivered. Please confirm receipt to complete the transaction.',
+            read: false,
+            createdAt: serverTimestamp()
+          });
+        }
+      } catch (notificationError) {
+        console.warn('Failed to create delivery confirmation notification:', notificationError);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating order status by seller:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate notification message based on order status
+ * @param {string} status - Order status
+ * @param {string} sellerName - Name of the seller
+ * @returns {string} - Notification message
+ */
+const getStatusNotificationMessage = (status, sellerName) => {
+  switch (status) {
+    case 'confirmed':
+      return `Your order has been confirmed by ${sellerName} and is being processed.`;
+    case 'shipped':
+      return `Your order has been shipped by ${sellerName}.`;
+    case 'delivered':
+      return `Your order has been marked as delivered by ${sellerName}. Please confirm receipt to complete the transaction.`;
+    case 'completed':
+      return `Your order has been completed. Thank you for shopping with ${sellerName}.`;
+    case 'cancelled':
+      return `Your order has been cancelled by ${sellerName}.`;
+    default:
+      return `Your order status has been updated to ${status} by ${sellerName}.`;
+  }
+};
+
+/**
+ * Get statistics for a seller
+ * @param {string} sellerId - The ID of the seller
+ * @param {string} period - The time period for statistics (day, week, month, year)
+ * @returns {Promise<object>} - Seller statistics
+ */
+export const getSellerStatistics = async (sellerId, period = 'month') => {
+  try {
+    if (!sellerId) throw new Error('Seller ID is required');
+    
+    // Get current date and calculate start date based on period
+    const now = new Date();
+    let startDate = new Date();
+    
+    switch (period) {
+      case 'day':
+        startDate.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setMonth(now.getMonth() - 1); // Default to month
+    }
+    
+    // Convert to Firestore timestamp
+    const startTimestamp = Timestamp.fromDate(startDate);
+    
+    // Get seller orders for the period
+    const ordersQuery = query(
+      collection(db, 'sellerOrders'),
+      where('sellerId', '==', sellerId),
+      where('createdAt', '>=', startTimestamp),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const ordersSnapshot = await getDocs(ordersQuery);
+    const orders = [];
+    
+    ordersSnapshot.forEach((doc) => {
+      orders.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    // Get seller products
+    const productsQuery = query(
+      collection(db, 'products'),
+      where('sellerId', '==', sellerId)
+    );
+    
+    const productsSnapshot = await getDocs(productsQuery);
+    const products = [];
+    
+    productsSnapshot.forEach((doc) => {
+      products.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    // Calculate statistics
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+    
+    const pendingOrders = orders.filter(o => o.status === 'pending').length;
+    const confirmedOrders = orders.filter(o => o.status === 'confirmed').length;
+    const shippedOrders = orders.filter(o => o.status === 'shipped').length;
+    const deliveredOrders = orders.filter(o => o.status === 'delivered').length;
+    const completedOrders = orders.filter(o => o.status === 'completed').length;
+    const cancelledOrders = orders.filter(o => o.status === 'cancelled').length;
+    
+    const totalProducts = products.length;
+    const activeProducts = products.filter(p => p.active !== false).length;
+    const outOfStockProducts = products.filter(p => p.quantity === 0).length;
+    
+    // Group orders by date for timeline data
+    const salesByDate = {};
+    const revenueByDate = {};
+    
+    orders.forEach(order => {
+      const date = order.createdAt ? new Date(order.createdAt.seconds * 1000) : new Date();
+      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      salesByDate[dateStr] = (salesByDate[dateStr] || 0) + 1;
+      revenueByDate[dateStr] = (revenueByDate[dateStr] || 0) + (order.totalAmount || 0);
+    });
+    
+    // Convert to arrays for charts
+    const timelineLabels = Object.keys(salesByDate).sort();
+    const salesData = timelineLabels.map(date => salesByDate[date]);
+    const revenueData = timelineLabels.map(date => revenueByDate[date]);
+    
+    // Get top selling products
+    const productSales = {};
+    orders.forEach(order => {
+      order.items?.forEach(item => {
+        productSales[item.productId] = (productSales[item.productId] || 0) + (item.quantity || 1);
+      });
+    });
+    
+    // Sort products by sales
+    const topProducts = Object.entries(productSales)
+      .map(([productId, quantity]) => {
+        const product = products.find(p => p.id === productId) || { name: 'Unknown Product' };
+        return {
+          productId,
+          name: product.name,
+          quantity
+        };
+      })
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5);
+    
+    return {
+      period,
+      totalOrders,
+      totalRevenue,
+      pendingOrders,
+      confirmedOrders,
+      shippedOrders,
+      deliveredOrders,
+      completedOrders,
+      cancelledOrders,
+      totalProducts,
+      activeProducts,
+      outOfStockProducts,
+      salesTimeline: {
+        labels: timelineLabels,
+        data: salesData
+      },
+      revenueTimeline: {
+        labels: timelineLabels,
+        data: revenueData
+      },
+      topProducts
+    };
+  } catch (error) {
+    console.error('Error getting seller statistics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process a refund from seller to buyer
+ * @param {string} sellerId - ID of the seller
+ * @param {string} buyerId - ID of the buyer
+ * @param {number} amount - Amount to refund
+ * @param {string} orderId - ID of the order being refunded
+ * @returns {Promise<void>}
+ */
+const processRefund = async (sellerId, buyerId, amount, orderId) => {
+  try {
+    if (!sellerId || !buyerId || !amount || amount <= 0 || !orderId) {
+      throw new Error('Invalid refund parameters');
+    }
+
+    const batch = writeBatch(db);
+    
+    // Get seller wallet
+    const sellerWalletRef = doc(db, 'wallets', sellerId);
+    const sellerWalletSnap = await getDoc(sellerWalletRef);
+    
+    if (!sellerWalletSnap.exists()) {
+      throw new Error('Seller wallet not found');
+    }
+    
+    const sellerWallet = sellerWalletSnap.data();
+    
+    // Get buyer wallet
+    const buyerWalletRef = doc(db, 'wallets', buyerId);
+    const buyerWalletSnap = await getDoc(buyerWalletRef);
+    
+    if (!buyerWalletSnap.exists()) {
+      throw new Error('Buyer wallet not found');
+    }
+    
+    const buyerWallet = buyerWalletSnap.data();
+    
+    // Check if seller has enough balance
+    if ((sellerWallet.balance || 0) < amount) {
+      // If seller doesn't have enough balance, still process the refund
+      // This could happen if the seller hasn't received the payment yet
+      console.warn(`Seller ${sellerId} doesn't have enough balance for refund. Creating system-covered refund.`);
+    }
+    
+    // Create transaction records
+    const refundTransactionId = doc(collection(db, 'transactions')).id;
+    
+    // Buyer transaction (credit)
+    const buyerTransactionRef = doc(db, 'transactions', refundTransactionId);
+    batch.set(buyerTransactionRef, {
+      userId: buyerId,
+      amount: amount,
+      type: 'credit',
+      description: `Refund for order #${orderId.substring(0, 8)}`,
+      status: 'completed',
+      orderId: orderId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    // Update buyer wallet
+    batch.update(buyerWalletRef, {
+      balance: (buyerWallet.balance || 0) + amount,
+      updatedAt: serverTimestamp()
+    });
+    
+    // If seller has received payment, deduct from their wallet
+    if ((sellerWallet.balance || 0) >= amount) {
+      // Seller transaction (debit)
+      const sellerTransactionRef = doc(db, 'transactions', doc(collection(db, 'transactions')).id);
+      batch.set(sellerTransactionRef, {
+        userId: sellerId,
+        amount: amount,
+        type: 'debit',
+        description: `Refund issued for order #${orderId.substring(0, 8)}`,
+        status: 'completed',
+        orderId: orderId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      
+      // Update seller wallet
+      batch.update(sellerWalletRef, {
+        balance: (sellerWallet.balance || 0) - amount,
+        updatedAt: serverTimestamp()
+      });
+    }
+    
+    // Commit the batch
+    await batch.commit();
+    
+    console.log(`Refund processed successfully: ${amount} from seller ${sellerId} to buyer ${buyerId} for order ${orderId}`);
+  } catch (error) {
+    console.error('Error processing refund:', error);
+    throw error;
+  }
+};
+
+// Allow buyer to deny that an order has been delivered
+export const denyOrderDelivery = async (orderId) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('You must be logged in to report non-delivery');
+    
+    // Get the order data
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error('Order not found');
+    }
+    
+    const orderData = orderSnap.data();
+    
+    // Check if this user owns this order
+    if (orderData.userId !== currentUser.uid) {
+      throw new Error('You do not have permission to report on this order');
+    }
+    
+    // Check if order is in a status that can be denied
+    if (orderData.status !== 'delivered') {
+      throw new Error('Only delivered orders can be reported as not received');
+    }
+    
+    // Create a batch for transaction
+    const batch = writeBatch(db);
+    
+    // Update order status back to shipped
+    const statusUpdate = {
+      status: 'shipped',
+      updatedBy: currentUser.uid,
+      timestamp: new Date().toISOString() // Use ISO string instead of serverTimestamp()
+    };
+    
+    batch.update(orderRef, {
+      status: 'shipped',
+      updatedAt: serverTimestamp(),
+      statusHistory: arrayUnion(statusUpdate),
+      deliveryDisputed: true,
+      buyerConfirmed: false
+    });
+    
+    // Also update any seller orders related to this order
+    try {
+      // Find seller orders related to this main order
+      const sellerOrdersQuery = query(
+        collection(db, 'sellerOrders'),
+        where('mainOrderId', '==', orderId)
+      );
+      
+      const sellerOrdersSnap = await getDocs(sellerOrdersQuery);
+      
+      sellerOrdersSnap.forEach(doc => {
+        const sellerOrderRef = doc.ref;
+        batch.update(sellerOrderRef, {
+          status: 'shipped',
+          updatedAt: serverTimestamp(),
+          deliveryDisputed: true,
+          notifications: arrayUnion({
+            message: `Buyer has reported that they have not received this order. Please contact the buyer or support for resolution.`,
+            timestamp: new Date().toISOString(),
+            status: 'shipped',
+            buyerId: currentUser.uid,
+            buyerName: currentUser.displayName || 'Buyer'
+          })
+        });
+      });
+    } catch (sellerOrderError) {
+      console.error('Error updating seller orders:', sellerOrderError);
+      // Continue with the main order update even if seller order update fails
+    }
+    
+    // Commit the batch
+    await batch.commit();
+    
+    // Notify seller and admin about the dispute
+    try {
+      // Add notification to seller's notifications collection
+      if (orderData.sellerId) {
+        const sellerNotificationRef = collection(db, 'users', orderData.sellerId, 'notifications');
+        await addDoc(sellerNotificationRef, {
+          type: 'delivery_dispute',
+          orderId,
+          message: 'A buyer has reported that they have not received their order. Please check the order details and contact the buyer.',
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+      
+      // Create a dispute record in the disputes collection
+      const disputesRef = collection(db, 'disputes');
+      await addDoc(disputesRef, {
+        orderId,
+        buyerId: currentUser.uid,
+        sellerId: orderData.sellerId,
+        type: 'delivery_dispute',
+        status: 'open',
+        description: 'Buyer reported order not delivered',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (notificationError) {
+      console.warn('Failed to create delivery dispute notification:', notificationError);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error denying order delivery:', error);
+    throw error;
+  }
+};
+
+// Get user statistics related to order completion and cancellation
+export const getUserStatistics = async (userId) => {
+  try {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    // Get all orders for this user
+    const ordersQuery = query(
+      collection(db, 'orders'),
+      where('userId', '==', userId)
+    );
+    
+    const ordersSnapshot = await getDocs(ordersQuery);
+    
+    if (ordersSnapshot.empty) {
+      return {
+        totalOrders: 0,
+        completedOrders: 0,
+        cancelledOrders: 0,
+        completionRate: 0,
+        cancellationRate: 0
+      };
+    }
+    
+    // Count orders by status
+    let totalOrders = 0;
+    let completedOrders = 0;
+    let cancelledOrders = 0;
+    
+    ordersSnapshot.forEach(doc => {
+      const orderData = doc.data();
+      totalOrders++;
+      
+      if (orderData.status === 'completed') {
+        completedOrders++;
+      } else if (orderData.status === 'cancelled') {
+        cancelledOrders++;
+      }
+    });
+    
+    // Calculate rates (avoid division by zero)
+    const completionRate = totalOrders > 0 
+      ? Math.round((completedOrders / totalOrders) * 100) 
+      : 0;
+      
+    const cancellationRate = totalOrders > 0 
+      ? Math.round((cancelledOrders / totalOrders) * 100) 
+      : 0;
+    
+    return {
+      totalOrders,
+      completedOrders,
+      cancelledOrders,
+      completionRate,
+      cancellationRate
+    };
+  } catch (error) {
+    console.error('Error getting user statistics:', error);
+    throw error;
+  }
+};
+
+// Seller Product Management
+export const getSellerProducts = async (sellerId) => {
+  try {
+    if (!sellerId) {
+      throw new Error('Seller ID is required');
+    }
+
+    try {
+      // First attempt with ordering (requires composite index)
+      const productsQuery = query(
+        collection(db, 'products'),
+        where('sellerId', '==', sellerId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(productsQuery);
+      const products = [];
+      
+      querySnapshot.forEach((doc) => {
+        products.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return products;
+    } catch (indexError) {
+      // If the index error occurs, use a fallback approach
+      console.warn('Index error occurred, using fallback method:', indexError.message);
+      
+      // Fallback: Get all orders for the user without sorting
+      const productsRef = collection(db, 'products');
+      const fallbackQuery = query(
+        productsRef,
+        where('sellerId', '==', sellerId)
+      );
+      
+      const fallbackSnapshot = await getDocs(fallbackQuery);
+      let fallbackProducts = [];
+      
+      fallbackSnapshot.forEach((doc) => {
+        fallbackProducts.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      // Sort the results in memory instead
+      fallbackProducts.sort((a, b) => {
+        // Handle missing createdAt fields
+        const dateA = a.createdAt ? new Date(a.createdAt.seconds * 1000) : new Date(0);
+        const dateB = b.createdAt ? new Date(b.createdAt.seconds * 1000) : new Date(0);
+        
+        return dateB - dateA; // descending order
+      });
+      
+      return fallbackProducts;
+    }
+  } catch (error) {
+    console.error("Error getting seller products:", error);
+    throw error;
   }
 };

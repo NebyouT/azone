@@ -22,6 +22,7 @@ import Profile from './components/profile/Profile';
 import Orders from './components/orders/Orders';
 import OrderDetail from './components/orders/OrderDetail';
 import WalletDashboard from './components/wallet/WalletDashboard';
+import SearchPage from './components/search/SearchPage';
 
 // Seller Components
 import SellerDashboard from './components/seller/SellerDashboard';
@@ -61,6 +62,7 @@ const App = () => {
                     <Route path="products" element={<ProductList />} />
                     <Route path="products/:id" element={<ProductDetail />} />
                     <Route path="cart" element={<Cart />} />
+                    <Route path="search" element={<SearchPage />} />
                     <Route path="login" element={<Login />} />
                     <Route path="register" element={<Register />} />
                     <Route path="forgot-password" element={<ForgotPassword />} />

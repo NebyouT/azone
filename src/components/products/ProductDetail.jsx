@@ -57,7 +57,10 @@ import { useCart } from '../../contexts/CartContext';
 import { getProductById, getRelatedProducts } from '../../firebase/services';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { formatCurrency } from '../../utils/formatters';
+import { getProductImageUrl, handleImageError } from '../../utils/imageUtils';
 import TranslationWrapper from '../common/TranslationWrapper';
+import ReviewSection from '../reviews/ReviewSection';
+import { getReviewStatistics } from '../../firebase/reviewServices';
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -70,11 +73,13 @@ const ProductDetail = () => {
   
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState(null);
+  const [reviewStats, setReviewStats] = useState(null);
+  const [reviewStatsLoading, setReviewStatsLoading] = useState(true);
   
   // Fetch product details
   useEffect(() => {
@@ -82,16 +87,39 @@ const ProductDetail = () => {
       try {
         setLoading(true);
         const productData = await getProductById(id);
+        
+        if (!productData) {
+          setError('Product not found');
+          setLoading(false);
+          return;
+        }
+        
         setProduct(productData);
-        setError(null);
+        
+        // If product has variants, select the first one by default
+        if (productData.variants && productData.variants.length > 0) {
+          setSelectedVariant(productData.variants[0]);
+        }
+        
+        // Fetch review statistics
+        try {
+          setReviewStatsLoading(true);
+          const stats = await getReviewStatistics(id);
+          setReviewStats(stats);
+        } catch (err) {
+          console.error('Error fetching review statistics:', err);
+        } finally {
+          setReviewStatsLoading(false);
+        }
+        
       } catch (err) {
-        console.error("Error fetching product:", err);
-        setError("Failed to load product details. Please try again later.");
+        console.error('Error fetching product:', err);
+        setError('Failed to load product details');
       } finally {
         setLoading(false);
       }
     };
-
+    
     fetchProduct();
   }, [id]);
 
@@ -261,21 +289,44 @@ const ProductDetail = () => {
               {product.name}
             </Typography>
             
-            {/* Rating and Reviews */}
+            {/* Rating and sold count */}
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <Rating 
-                value={product.rating || 4.5} 
-                precision={0.5} 
-                readOnly 
-                size="small"
-                sx={{ color: theme.palette.warning.main }}
-              />
-              <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                {product.rating || 4.5} ({product.reviews?.length || 24} <TranslationWrapper>reviews</TranslationWrapper>)
-              </Typography>
-              <Divider orientation="vertical" flexItem sx={{ mx: 1.5, height: 16 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', mr: 3 }}>
+                <Rating 
+                  value={reviewStats?.averageRating || product.rating || 0} 
+                  precision={0.5} 
+                  readOnly 
+                  size="small"
+                  sx={{ mr: 1, color: theme.palette.warning.main }}
+                />
+                <Typography 
+                  variant="body2" 
+                  component={Link} 
+                  to="#reviews" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById('reviews-section').scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  sx={{ 
+                    color: theme.palette.primary.main,
+                    textDecoration: 'none',
+                    '&:hover': {
+                      textDecoration: 'underline'
+                    }
+                  }}
+                >
+                  {reviewStatsLoading ? (
+                    <Skeleton width={60} />
+                  ) : (
+                    `${reviewStats?.averageRating.toFixed(1) || '0.0'} (${reviewStats?.totalReviews || 0} ${t('reviews')})`
+                  )}
+                </Typography>
+              </Box>
+              
+              <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+              
               <Typography variant="body2" color="text.secondary">
-                {product.sold || 120} <TranslationWrapper>sold</TranslationWrapper>
+                {product.soldCount || 0} {t('sold')}
               </Typography>
             </Box>
             
@@ -570,7 +621,7 @@ const ProductDetail = () => {
           >
             <Tab label={<TranslationWrapper translationKey="description">Description</TranslationWrapper>} />
             <Tab label={<TranslationWrapper translationKey="specifications">Specifications</TranslationWrapper>} />
-            <Tab label={<><TranslationWrapper translationKey="reviews">Reviews</TranslationWrapper> ({product.reviews?.length || 24})</>} />
+            <Tab label={<><TranslationWrapper translationKey="reviews">Reviews</TranslationWrapper> ({reviewStats?.totalReviews || 0})</>} />
           </Tabs>
           
           <Box sx={{ p: 3 }}>
@@ -659,16 +710,16 @@ const ProductDetail = () => {
                 }}>
                   <Box sx={{ textAlign: 'center' }}>
                     <Typography variant="h3" color="primary" fontWeight="bold">
-                      {product.rating || 4.5}
+                      {reviewStats?.averageRating || 0}
                     </Typography>
                     <Rating 
-                      value={product.rating || 4.5} 
+                      value={reviewStats?.averageRating || 0} 
                       precision={0.5} 
                       readOnly 
                       sx={{ color: theme.palette.warning.main, mt: 1 }}
                     />
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {product.reviews?.length || 24} <TranslationWrapper>reviews</TranslationWrapper>
+                      {reviewStats?.totalReviews || 0} <TranslationWrapper>reviews</TranslationWrapper>
                     </Typography>
                   </Box>
                   
@@ -796,7 +847,24 @@ const ProductDetail = () => {
         </Paper>
       </Box>
 
-      <RelatedProducts categoryId={product.category} currentProductId={product.id} />
+      {/* Product description */}
+      <Box sx={{ mt: 6 }}>
+        <Typography variant="h5" gutterBottom>
+          {t('productDescription')}
+        </Typography>
+        <Typography variant="body1">
+          {product.description}
+        </Typography>
+      </Box>
+      
+      {/* Reviews Section */}
+      <Box id="reviews-section">
+        <ReviewSection productId={id} />
+      </Box>
+      
+      {/* Related Products */}
+      <RelatedProducts categoryId={product.category} currentProductId={id} />
+
     </Container>
   );
 };
@@ -1147,8 +1215,9 @@ const RelatedProducts = ({ categoryId, currentProductId }) => {
             <CardMedia
               component="img"
               height="180"
-              image={product.images?.[0] || 'https://via.placeholder.com/180'}
+              image={getProductImageUrl(product)}
               alt={product.name}
+              onError={(e) => handleImageError(e)}
               sx={{ objectFit: 'cover' }}
             />
             <CardContent sx={{ p: 1.5 }}>

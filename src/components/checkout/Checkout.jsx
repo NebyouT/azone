@@ -17,19 +17,37 @@ import {
   useTheme,
   useMediaQuery,
   alpha,
-  StepIcon
+  StepIcon,
+  Tabs,
+  Tab,
+  FormControlLabel,
+  Switch,
+  FormControl,
+  Checkbox
 } from '@mui/material';
 import {
   ShoppingCart as CartIcon,
   LocalShipping as ShippingIcon,
   Payment as PaymentIcon,
-  CheckCircle as ConfirmIcon
+  CheckCircle as ConfirmIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder } from '../../firebase/services';
 import { getWalletBalance } from '../../firebase/walletServices';
 import PaymentOptions from './PaymentOptions';
+import SavedAddresses from './SavedAddresses';
+import GoogleMapLocation from './GoogleMapLocation';
+import { 
+  getSavedAddresses, 
+  saveAddress, 
+  updateAddress, 
+  deleteAddress, 
+  updateDefaultAddress,
+  getDefaultAddress
+} from '../../firebase/shippingServices';
+import { ENABLE_MAPS_BY_DEFAULT } from '../../config/mapConfig';
 
 // Helper function to format currency
 const formatCurrency = (amount) => {
@@ -99,7 +117,14 @@ const Checkout = () => {
   const [orderComplete, setOrderComplete] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [walletBalance, setWalletBalance] = useState(0);
-  
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [shippingTabValue, setShippingTabValue] = useState(0); // 0 for saved addresses, 1 for new address
+  const [mapCoordinates, setMapCoordinates] = useState(null);
+  const [saveNewAddress, setSaveNewAddress] = useState(false);
+  const [useMapIntegration, setUseMapIntegration] = useState(ENABLE_MAPS_BY_DEFAULT);
+
   // Calculate totals
   const subtotal = cart.items && Array.isArray(cart.items) 
     ? cart.items.reduce((total, item) => total + (item.price * item.quantity), 0)
@@ -107,8 +132,8 @@ const Checkout = () => {
   const shippingCost = subtotal > 1000 ? 0 : 50; // Free shipping for orders over 1000 ETB
   const tax = subtotal * 0.15; // 15% VAT
   const total = subtotal + shippingCost + tax;
-  
-  // Load user data and wallet balance
+
+  // Load user data, wallet balance, and saved addresses
   useEffect(() => {
     const fetchUserData = async () => {
       if (!currentUser) return;
@@ -137,21 +162,46 @@ const Checkout = () => {
             });
           }, 2000);
         }
+        
+        // Get saved addresses
+        setAddressesLoading(true);
+        const addresses = await getSavedAddresses(currentUser.uid);
+        setSavedAddresses(addresses);
+        
+        // If there's a default address, select it
+        const defaultAddress = addresses.find(addr => addr.isDefault);
+        if (defaultAddress) {
+          setSelectedAddressId(defaultAddress.id);
+          setShippingDetails({
+            fullName: defaultAddress.fullName || '',
+            phoneNumber: defaultAddress.phoneNumber || '',
+            address: defaultAddress.address || '',
+            city: defaultAddress.city || 'Addis Ababa',
+            region: defaultAddress.region || 'Addis Ababa',
+            zipCode: defaultAddress.zipCode || '',
+            deliveryInstructions: defaultAddress.deliveryInstructions || '',
+            coordinates: defaultAddress.coordinates || null
+          });
+          setMapCoordinates(defaultAddress.coordinates);
+        }
+        
+        setAddressesLoading(false);
       } catch (err) {
         console.error('Error fetching user data:', err);
+        setAddressesLoading(false);
       }
     };
     
     fetchUserData();
   }, [currentUser, navigate, total]);
-  
+
   // Check if cart is empty
   useEffect(() => {
     if (cart.items && cart.items.length === 0 && !orderComplete) {
       navigate('/cart');
     }
   }, [cart, navigate, orderComplete]);
-  
+
   // Handle shipping details change
   const handleShippingChange = (e) => {
     const { name, value } = e.target;
@@ -160,21 +210,231 @@ const Checkout = () => {
       [name]: value
     }));
   };
-  
+
+  // Handle shipping tab change
+  const handleShippingTabChange = (event, newValue) => {
+    setShippingTabValue(newValue);
+  };
+
+  // Handle address selection
+  const handleAddressSelect = (addressId) => {
+    setSelectedAddressId(addressId);
+    
+    // Find the selected address and update shipping details
+    const selectedAddress = savedAddresses.find(addr => addr.id === addressId);
+    if (selectedAddress) {
+      setShippingDetails({
+        fullName: selectedAddress.fullName || '',
+        phoneNumber: selectedAddress.phoneNumber || '',
+        address: selectedAddress.address || '',
+        city: selectedAddress.city || 'Addis Ababa',
+        region: selectedAddress.region || 'Addis Ababa',
+        zipCode: selectedAddress.zipCode || '',
+        deliveryInstructions: selectedAddress.deliveryInstructions || '',
+        coordinates: selectedAddress.coordinates || null
+      });
+      setMapCoordinates(selectedAddress.coordinates);
+    }
+  };
+
+  // Handle save address
+  const handleSaveAddress = async (addressData) => {
+    try {
+      setAddressesLoading(true);
+      
+      // Save address to Firebase
+      await saveAddress(currentUser.uid, addressData, true);
+      
+      // Refresh saved addresses
+      const addresses = await getSavedAddresses(currentUser.uid);
+      setSavedAddresses(addresses);
+      
+      // Select the newly added address (it should be the default one now)
+      const defaultAddress = addresses.find(addr => addr.isDefault);
+      if (defaultAddress) {
+        setSelectedAddressId(defaultAddress.id);
+        setShippingDetails({
+          fullName: defaultAddress.fullName || '',
+          phoneNumber: defaultAddress.phoneNumber || '',
+          address: defaultAddress.address || '',
+          city: defaultAddress.city || 'Addis Ababa',
+          region: defaultAddress.region || 'Addis Ababa',
+          zipCode: defaultAddress.zipCode || '',
+          deliveryInstructions: defaultAddress.deliveryInstructions || '',
+          coordinates: defaultAddress.coordinates || null
+        });
+        setMapCoordinates(defaultAddress.coordinates);
+      }
+      
+      setAddressesLoading(false);
+    } catch (err) {
+      console.error('Error saving address:', err);
+      setAddressesLoading(false);
+    }
+  };
+
+  // Handle update address
+  const handleUpdateAddress = async (addressId, addressData) => {
+    try {
+      setAddressesLoading(true);
+      
+      // Update address in Firebase
+      await updateAddress(currentUser.uid, addressId, addressData);
+      
+      // Refresh saved addresses
+      const addresses = await getSavedAddresses(currentUser.uid);
+      setSavedAddresses(addresses);
+      
+      // If the updated address is the selected one, update shipping details
+      if (addressId === selectedAddressId) {
+        setShippingDetails({
+          fullName: addressData.fullName || '',
+          phoneNumber: addressData.phoneNumber || '',
+          address: addressData.address || '',
+          city: addressData.city || 'Addis Ababa',
+          region: addressData.region || 'Addis Ababa',
+          zipCode: addressData.zipCode || '',
+          deliveryInstructions: addressData.deliveryInstructions || '',
+          coordinates: addressData.coordinates || null
+        });
+        setMapCoordinates(addressData.coordinates);
+      }
+      
+      setAddressesLoading(false);
+    } catch (err) {
+      console.error('Error updating address:', err);
+      setAddressesLoading(false);
+    }
+  };
+
+  // Handle delete address
+  const handleDeleteAddress = async (addressId) => {
+    try {
+      setAddressesLoading(true);
+      
+      // Delete address from Firebase
+      await deleteAddress(currentUser.uid, addressId);
+      
+      // Refresh saved addresses
+      const addresses = await getSavedAddresses(currentUser.uid);
+      setSavedAddresses(addresses);
+      
+      // If the deleted address was the selected one, select another one if available
+      if (addressId === selectedAddressId) {
+        if (addresses.length > 0) {
+          const defaultAddress = addresses.find(addr => addr.isDefault) || addresses[0];
+          setSelectedAddressId(defaultAddress.id);
+          setShippingDetails({
+            fullName: defaultAddress.fullName || '',
+            phoneNumber: defaultAddress.phoneNumber || '',
+            address: defaultAddress.address || '',
+            city: defaultAddress.city || 'Addis Ababa',
+            region: defaultAddress.region || 'Addis Ababa',
+            zipCode: defaultAddress.zipCode || '',
+            deliveryInstructions: defaultAddress.deliveryInstructions || '',
+            coordinates: defaultAddress.coordinates || null
+          });
+          setMapCoordinates(defaultAddress.coordinates);
+        } else {
+          setSelectedAddressId(null);
+          setShippingDetails({
+            fullName: currentUser.displayName || '',
+            phoneNumber: currentUser.phoneNumber || '',
+            address: '',
+            city: 'Addis Ababa',
+            region: 'Addis Ababa',
+            zipCode: '',
+            deliveryInstructions: '',
+            coordinates: null
+          });
+          setMapCoordinates(null);
+          setShippingTabValue(1); // Switch to new address tab
+        }
+      }
+      
+      setAddressesLoading(false);
+    } catch (err) {
+      console.error('Error deleting address:', err);
+      setAddressesLoading(false);
+    }
+  };
+
+  // Handle set default address
+  const handleSetDefaultAddress = async (addressId) => {
+    try {
+      setAddressesLoading(true);
+      
+      // Update default address in Firebase
+      await updateDefaultAddress(currentUser.uid, addressId);
+      
+      // Refresh saved addresses
+      const addresses = await getSavedAddresses(currentUser.uid);
+      setSavedAddresses(addresses);
+      
+      setAddressesLoading(false);
+    } catch (err) {
+      console.error('Error setting default address:', err);
+      setAddressesLoading(false);
+    }
+  };
+
+  // Handle location selection from map
+  const handleLocationSelect = (locationData) => {
+    setMapCoordinates(locationData.coordinates);
+    
+    // Update address field with the selected location's address
+    if (locationData.address) {
+      setShippingDetails(prev => ({
+        ...prev,
+        address: locationData.address
+      }));
+    }
+  };
+
   // Handle payment method change
   const handlePaymentMethodChange = (method) => {
     setPaymentMethod(method);
+    
+    // If wallet is selected but balance is insufficient, show error
+    if (method === 'wallet' && walletBalance < total) {
+      setError(`Insufficient wallet balance. You need ${formatCurrency(total - walletBalance)} more.`);
+    } else {
+      setError('');
+    }
   };
-  
+
   // Handle next step
   const handleNext = () => {
     // Validate current step
     if (activeStep === 1) {
       // Validate shipping details
-      const { fullName, phoneNumber, address, city } = shippingDetails;
-      if (!fullName || !phoneNumber || !address || !city) {
-        setError('Please fill in all required fields');
-        return;
+      if (shippingTabValue === 0) {
+        // If using saved address, validate that one is selected
+        if (!selectedAddressId) {
+          setError('Please select an address');
+          return;
+        }
+      } else {
+        // If using new address, validate fields
+        const { fullName, phoneNumber, address, city } = shippingDetails;
+        if (!fullName || !phoneNumber || !address || !city) {
+          setError('Please fill in all required fields');
+          return;
+        }
+        
+        if (!mapCoordinates && useMapIntegration) {
+          setError('Please select your location on the map');
+          return;
+        }
+        
+        // If save new address is checked, save it
+        if (saveNewAddress) {
+          handleSaveAddress({
+            ...shippingDetails,
+            coordinates: mapCoordinates,
+            addressType: 'home'
+          });
+        }
       }
     }
     
@@ -197,13 +457,13 @@ const Checkout = () => {
     setError('');
     setActiveStep(prevStep => prevStep + 1);
   };
-  
+
   // Handle back step
   const handleBack = () => {
     setActiveStep(prevStep => prevStep - 1);
     setError('');
   };
-  
+
   // Place order
   const placeOrder = async () => {
     if (walletBalance < total) {
@@ -231,7 +491,10 @@ const Checkout = () => {
         tax,
         total,
         paymentMethod: 'wallet',
-        shippingAddress: shippingDetails,
+        shippingAddress: {
+          ...shippingDetails,
+          coordinates: mapCoordinates
+        },
         status: 'pending',
         paymentStatus: 'pending' // Will be updated when the order is completed
       };
@@ -252,7 +515,7 @@ const Checkout = () => {
       setLoading(false);
     }
   };
-  
+
   // Render step content
   const getStepContent = (step) => {
     switch (step) {
@@ -394,154 +657,268 @@ const Checkout = () => {
                 backdropFilter: 'blur(10px)',
               }}
             >
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    label="Full Name"
-                    name="fullName"
-                    value={shippingDetails.fullName}
-                    onChange={handleShippingChange}
-                    error={error && !shippingDetails.fullName}
-                    helperText={error && !shippingDetails.fullName ? 'Full name is required' : ''}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    label="Phone Number"
-                    name="phoneNumber"
-                    value={shippingDetails.phoneNumber}
-                    onChange={handleShippingChange}
-                    error={error && !shippingDetails.phoneNumber}
-                    helperText={error && !shippingDetails.phoneNumber ? 'Phone number is required' : ''}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    required
-                    fullWidth
-                    label="Address"
-                    name="address"
-                    value={shippingDetails.address}
-                    onChange={handleShippingChange}
-                    error={error && !shippingDetails.address}
-                    helperText={error && !shippingDetails.address ? 'Address is required' : ''}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    label="City"
-                    name="city"
-                    value={shippingDetails.city}
-                    onChange={handleShippingChange}
-                    error={error && !shippingDetails.city}
-                    helperText={error && !shippingDetails.city ? 'City is required' : ''}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Region"
-                    name="region"
-                    value={shippingDetails.region}
-                    onChange={handleShippingChange}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Zip Code"
-                    name="zipCode"
-                    value={shippingDetails.zipCode}
-                    onChange={handleShippingChange}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Delivery Instructions (Optional)"
-                    name="deliveryInstructions"
-                    value={shippingDetails.deliveryInstructions}
-                    onChange={handleShippingChange}
-                    multiline
-                    rows={2}
-                    variant="outlined"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: theme.palette.primary.main,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-              </Grid>
+              <Tabs 
+                value={shippingTabValue} 
+                onChange={handleShippingTabChange}
+                variant="fullWidth"
+                sx={{ mb: 3 }}
+              >
+                <Tab 
+                  label="Saved Addresses" 
+                  disabled={savedAddresses.length === 0}
+                />
+                <Tab label="New Address" />
+              </Tabs>
+              
+              {shippingTabValue === 0 ? (
+                <SavedAddresses
+                  addresses={savedAddresses}
+                  selectedAddressId={selectedAddressId}
+                  onSelectAddress={handleAddressSelect}
+                  onSaveAddress={handleSaveAddress}
+                  onUpdateAddress={handleUpdateAddress}
+                  onDeleteAddress={handleDeleteAddress}
+                  onSetDefaultAddress={handleSetDefaultAddress}
+                  loading={addressesLoading}
+                />
+              ) : (
+                <Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        required
+                        fullWidth
+                        label="Full Name"
+                        name="fullName"
+                        value={shippingDetails.fullName}
+                        onChange={handleShippingChange}
+                        error={error && !shippingDetails.fullName}
+                        helperText={error && !shippingDetails.fullName ? 'Full name is required' : ''}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        required
+                        fullWidth
+                        label="Phone Number"
+                        name="phoneNumber"
+                        value={shippingDetails.phoneNumber}
+                        onChange={handleShippingChange}
+                        error={error && !shippingDetails.phoneNumber}
+                        helperText={error && !shippingDetails.phoneNumber ? 'Phone number is required' : ''}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12}>
+                      <TextField
+                        required
+                        fullWidth
+                        label="Address"
+                        name="address"
+                        value={shippingDetails.address}
+                        onChange={handleShippingChange}
+                        error={error && !shippingDetails.address}
+                        helperText={error && !shippingDetails.address ? 'Address is required' : ''}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        required
+                        fullWidth
+                        label="City"
+                        name="city"
+                        value={shippingDetails.city}
+                        onChange={handleShippingChange}
+                        error={error && !shippingDetails.city}
+                        helperText={error && !shippingDetails.city ? 'City is required' : ''}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Region"
+                        name="region"
+                        value={shippingDetails.region}
+                        onChange={handleShippingChange}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Zip Code"
+                        name="zipCode"
+                        value={shippingDetails.zipCode}
+                        onChange={handleShippingChange}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Delivery Instructions (Optional)"
+                        name="deliveryInstructions"
+                        value={shippingDetails.deliveryInstructions}
+                        onChange={handleShippingChange}
+                        multiline
+                        rows={2}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<SaveIcon />}
+                          onClick={() => setSaveNewAddress(!saveNewAddress)}
+                          sx={{ 
+                            borderColor: saveNewAddress ? theme.palette.primary.main : alpha(theme.palette.text.primary, 0.23),
+                            color: saveNewAddress ? theme.palette.primary.main : theme.palette.text.primary,
+                            backgroundColor: saveNewAddress ? alpha(theme.palette.primary.main, 0.1) : 'transparent',
+                            '&:hover': {
+                              backgroundColor: saveNewAddress ? alpha(theme.palette.primary.main, 0.2) : alpha(theme.palette.text.primary, 0.08)
+                            }
+                          }}
+                        >
+                          {saveNewAddress ? 'Address Will Be Saved' : 'Save This Address'}
+                        </Button>
+                      </Box>
+                    </Grid>
+                    
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch 
+                            checked={useMapIntegration}
+                            onChange={(e) => setUseMapIntegration(e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label="Use Map to Select Location (Requires Google Maps API Key)"
+                      />
+                    </Grid>
+                    
+                    {useMapIntegration ? (
+                      <Grid item xs={12}>
+                        <GoogleMapLocation 
+                          onLocationSelect={handleLocationSelect}
+                          initialLocation={mapCoordinates}
+                        />
+                      </Grid>
+                    ) : (
+                      <Grid container item xs={12} spacing={2}>
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            label="Latitude (Optional)"
+                            name="latitude"
+                            value={mapCoordinates?.lat || ''}
+                            onChange={(e) => {
+                              const lat = parseFloat(e.target.value) || '';
+                              setMapCoordinates(prev => ({
+                                ...prev,
+                                lat
+                              }));
+                            }}
+                            margin="normal"
+                            type="number"
+                            InputProps={{
+                              inputProps: { step: 0.000001 }
+                            }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            label="Longitude (Optional)"
+                            name="longitude"
+                            value={mapCoordinates?.lng || ''}
+                            onChange={(e) => {
+                              const lng = parseFloat(e.target.value) || '';
+                              setMapCoordinates(prev => ({
+                                ...prev,
+                                lng
+                              }));
+                            }}
+                            margin="normal"
+                            type="number"
+                            InputProps={{
+                              inputProps: { step: 0.000001 }
+                            }}
+                          />
+                        </Grid>
+                      </Grid>
+                    )}
+                  </Grid>
+                </Box>
+              )}
             </Paper>
           </Box>
         );
@@ -823,7 +1200,7 @@ const Checkout = () => {
         return 'Unknown step';
     }
   };
-  
+
   return (
     <Container 
       maxWidth="md" 

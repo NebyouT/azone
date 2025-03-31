@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
   Grid,
@@ -21,6 +21,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   FormControl,
   InputLabel,
@@ -35,7 +36,9 @@ import {
   Badge,
   Fade,
   Zoom,
-  useTheme
+  useTheme,
+  alpha,
+  Snackbar
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -58,7 +61,10 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserOrders, updateUserProfile, validateEthiopianPhoneNumber, getUserStatistics, isEmailVerified, resendVerificationEmail } from '../../firebase/services';
+import { db } from '../../firebase/config';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import WalletSummary from '../wallet/WalletSummary';
+import PendingReviews from '../reviews/PendingReviews';
 
 const Profile = () => {
   const { currentUser } = useAuth();
@@ -78,6 +84,10 @@ const Profile = () => {
   const [saveLoading, setSaveLoading] = useState(false);
   const [userStats, setUserStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState('');
+  const [upgradeSuccess, setUpgradeSuccess] = useState(false);
   const theme = useTheme();
   
   useEffect(() => {
@@ -250,6 +260,40 @@ const Profile = () => {
     );
   };
   
+  const handleUpgradeToSeller = async () => {
+    try {
+      setUpgradeLoading(true);
+      setUpgradeError('');
+      
+      // Update user role in Firestore
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        role: 'seller',
+        updatedAt: serverTimestamp()
+      });
+      
+      // Update local state
+      setUserData(prev => ({
+        ...prev,
+        role: 'seller'
+      }));
+      
+      setUpgradeSuccess(true);
+      setUpgradeDialogOpen(false);
+      
+      // Refresh the page after a short delay to update auth context
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Error upgrading account:', error);
+      setUpgradeError('Failed to upgrade account. Please try again.');
+    } finally {
+      setUpgradeLoading(false);
+    }
+  };
+  
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -406,7 +450,7 @@ const Profile = () => {
                         <PhoneIcon color="primary" />
                       </ListItemIcon>
                       <ListItemText
-                        primary="Phone"
+                        primary="Phone Number"
                         secondary={userData.phoneNumber || 'Not provided'}
                       />
                     </ListItem>
@@ -498,222 +542,322 @@ const Profile = () => {
         <Grid item xs={12} md={8}>
           <Fade in={true} style={{ transitionDelay: '200ms' }}>
             <Card elevation={3} sx={{ borderRadius: 2 }}>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                <Tabs
-                  value={tabValue}
-                  onChange={handleTabChange}
-                  aria-label="profile tabs"
-                  variant="fullWidth"
-                >
-                  <Tab 
-                    icon={<ShoppingBagIcon />} 
-                    iconPosition="start" 
-                    label="Recent Orders" 
-                    id="tab-0" 
-                    aria-controls="tabpanel-0" 
-                  />
-                  <Tab 
-                    icon={<WalletIcon />} 
-                    iconPosition="start" 
-                    label="Wallet Summary" 
-                    id="tab-1" 
-                    aria-controls="tabpanel-1" 
-                  />
-                  <Tab 
-                    icon={<HistoryIcon />} 
-                    iconPosition="start" 
-                    label="Activity" 
-                    id="tab-2" 
-                    aria-controls="tabpanel-2" 
-                  />
-                </Tabs>
-              </Box>
-              
-              {/* Recent Orders Tab */}
-              <TabPanel value={tabValue} index={0}>
-                {orderLoading ? (
-                  <Box sx={{ p: 3, textAlign: 'center' }}>
-                    <CircularProgress />
-                  </Box>
-                ) : orders.length > 0 ? (
-                  <List>
-                    {orders.slice(0, 5).map((order) => (
-                      <ListItem
-                        key={order.id}
-                        button
-                        component={RouterLink}
-                        to={`/orders/${order.id}`}
-                        divider
-                        sx={{ 
-                          transition: 'all 0.2s',
-                          '&:hover': {
-                            backgroundColor: theme.palette.action.hover,
-                            transform: 'translateX(5px)'
-                          }
-                        }}
-                      >
-                        <ListItemIcon>
-                          <ShippingIcon color={getStatusColor(order.status)} />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={
-                            <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                              Order #{order.id.substring(0, 8)}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {new Date(order.createdAt).toLocaleDateString()}
-                              </Typography>
-                              <Chip 
-                                label={order.status} 
-                                size="small" 
-                                color={getStatusColor(order.status)} 
-                                sx={{ mt: 0.5 }}
-                              />
-                            </Box>
-                          }
-                        />
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                          ${order.totalAmount.toFixed(2)}
-                        </Typography>
-                      </ListItem>
-                    ))}
-                    
-                    {orders.length > 5 && (
-                      <Box sx={{ textAlign: 'center', mt: 2, mb: 2 }}>
-                        <Button
-                          component={RouterLink}
-                          to="/orders"
-                          color="primary"
-                        >
-                          View All Orders
-                        </Button>
-                      </Box>
-                    )}
-                  </List>
-                ) : (
-                  <Box sx={{ p: 3, textAlign: 'center' }}>
-                    <ShoppingBagIcon sx={{ fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
-                    <Typography variant="h6" color="text.secondary">
-                      No orders yet
-                    </Typography>
-                    <Button
-                      component={RouterLink}
-                      to="/products"
-                      variant="contained"
-                      sx={{ mt: 2 }}
-                    >
-                      Start Shopping
-                    </Button>
-                  </Box>
-                )}
-              </TabPanel>
-              
-              {/* Wallet Summary Tab */}
-              <TabPanel value={tabValue} index={1}>
-                <WalletSummary />
-              </TabPanel>
-              
-              {/* Activity Tab */}
-              <TabPanel value={tabValue} index={2}>
-                {statsLoading ? (
-                  <Box sx={{ p: 3, textAlign: 'center' }}>
-                    <CircularProgress />
-                  </Box>
-                ) : (
-                  <Box sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Account Statistics
-                    </Typography>
-                    
-                    <Grid container spacing={3} sx={{ mb: 3 }}>
-                      <Grid item xs={12} sm={6}>
-                        <Card 
-                          variant="outlined" 
-                          sx={{ 
-                            p: 2, 
-                            textAlign: 'center',
-                            background: theme.palette.mode === 'dark' 
-                              ? theme.palette.grey[900] 
-                              : theme.palette.grey[50]
-                          }}
-                        >
-                          <Typography variant="subtitle2" color="text.secondary">
-                            Completed Orders
-                          </Typography>
-                          <Typography variant="h4" sx={{ my: 1, color: theme.palette.success.main }}>
-                            {userStats?.completedOrders || 0}
-                          </Typography>
-                        </Card>
+              <Box sx={{ width: '100%', mt: 4 }}>
+                <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                  <Tabs 
+                    value={tabValue} 
+                    onChange={handleTabChange} 
+                    variant="scrollable"
+                    scrollButtons="auto"
+                    aria-label="profile tabs"
+                  >
+                    <Tab icon={<PersonIcon />} iconPosition="start" label="Profile" />
+                    <Tab icon={<ShoppingBagIcon />} iconPosition="start" label="Orders" />
+                    <Tab icon={<WalletIcon />} iconPosition="start" label="Wallet" />
+                    <Tab icon={<StarIcon />} iconPosition="start" label="Reviews" />
+                  </Tabs>
+                </Box>
+                
+                {/* Profile Tab */}
+                <TabPanel value={tabValue} index={0}>
+                  {editMode ? (
+                    <Box component="form" onSubmit={handleSubmit} sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        Edit Profile
+                      </Typography>
+                      
+                      <Grid container spacing={3}>
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="Display Name"
+                            name="displayName"
+                            value={formData.displayName}
+                            onChange={handleChange}
+                            required
+                          />
+                        </Grid>
+                        
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="Phone Number"
+                            name="phoneNumber"
+                            value={formData.phoneNumber}
+                            onChange={handleChange}
+                            helperText={phoneError || "Ethiopian phone number format: +251xxxxxxxxx"}
+                            error={!!phoneError}
+                          />
+                        </Grid>
+                        
+                        <Grid item xs={12}>
+                          <FormControl fullWidth>
+                            <InputLabel>Role</InputLabel>
+                            <Select
+                              name="role"
+                              value={formData.role}
+                              onChange={handleChange}
+                              label="Role"
+                            >
+                              <MenuItem value="buyer">Buyer</MenuItem>
+                              <MenuItem value="seller">Seller</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
                       </Grid>
                       
-                      <Grid item xs={12} sm={6}>
-                        <Card 
-                          variant="outlined" 
-                          sx={{ 
-                            p: 2, 
-                            textAlign: 'center',
-                            background: theme.palette.mode === 'dark' 
-                              ? theme.palette.grey[900] 
-                              : theme.palette.grey[50]
-                          }}
-                        >
-                          <Typography variant="subtitle2" color="text.secondary">
-                            Cancelled Orders
-                          </Typography>
-                          <Typography variant="h4" sx={{ my: 1, color: theme.palette.error.main }}>
-                            {userStats?.cancelledOrders || 0}
-                          </Typography>
-                        </Card>
-                      </Grid>
-                    </Grid>
-                    
-                    <Typography variant="subtitle1" gutterBottom>
-                      Account Rating
-                    </Typography>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                      <Box sx={{ flexGrow: 1, mr: 2 }}>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={(calculateUserRating() / 5) * 100} 
-                          color="primary"
-                          sx={{ height: 10, borderRadius: 5 }}
-                        />
-                      </Box>
-                      <Box sx={{ minWidth: 35 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {calculateUserRating().toFixed(1)}/5
-                        </Typography>
-                      </Box>
-                    </Box>
-                    
-                    <Typography variant="body2" color="text.secondary">
-                      Your account rating is calculated based on your order completion rate and cancellation history.
-                    </Typography>
-                    
-                    {userData.role === 'seller' && (
-                      <Box sx={{ mt: 3 }}>
+                      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
                         <Button
-                          component={RouterLink}
-                          to="/seller/dashboard"
-                          variant="contained"
-                          color="secondary"
-                          startIcon={<StoreIcon />}
+                          onClick={handleEditToggle}
+                          startIcon={<CancelIcon />}
+                          sx={{ mr: 1 }}
                         >
-                          Seller Dashboard
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          variant="contained"
+                          startIcon={<SaveIcon />}
+                          disabled={saveLoading}
+                        >
+                          {saveLoading ? 'Saving...' : 'Save Changes'}
                         </Button>
                       </Box>
-                    )}
-                  </Box>
-                )}
-              </TabPanel>
+                    </Box>
+                  ) : (
+                    <Box sx={{ p: 3 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6">
+                          Profile Information
+                        </Typography>
+                        <Button
+                          startIcon={<EditIcon />}
+                          onClick={handleEditToggle}
+                        >
+                          Edit
+                        </Button>
+                      </Box>
+                      
+                      <List>
+                        <ListItem>
+                          <ListItemIcon>
+                            <PersonIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="Display Name"
+                            secondary={userData.displayName || 'Not set'}
+                          />
+                        </ListItem>
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <EmailIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="Email"
+                            secondary={
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                {userData.email}
+                                {userData.emailVerified ? (
+                                  <Tooltip title="Email Verified">
+                                    <VerifiedIcon color="success" sx={{ ml: 1, fontSize: 16 }} />
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip title="Email Not Verified">
+                                    <Button
+                                      size="small"
+                                      color="warning"
+                                      onClick={handleResendVerification}
+                                      sx={{ ml: 1 }}
+                                    >
+                                      Verify Email
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                              </Box>
+                            }
+                          />
+                        </ListItem>
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <PhoneIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="Phone Number"
+                            secondary={userData.phoneNumber || 'Not set'}
+                          />
+                        </ListItem>
+                        
+                        <ListItem>
+                          <ListItemIcon>
+                            <VerifiedUserIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="Account Type"
+                            secondary={
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                {userData.role === 'seller' ? 'Seller' : 'Buyer'}
+                                {userData.role === 'buyer' && (
+                                  <Button
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    onClick={() => setUpgradeDialogOpen(true)}
+                                    sx={{ ml: 2, borderRadius: 0 }}
+                                  >
+                                    Become a Seller
+                                  </Button>
+                                )}
+                              </Box>
+                            }
+                          />
+                        </ListItem>
+                      </List>
+                    </Box>
+                  )}
+                </TabPanel>
+                
+                {/* Orders Tab */}
+                <TabPanel value={tabValue} index={1}>
+                  {orderLoading ? (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : orders.length > 0 ? (
+                    <List>
+                      {orders.map((order) => (
+                        <ListItem
+                          key={order.id}
+                          button
+                          component={RouterLink}
+                          to={`/orders/${order.id}`}
+                          divider
+                          sx={{ 
+                            transition: 'all 0.2s',
+                            '&:hover': {
+                              backgroundColor: theme.palette.action.hover,
+                              transform: 'translateX(5px)'
+                            }
+                          }}
+                        >
+                          <ListItemIcon>
+                            <ShippingIcon color={getStatusColor(order.status)} />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                                Order #{order.orderNumber || order.id.substring(0, 8)}
+                              </Typography>
+                            }
+                            secondary={
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  {order.createdAt ? new Date(order.createdAt.toDate()).toLocaleDateString() : 'N/A'}
+                                </Typography>
+                                <Chip 
+                                  label={order.status} 
+                                  size="small" 
+                                  color={getStatusColor(order.status)} 
+                                  sx={{ mt: 0.5 }}
+                                />
+                              </Box>
+                            }
+                          />
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                            {order.totalAmount !== undefined ? `$${order.totalAmount.toFixed(2)}` : 'N/A'}
+                          </Typography>
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <ShoppingBagIcon sx={{ fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+                      <Typography variant="h6" color="text.secondary">
+                        No orders yet
+                      </Typography>
+                      <Button
+                        component={RouterLink}
+                        to="/products"
+                        variant="contained"
+                        sx={{ mt: 2 }}
+                      >
+                        Start Shopping
+                      </Button>
+                    </Box>
+                  )}
+                </TabPanel>
+                
+                {/* Wallet Tab */}
+                <TabPanel value={tabValue} index={2}>
+                  <WalletSummary />
+                </TabPanel>
+                
+                {/* Reviews Tab */}
+                <TabPanel value={tabValue} index={3}>
+                  <PendingReviews />
+                </TabPanel>
+              </Box>
             </Card>
           </Fade>
         </Grid>
       </Grid>
+      
+      {/* Upgrade to Seller Dialog */}
+      <Dialog
+        open={upgradeDialogOpen}
+        onClose={() => setUpgradeDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+          }
+        }}
+      >
+        <DialogTitle>Become a Seller</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Upgrading your account to a seller will allow you to list products for sale on Azone.
+            You'll have access to the seller dashboard where you can manage your products, orders, and sales analytics.
+          </DialogContentText>
+          {upgradeError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {upgradeError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setUpgradeDialogOpen(false)}
+            sx={{ borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUpgradeToSeller}
+            variant="contained"
+            disabled={upgradeLoading}
+            sx={{ borderRadius: 0 }}
+          >
+            {upgradeLoading ? 'Upgrading...' : 'Upgrade to Seller'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Success Snackbar */}
+      <Snackbar
+        open={upgradeSuccess}
+        autoHideDuration={5000}
+        onClose={() => setUpgradeSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setUpgradeSuccess(false)} 
+          severity="success"
+          sx={{ width: '100%', borderRadius: 0 }}
+        >
+          Your account has been upgraded to a seller account! Redirecting to seller dashboard...
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

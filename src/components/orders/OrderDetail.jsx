@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -20,35 +20,43 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Snackbar,
+  Card,
+  CardContent,
+  useTheme,
+  alpha,
+  Stepper,
+  Step,
+  StepLabel,
+  Tooltip,
+  Rating,
+  TextField,
+  IconButton
 } from '@mui/material';
-import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent
-} from '@mui/lab';
 import {
   ShoppingBag as OrderIcon,
   ArrowBack as BackIcon,
   LocalShipping as ShippingIcon,
+  LocalShipping,
   Payment as PaymentIcon,
   Person as PersonIcon,
-  Home as AddressIcon,
+  Home as HomeIcon,
   CheckCircle as CheckCircleIcon,
   Autorenew as AutorenewIcon,
   Cancel as CancelIcon,
   HourglassEmpty as HourglassEmptyIcon,
+  ThumbUp as ThumbUpIcon,
+  ThumbDown as ThumbDownIcon,
+  Refresh as RefreshIcon,
   Store as StoreIcon,
-  MonetizationOn as MoneyIcon,
-  Receipt as ReceiptIcon
+  RateReview as RateReviewIcon,
+  Star as StarIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { getOrderById, cancelOrder, confirmOrderDelivery } from '../../firebase/services';
+import { getOrderById, cancelOrder, confirmOrderDelivery, denyOrderDelivery } from '../../firebase/services';
 import { getTransactionHistory } from '../../firebase/walletServices';
+import { addReview, getEligibleOrdersForReview } from '../../firebase/reviewServices';
 
 // Helper function to format currency
 const formatCurrency = (amount) => {
@@ -66,10 +74,10 @@ const formatDate = (timestamp) => {
   const date = timestamp instanceof Date 
     ? timestamp 
     : new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
-  
-  return new Intl.DateTimeFormat('en-US', {
+    
+  return new Intl.DateTimeFormat('en-ET', {
     year: 'numeric',
-    month: 'long',
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -79,16 +87,18 @@ const formatDate = (timestamp) => {
 // Get status color
 const getStatusColor = (status) => {
   switch (status) {
-    case 'pending':
-      return 'warning';
+    case 'completed':
+      return 'success';
+    case 'confirmed':
     case 'processing':
       return 'info';
     case 'shipped':
       return 'primary';
-    case 'completed':
-      return 'success';
+    case 'delivered':
+      return 'secondary';
     case 'cancelled':
       return 'error';
+    case 'pending':
     default:
       return 'default';
   }
@@ -97,18 +107,20 @@ const getStatusColor = (status) => {
 // Get status icon
 const getStatusIcon = (status) => {
   switch (status) {
-    case 'pending':
-      return <HourglassEmptyIcon />;
+    case 'completed':
+      return <CheckCircleIcon />;
+    case 'confirmed':
     case 'processing':
       return <AutorenewIcon />;
     case 'shipped':
       return <ShippingIcon />;
-    case 'completed':
-      return <CheckCircleIcon />;
+    case 'delivered':
+      return <LocalShipping />;
     case 'cancelled':
       return <CancelIcon />;
+    case 'pending':
     default:
-      return <OrderIcon />;
+      return <HourglassEmptyIcon />;
   }
 };
 
@@ -116,53 +128,132 @@ const OrderDetail = () => {
   const { id } = useParams();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [transactions, setTransactions] = useState([]);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [denyDialogOpen, setDenyDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  
+  // Review state
+  const [reviewableProducts, setReviewableProducts] = useState([]);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  
+  // Define order status steps for the stepper
+  const orderSteps = ['pending', 'confirmed', 'shipped', 'delivered', 'completed'];
+  
+  const fetchOrderDetails = async () => {
+    if (!currentUser || !id) return;
+    
+    try {
+      setLoading(true);
+      const orderData = await getOrderById(id);
+      
+      // Verify this order belongs to the current user
+      if (orderData.userId !== currentUser.uid) {
+        setError('You do not have permission to view this order');
+        setLoading(false);
+        return;
+      }
+      
+      setOrder(orderData);
+      
+      // Fetch related transactions
+      try {
+        const transactionHistory = await getTransactionHistory(currentUser.uid);
+        // Filter transactions related to this order
+        const orderTransactions = transactionHistory.filter(
+          transaction => transaction.orderId === id
+        );
+        setTransactions(orderTransactions);
+      } catch (transError) {
+        console.error('Error fetching transaction history:', transError);
+      }
+    } catch (err) {
+      console.error('Error fetching order details:', err);
+      setError('Failed to load order details. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
-    const fetchOrderDetails = async () => {
-      if (!currentUser || !id) return;
-      
-      try {
-        setLoading(true);
-        const orderData = await getOrderById(id);
-        
-        // Verify this order belongs to the current user
-        if (orderData.userId !== currentUser.uid) {
-          setError('You do not have permission to view this order');
-          setLoading(false);
-          return;
-        }
-        
-        setOrder(orderData);
-        
-        // Fetch related transactions
-        try {
-          const transactionHistory = await getTransactionHistory(currentUser.uid);
-          // Filter transactions related to this order
-          const orderTransactions = transactionHistory.filter(
-            transaction => transaction.orderId === id
-          );
-          setTransactions(orderTransactions);
-        } catch (transError) {
-          console.error('Error fetching transaction history:', transError);
-        }
-      } catch (err) {
-        console.error('Error fetching order details:', err);
-        setError('Failed to load order details. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchOrderDetails();
   }, [id, currentUser]);
+  
+  // Check for reviewable products when order is loaded
+  useEffect(() => {
+    if (order && order.status === 'completed') {
+      checkReviewableProducts();
+    }
+  }, [order]);
+  
+  // Function to check which products can be reviewed
+  const checkReviewableProducts = async () => {
+    if (!order || !currentUser) return;
+    
+    try {
+      const eligibleOrders = await getEligibleOrdersForReview(currentUser.uid);
+      const currentOrderEligible = eligibleOrders.find(o => o.id === id);
+      
+      if (currentOrderEligible) {
+        setReviewableProducts(currentOrderEligible.products);
+      } else {
+        setReviewableProducts([]);
+      }
+    } catch (err) {
+      console.error('Error checking reviewable products:', err);
+    }
+  };
+  
+  // Handle opening review dialog
+  const handleOpenReviewDialog = (product) => {
+    setSelectedProduct(product);
+    setReviewRating(5);
+    setReviewComment('');
+    setReviewError('');
+    setReviewDialogOpen(true);
+  };
+  
+  // Handle submitting a review
+  const handleSubmitReview = async () => {
+    if (!selectedProduct || !currentUser) return;
+    
+    try {
+      setReviewSubmitting(true);
+      setReviewError('');
+      
+      await addReview(
+        currentUser.uid,
+        selectedProduct.id,
+        id,
+        reviewRating,
+        reviewComment
+      );
+      
+      setSuccessMessage(`Thank you for reviewing ${selectedProduct.name}!`);
+      setSnackbarOpen(true);
+      setReviewDialogOpen(false);
+      
+      // Refresh reviewable products
+      await checkReviewableProducts();
+    } catch (err) {
+      console.error('Error submitting review:', err);
+      setReviewError(err.message || 'Failed to submit review. Please try again.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
   
   // Handle order cancellation
   const handleCancelOrder = async () => {
@@ -188,7 +279,8 @@ const OrderDetail = () => {
     try {
       setActionLoading(true);
       await confirmOrderDelivery(id);
-      setSuccessMessage('Order delivery confirmed successfully');
+      setSuccessMessage('Order delivery confirmed successfully! Payment has been released to the seller.');
+      setSnackbarOpen(true);
       setConfirmDialogOpen(false);
       
       // Refresh order data
@@ -209,6 +301,37 @@ const OrderDetail = () => {
     }
   };
   
+  // Handle order delivery denial
+  const handleDenyDelivery = async () => {
+    try {
+      setActionLoading(true);
+      await denyOrderDelivery(id);
+      setSuccessMessage('You have reported that this order has not been delivered. The seller has been notified.');
+      setSnackbarOpen(true);
+      setDenyDialogOpen(false);
+      
+      // Refresh order data
+      const updatedOrder = await getOrderById(id);
+      setOrder(updatedOrder);
+    } catch (err) {
+      console.error('Error denying delivery:', err);
+      setError('Failed to report non-delivery: ' + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+  
+  // Refresh order data
+  const refreshOrder = () => {
+    fetchOrderDetails();
+  };
+  
+  // Get the current step index for the stepper
+  const getCurrentStepIndex = (status) => {
+    if (status === 'cancelled') return -1; // Special case for cancelled orders
+    return orderSteps.indexOf(status);
+  };
+  
   if (loading) {
     return (
       <Container maxWidth="md" sx={{ py: 8, textAlign: 'center' }}>
@@ -220,55 +343,40 @@ const OrderDetail = () => {
     );
   }
   
-  if (error) {
-    return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-        <Button
-          component={Link}
-          to="/orders"
-          startIcon={<BackIcon />}
-          variant="outlined"
-        >
-          Back to Orders
-        </Button>
-      </Container>
-    );
-  }
-  
   if (!order) {
     return (
       <Container maxWidth="md" sx={{ py: 4 }}>
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          Order not found
-        </Alert>
-        <Button
-          component={Link}
-          to="/orders"
-          startIcon={<BackIcon />}
-          variant="outlined"
-        >
-          Back to Orders
-        </Button>
+        <Box sx={{ mb: 4 }}>
+          <Button
+            component={Link}
+            to="/orders"
+            startIcon={<BackIcon />}
+            sx={{ borderRadius: 0 }}
+          >
+            Back to Orders
+          </Button>
+          
+          <Alert severity="warning" sx={{ mt: 2, borderRadius: 0 }}>
+            Order not found. It may have been deleted or you don't have permission to view it.
+          </Alert>
+        </Box>
       </Container>
     );
   }
   
+  // Get the current step index for the stepper
+  const currentStepIndex = getCurrentStepIndex(order.status);
+  
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      {successMessage && (
-        <Alert 
-          severity="success" 
-          sx={{ mb: 3 }}
-          onClose={() => setSuccessMessage('')}
-        >
-          {successMessage}
-        </Alert>
-      )}
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+        <OrderIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
+        <Typography variant="h4" component="h1">
+          Order Details
+        </Typography>
+      </Box>
       
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Button
           component={Link}
           to="/orders"
@@ -278,44 +386,36 @@ const OrderDetail = () => {
           Back to Orders
         </Button>
         
-        <Box>
-          {/* Order Action Buttons */}
-          {order.status === 'pending' && (
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<CancelIcon />}
-              onClick={() => setCancelDialogOpen(true)}
-              sx={{ ml: 1 }}
-            >
-              Cancel Order
-            </Button>
-          )}
-          
-          {order.status === 'shipped' && (
-            <Button
-              variant="contained"
-              color="success"
-              startIcon={<CheckCircleIcon />}
-              onClick={() => setConfirmDialogOpen(true)}
-              sx={{ ml: 1 }}
-            >
-              Confirm Delivery
-            </Button>
-          )}
-        </Box>
+        <Button
+          startIcon={<RefreshIcon />}
+          variant="outlined"
+          onClick={refreshOrder}
+        >
+          Refresh
+        </Button>
       </Box>
       
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2, borderRadius: 0 }}>
+          {error}
+        </Alert>
+      )}
+      
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2, borderRadius: 0 }}>
+          {successMessage}
+        </Alert>
+      )}
+      
+      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h5" component="h1">
-            Order #{id.substring(0, 8)}
+          <Typography variant="h6">
+            Order #{order.id.substring(0, 8)}
           </Typography>
-          
-          <Chip
-            icon={getStatusIcon(order.status)}
-            label={order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+          <Chip 
+            label={order.status.toUpperCase()} 
             color={getStatusColor(order.status)}
+            icon={getStatusIcon(order.status)}
             sx={{ fontWeight: 'medium' }}
           />
         </Box>
@@ -324,123 +424,124 @@ const OrderDetail = () => {
           Placed on {formatDate(order.createdAt)}
         </Typography>
         
+        {order.status === 'cancelled' && (
+          <Alert severity="error" sx={{ mt: 2, mb: 2, borderRadius: 0 }}>
+            This order has been cancelled.
+          </Alert>
+        )}
+        
+        {order.status === 'delivered' && !order.buyerConfirmed && (
+          <Alert severity="info" sx={{ mt: 2, mb: 2, borderRadius: 0 }}>
+            The seller has marked this order as delivered. Please confirm if you have received it or report if you haven't.
+          </Alert>
+        )}
+        
         <Divider sx={{ my: 2 }} />
+        
+        <Box sx={{ width: '100%', mb: 3 }}>
+          <Stepper activeStep={currentStepIndex} alternativeLabel>
+            {orderSteps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label.charAt(0).toUpperCase() + label.slice(1)}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+        </Box>
         
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
               <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="subtitle1">Customer Information</Typography>
+              <Typography variant="subtitle1">Your Information</Typography>
             </Box>
+            
             <Typography variant="body2">
-              {order.shippingAddress?.fullName}
+              <strong>Name:</strong> {order.shippingAddress?.name}
             </Typography>
             <Typography variant="body2">
-              {order.shippingAddress?.phoneNumber}
+              <strong>Email:</strong> {order.shippingAddress?.email}
+            </Typography>
+            <Typography variant="body2">
+              <strong>Phone:</strong> {order.shippingAddress?.phone}
             </Typography>
           </Grid>
           
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <AddressIcon sx={{ mr: 1, color: 'primary.main' }} />
+              <HomeIcon sx={{ mr: 1, color: 'primary.main' }} />
               <Typography variant="subtitle1">Shipping Address</Typography>
             </Box>
-            <Typography variant="body2">
-              {order.shippingAddress?.address}
-            </Typography>
-            <Typography variant="body2">
-              {order.shippingAddress?.city}, {order.shippingAddress?.region} {order.shippingAddress?.zipCode}
-            </Typography>
-            {order.shippingAddress?.deliveryInstructions && (
-              <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
-                Instructions: {order.shippingAddress.deliveryInstructions}
-              </Typography>
+            
+            {order.shippingAddress && (
+              <>
+                <Typography variant="body2">
+                  {order.shippingAddress.street}
+                </Typography>
+                <Typography variant="body2">
+                  {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
+                </Typography>
+                <Typography variant="body2">
+                  {order.shippingAddress.country}
+                </Typography>
+              </>
             )}
           </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <ShippingIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="subtitle1">Shipping Method</Typography>
-            </Box>
-            <Typography variant="body2">
-              {order.shippingMethod || 'Standard Shipping'}
-            </Typography>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <PaymentIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="subtitle1">Payment Method</Typography>
-            </Box>
-            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-              {order.paymentMethod?.replace(/_/g, ' ') || 'Wallet Payment'}
-            </Typography>
-            <Typography variant="body2">
-              Status: {order.paymentStatus || 'Pending'}
-            </Typography>
-          </Grid>
         </Grid>
-        
-        <Divider sx={{ my: 3 }} />
-        
+      </Paper>
+      
+      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
-          Order Items
+          Items in This Order
         </Typography>
         
-        <List>
+        <List sx={{ width: '100%' }}>
           {order.items.map((item, index) => (
             <ListItem 
-              key={index}
+              key={item.productId || index} 
               alignItems="flex-start"
               sx={{ 
-                py: 2,
-                borderBottom: index < order.items.length - 1 ? '1px solid #eee' : 'none'
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                py: 2
               }}
             >
               <ListItemAvatar>
                 <Avatar 
-                  alt={item.name}
-                  src={item.imageUrl}
+                  alt={item.name} 
+                  src={item.image || item.imageUrl} 
                   variant="rounded"
-                  sx={{ width: 60, height: 60 }}
+                  sx={{ width: 60, height: 60, mr: 2 }}
                 />
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="subtitle1" component="span">
-                      {item.name}
-                    </Typography>
-                    <Chip
-                      label={item.status || order.status}
-                      color={getStatusColor(item.status || order.status)}
-                      size="small"
-                      sx={{ ml: 1 }}
-                    />
-                  </Box>
+                  <Typography variant="subtitle1">
+                    {item.name}
+                  </Typography>
                 }
                 secondary={
-                  <>
-                    <Typography variant="body2" color="text.secondary" component="span">
+                  <Box component="span" sx={{ display: 'block' }}>
+                    <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
                       Quantity: {item.quantity}
                     </Typography>
-                    <Box component="div" sx={{ mt: 0.5 }}>
-                      <Typography variant="body2" color="text.secondary" component="span">
-                        Price: {formatCurrency(item.price)}
+                    <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
+                      Price: {formatCurrency(item.price)}
+                    </Typography>
+                    {item.variant && (
+                      <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
+                        Variant: {item.variant}
                       </Typography>
-                    </Box>
+                    )}
                     {item.sellerId && (
-                      <Box component="div" sx={{ mt: 0.5, display: 'flex', alignItems: 'center' }}>
-                        <StoreIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary', fontSize: '1rem' }} />
+                      <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                        <StoreIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} />
                         <Typography variant="body2" color="text.secondary" component="span">
                           Seller ID: {item.sellerId.substring(0, 8)}
                         </Typography>
                       </Box>
                     )}
-                  </>
+                  </Box>
                 }
-                sx={{ mr: 2 }}
               />
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
                 {formatCurrency(item.price * item.quantity)}
@@ -452,239 +553,270 @@ const OrderDetail = () => {
         <Box sx={{ mt: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
           <Grid container spacing={1}>
             <Grid item xs={8}>
-              <Typography variant="body1">Subtotal:</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                Order Total:
+              </Typography>
             </Grid>
             <Grid item xs={4} sx={{ textAlign: 'right' }}>
-              <Typography variant="body1">{formatCurrency(order.subtotal || 0)}</Typography>
-            </Grid>
-            
-            <Grid item xs={8}>
-              <Typography variant="body1">Shipping:</Typography>
-            </Grid>
-            <Grid item xs={4} sx={{ textAlign: 'right' }}>
-              <Typography variant="body1">{formatCurrency(order.shippingCost || 0)}</Typography>
-            </Grid>
-            
-            {order.discount > 0 && (
-              <>
-                <Grid item xs={8}>
-                  <Typography variant="body1">Discount:</Typography>
-                </Grid>
-                <Grid item xs={4} sx={{ textAlign: 'right' }}>
-                  <Typography variant="body1">-{formatCurrency(order.discount)}</Typography>
-                </Grid>
-              </>
-            )}
-            
-            <Grid item xs={8}>
-              <Typography variant="body1">Tax:</Typography>
-            </Grid>
-            <Grid item xs={4} sx={{ textAlign: 'right' }}>
-              <Typography variant="body1">{formatCurrency(order.tax || 0)}</Typography>
-            </Grid>
-            
-            <Grid item xs={8}>
-              <Typography variant="h6">Total:</Typography>
-            </Grid>
-            <Grid item xs={4} sx={{ textAlign: 'right' }}>
-              <Typography variant="h6">{formatCurrency(order.total || 0)}</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                {formatCurrency(order.total || order.totalAmount || 0)}
+              </Typography>
             </Grid>
           </Grid>
         </Box>
-      </Paper>
-      
-      {/* Order Timeline */}
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Order Timeline
-        </Typography>
         
-        <Timeline position="alternate">
-          <TimelineItem>
-            <TimelineOppositeContent color="text.secondary">
-              {formatDate(order.createdAt)}
-            </TimelineOppositeContent>
-            <TimelineSeparator>
-              <TimelineDot color="primary">
-                <OrderIcon />
-              </TimelineDot>
-              <TimelineConnector />
-            </TimelineSeparator>
-            <TimelineContent>
-              <Typography variant="body1">Order Placed</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Your order has been received
-              </Typography>
-            </TimelineContent>
-          </TimelineItem>
-          
-          {order.status === 'cancelled' && (
-            <TimelineItem>
-              <TimelineOppositeContent color="text.secondary">
-                {formatDate(order.cancelledAt)}
-              </TimelineOppositeContent>
-              <TimelineSeparator>
-                <TimelineDot color="error">
-                  <CancelIcon />
-                </TimelineDot>
-              </TimelineSeparator>
-              <TimelineContent>
-                <Typography variant="body1">Order Cancelled</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Cancelled by {order.cancelledBy || 'customer'}
-                </Typography>
-              </TimelineContent>
-            </TimelineItem>
+        {/* Action Buttons */}
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
+          {order.status === 'delivered' && !order.buyerConfirmed && (
+            <>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<ThumbUpIcon />}
+                onClick={() => setConfirmDialogOpen(true)}
+                sx={{ borderRadius: 0 }}
+              >
+                Confirm Delivery
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<ThumbDownIcon />}
+                onClick={() => setDenyDialogOpen(true)}
+                sx={{ borderRadius: 0 }}
+              >
+                Not Delivered
+              </Button>
+            </>
           )}
           
-          {(order.status === 'processing' || order.status === 'shipped' || order.status === 'completed') && (
-            <TimelineItem>
-              <TimelineOppositeContent color="text.secondary">
-                {formatDate(order.processingAt || order.updatedAt)}
-              </TimelineOppositeContent>
-              <TimelineSeparator>
-                <TimelineDot color="info">
-                  <AutorenewIcon />
-                </TimelineDot>
-                <TimelineConnector />
-              </TimelineSeparator>
-              <TimelineContent>
-                <Typography variant="body1">Processing</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Your order is being processed
-                </Typography>
-              </TimelineContent>
-            </TimelineItem>
+          {(order.status === 'pending' || order.status === 'confirmed') && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<CancelIcon />}
+              onClick={() => setCancelDialogOpen(true)}
+              sx={{ borderRadius: 0 }}
+            >
+              Cancel Order
+            </Button>
           )}
-          
-          {(order.status === 'shipped' || order.status === 'completed') && (
-            <TimelineItem>
-              <TimelineOppositeContent color="text.secondary">
-                {formatDate(order.shippedAt || order.updatedAt)}
-              </TimelineOppositeContent>
-              <TimelineSeparator>
-                <TimelineDot color="primary">
-                  <ShippingIcon />
-                </TimelineDot>
-                <TimelineConnector />
-              </TimelineSeparator>
-              <TimelineContent>
-                <Typography variant="body1">Shipped</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Your order has been shipped
-                </Typography>
-              </TimelineContent>
-            </TimelineItem>
-          )}
-          
-          {order.status === 'completed' && (
-            <TimelineItem>
-              <TimelineOppositeContent color="text.secondary">
-                {formatDate(order.completedAt || order.updatedAt)}
-              </TimelineOppositeContent>
-              <TimelineSeparator>
-                <TimelineDot color="success">
-                  <CheckCircleIcon />
-                </TimelineDot>
-              </TimelineSeparator>
-              <TimelineContent>
-                <Typography variant="body1">Delivered</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Your order has been delivered and completed
-                </Typography>
-              </TimelineContent>
-            </TimelineItem>
-          )}
-        </Timeline>
+        </Box>
       </Paper>
       
-      {/* Transaction History */}
-      {transactions.length > 0 && (
-        <Paper elevation={2} sx={{ p: 3 }}>
+      {/* Order History */}
+      {order.statusHistory && order.statusHistory.length > 0 && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Transaction History
+            Order History
           </Typography>
           
           <List>
-            {transactions.map((transaction, index) => (
+            {[...order.statusHistory].reverse().map((update, index) => (
               <ListItem 
                 key={index}
-                alignItems="flex-start"
                 sx={{ 
-                  py: 2,
-                  borderBottom: index < transactions.length - 1 ? '1px solid #eee' : 'none'
+                  borderBottom: index < order.statusHistory.length - 1 ? '1px solid' : 'none',
+                  borderColor: 'divider',
+                  py: 1
                 }}
               >
-                <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: transaction.amount > 0 ? 'success.main' : 'error.main' }}>
-                    <MoneyIcon />
-                  </Avatar>
-                </ListItemAvatar>
                 <ListItemText
-                  primary={
-                    <Typography variant="subtitle1">
-                      {transaction.type === 'purchase' ? 'Payment for Order' : 
-                       transaction.type === 'sale' ? 'Payment Received' : 
-                       transaction.type === 'refund' ? 'Refund Received' : 'Transaction'}
-                    </Typography>
-                  }
-                  secondary={
-                    <>
-                      <Typography variant="body2" color="text.secondary">
-                        {transaction.description}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {formatDate(transaction.createdAt)}
-                      </Typography>
-                      <Chip
-                        label={transaction.status}
-                        color={transaction.status === 'completed' ? 'success' : 'warning'}
-                        size="small"
-                        sx={{ mt: 1 }}
-                      />
-                    </>
-                  }
+                  primary={`Status changed to ${update.status.toUpperCase()}`}
+                  secondary={update.timestamp ? formatDate(update.timestamp) : 'N/A'}
                 />
-                <Typography 
-                  variant="subtitle1" 
-                  sx={{ 
-                    fontWeight: 'bold',
-                    color: transaction.amount > 0 ? 'success.main' : 'error.main'
-                  }}
-                >
-                  {formatCurrency(transaction.amount)}
-                </Typography>
+                <Chip 
+                  label={update.status.toUpperCase()} 
+                  color={getStatusColor(update.status)}
+                  size="small"
+                  sx={{ borderRadius: 0 }}
+                />
               </ListItem>
             ))}
           </List>
         </Paper>
       )}
       
-      {/* Cancel Order Dialog */}
-      <Dialog
-        open={cancelDialogOpen}
-        onClose={() => setCancelDialogOpen(false)}
+      {/* Payment Information */}
+      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Payment Information
+        </Typography>
+        
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Payment Method
+              </Typography>
+              <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>
+                {order.paymentMethod || 'Not specified'}
+              </Typography>
+            </Box>
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Payment Status
+              </Typography>
+              <Chip 
+                label={order.paymentStatus?.toUpperCase() || 'PENDING'} 
+                color={order.paymentStatus === 'paid' ? 'success' : 'warning'}
+                size="small"
+                sx={{ borderRadius: 0, mt: 0.5 }}
+              />
+            </Box>
+          </Grid>
+        </Grid>
+        
+        {/* Transaction History */}
+        {transactions.length > 0 && (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Transaction History
+            </Typography>
+            
+            <List>
+              {transactions.map((transaction, index) => (
+                <ListItem 
+                  key={index}
+                  sx={{ 
+                    borderBottom: index < transactions.length - 1 ? '1px solid' : 'none',
+                    borderColor: 'divider',
+                    py: 1,
+                    px: 0
+                  }}
+                >
+                  <ListItemText
+                    primary={transaction.description}
+                    secondary={formatDate(transaction.timestamp)}
+                  />
+                  <Typography 
+                    variant="body2" 
+                    color={transaction.type === 'credit' ? 'success.main' : 'error.main'}
+                    sx={{ fontWeight: 'bold' }}
+                  >
+                    {transaction.type === 'credit' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                  </Typography>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+        )}
+      </Paper>
+      
+      {/* Review Section for Completed Orders */}
+      {order && order.status === 'completed' && reviewableProducts.length > 0 && (
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <RateReviewIcon sx={{ mr: 1, color: 'primary.main' }} />
+            <Typography variant="h6">
+              Review Your Purchase
+            </Typography>
+          </Box>
+          
+          <Typography variant="body2" color="text.secondary" paragraph>
+            Share your experience with these products to help other shoppers make informed decisions.
+          </Typography>
+          
+          <List>
+            {reviewableProducts.map((product) => (
+              <ListItem 
+                key={product.id}
+                sx={{ 
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  py: 2
+                }}
+              >
+                <ListItemAvatar>
+                  <Avatar 
+                    alt={product.name} 
+                    src={product.imageUrl} 
+                    variant="rounded"
+                    sx={{ width: 60, height: 60, mr: 2 }}
+                  />
+                </ListItemAvatar>
+                <ListItemText
+                  primary={product.name}
+                  secondary={`Quantity: ${product.quantity}`}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<StarIcon />}
+                  onClick={() => handleOpenReviewDialog(product)}
+                  sx={{ borderRadius: 0 }}
+                >
+                  Write Review
+                </Button>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+      
+      {/* Review Dialog */}
+      <Dialog 
+        open={reviewDialogOpen} 
+        onClose={() => setReviewDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
       >
-        <DialogTitle>Cancel Order</DialogTitle>
+        <DialogTitle>
+          Review {selectedProduct?.name}
+        </DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            Are you sure you want to cancel this order? This action cannot be undone.
-          </DialogContentText>
+          {reviewError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 0 }}>
+              {reviewError}
+            </Alert>
+          )}
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Your Rating
+              </Typography>
+              <Rating
+                name="product-rating"
+                value={reviewRating}
+                onChange={(event, newValue) => {
+                  setReviewRating(newValue);
+                }}
+                precision={1}
+                size="large"
+              />
+            </Box>
+            
+            <TextField
+              label="Your Review"
+              multiline
+              rows={4}
+              value={reviewComment}
+              onChange={(e) => setReviewComment(e.target.value)}
+              fullWidth
+              placeholder="Share your experience with this product..."
+              variant="outlined"
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setCancelDialogOpen(false)} 
-            disabled={actionLoading}
+            onClick={() => setReviewDialogOpen(false)}
+            disabled={reviewSubmitting}
           >
-            No, Keep Order
+            Cancel
           </Button>
           <Button 
-            onClick={handleCancelOrder} 
-            color="error" 
-            variant="contained"
-            disabled={actionLoading}
+            onClick={handleSubmitReview}
+            variant="contained" 
+            color="primary"
+            disabled={reviewSubmitting || !reviewRating}
+            sx={{ borderRadius: 0 }}
           >
-            {actionLoading ? <CircularProgress size={24} /> : 'Yes, Cancel Order'}
+            {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -693,17 +825,21 @@ const OrderDetail = () => {
       <Dialog
         open={confirmDialogOpen}
         onClose={() => setConfirmDialogOpen(false)}
+        aria-labelledby="confirm-delivery-dialog-title"
       >
-        <DialogTitle>Confirm Delivery</DialogTitle>
+        <DialogTitle id="confirm-delivery-dialog-title">
+          Confirm Delivery
+        </DialogTitle>
         <DialogContent>
           <DialogContentText>
-            By confirming delivery, you acknowledge that you have received all items in this order.
-            This will release payment to the seller. This action cannot be undone.
+            By confirming delivery, you acknowledge that you have received all items in this order in good condition. 
+            This will release the payment to the seller and complete the transaction.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button 
             onClick={() => setConfirmDialogOpen(false)} 
+            color="primary"
             disabled={actionLoading}
           >
             Cancel
@@ -713,11 +849,89 @@ const OrderDetail = () => {
             color="success" 
             variant="contained"
             disabled={actionLoading}
+            sx={{ borderRadius: 0 }}
           >
-            {actionLoading ? <CircularProgress size={24} /> : 'Confirm Delivery'}
+            {actionLoading ? 'Processing...' : 'Confirm Delivery'}
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Deny Delivery Dialog */}
+      <Dialog
+        open={denyDialogOpen}
+        onClose={() => setDenyDialogOpen(false)}
+        aria-labelledby="deny-delivery-dialog-title"
+      >
+        <DialogTitle id="deny-delivery-dialog-title">
+          Report Not Delivered
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            If you have not received your order yet, this will notify the seller and our support team. 
+            The order status will be changed back to "shipped" and payment will not be released until the issue is resolved.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setDenyDialogOpen(false)} 
+            color="primary"
+            disabled={actionLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDenyDelivery} 
+            color="error" 
+            variant="contained"
+            disabled={actionLoading}
+            sx={{ borderRadius: 0 }}
+          >
+            {actionLoading ? 'Processing...' : 'Report Not Delivered'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Cancel Order Dialog */}
+      <Dialog
+        open={cancelDialogOpen}
+        onClose={() => setCancelDialogOpen(false)}
+        aria-labelledby="cancel-order-dialog-title"
+      >
+        <DialogTitle id="cancel-order-dialog-title">
+          Cancel Order
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to cancel this order? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setCancelDialogOpen(false)} 
+            color="primary"
+            disabled={actionLoading}
+          >
+            No, Keep Order
+          </Button>
+          <Button 
+            onClick={handleCancelOrder} 
+            color="error" 
+            variant="contained"
+            disabled={actionLoading}
+            sx={{ borderRadius: 0 }}
+          >
+            {actionLoading ? 'Processing...' : 'Yes, Cancel Order'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Success Snackbar */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={successMessage}
+      />
     </Container>
   );
 };

@@ -23,6 +23,7 @@ import { getRelatedProducts } from '../../firebase/services';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { formatCurrency } from '../../utils/formatters';
+import { PRODUCT_FALLBACK_IMAGE, getProductImageUrl, handleImageError } from '../../utils/imageUtils';
 
 const RelatedProducts = ({ categoryId, currentProductId, limit = 4 }) => {
   const theme = useTheme();
@@ -120,8 +121,9 @@ const RelatedProducts = ({ categoryId, currentProductId, limit = 4 }) => {
                     <CardMedia
                       component="img"
                       height="200"
-                      image={product.imageUrl}
+                      image={getProductImageUrl(product)}
                       alt={product.name}
+                      onError={(e) => handleImageError(e)}
                       sx={{ 
                         objectFit: 'cover',
                         bgcolor: 'white'
@@ -154,39 +156,49 @@ const RelatedProducts = ({ categoryId, currentProductId, limit = 4 }) => {
                         display: '-webkit-box',
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical',
-                        lineHeight: 1.2,
-                        height: '2.4em'
+                        height: '2.5rem',
+                        lineHeight: '1.25rem'
                       }}
                     >
                       {product.name}
                     </Typography>
+                    
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
                       <Rating 
-                        value={product.rating || 4.5} 
+                        value={product.rating || 0} 
                         precision={0.5} 
                         size="small" 
                         readOnly 
-                        sx={{ color: theme.palette.warning.main }}
                       />
-                      <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                        ({product.reviews?.length || 0})
+                      <Typography 
+                        variant="body2" 
+                        color="text.secondary"
+                        sx={{ ml: 0.5 }}
+                      >
+                        ({product.reviewCount || 0})
                       </Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'baseline' }}>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       <Typography 
-                        variant="subtitle1" 
-                        component="span" 
-                        color="error.main" 
-                        fontWeight="bold"
+                        variant="h6" 
+                        component="div"
+                        sx={{ 
+                          fontWeight: 'bold',
+                          color: product.discount > 0 ? 'error.main' : 'inherit'
+                        }}
                       >
                         {formatCurrency(discountedPrice)}
                       </Typography>
+                      
                       {product.discount > 0 && (
                         <Typography 
-                          variant="caption" 
-                          component="span" 
-                          color="text.secondary"
-                          sx={{ textDecoration: 'line-through', ml: 1 }}
+                          variant="body2" 
+                          sx={{ 
+                            ml: 1, 
+                            textDecoration: 'line-through',
+                            color: 'text.secondary'
+                          }}
                         >
                           {formatCurrency(product.price)}
                         </Typography>
@@ -194,32 +206,24 @@ const RelatedProducts = ({ categoryId, currentProductId, limit = 4 }) => {
                     </Box>
                   </CardContent>
                 </CardActionArea>
-                <Box 
-                  sx={{ 
+                
+                <IconButton
+                  size="small"
+                  color="primary"
+                  sx={{
                     position: 'absolute',
                     right: 8,
-                    bottom: 8,
-                    display: 'flex',
-                    gap: 0.5
+                    top: 8,
+                    bgcolor: alpha(theme.palette.background.paper, 0.8),
+                    '&:hover': {
+                      bgcolor: alpha(theme.palette.background.paper, 0.9),
+                    },
+                    zIndex: 1
                   }}
+                  onClick={(e) => handleAddToCart(e, product)}
                 >
-                  <IconButton 
-                    size="small"
-                    onClick={(e) => handleAddToCart(e, product)}
-                    sx={{ 
-                      bgcolor: theme.palette.primary.main,
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: theme.palette.primary.dark,
-                      },
-                      boxShadow: 1,
-                      width: 32,
-                      height: 32
-                    }}
-                  >
-                    <ShoppingCartIcon fontSize="small" />
-                  </IconButton>
-                </Box>
+                  <ShoppingCartIcon fontSize="small" />
+                </IconButton>
               </Card>
             </Grid>
           );

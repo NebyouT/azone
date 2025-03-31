@@ -1,0 +1,456 @@
+import React, { useState } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Paper, 
+  Button, 
+  Radio, 
+  RadioGroup, 
+  FormControlLabel, 
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Grid,
+  CircularProgress,
+  Alert,
+  useTheme,
+  alpha
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  LocationOn as LocationOnIcon,
+  Home as HomeIcon,
+  Business as BusinessIcon,
+  Star as StarIcon,
+  StarBorder as StarBorderIcon,
+  Save as SaveIcon
+} from '@mui/icons-material';
+import GoogleMapLocation from './GoogleMapLocation';
+
+const SavedAddresses = ({ 
+  addresses, 
+  selectedAddressId, 
+  onSelectAddress, 
+  onSaveAddress, 
+  onUpdateAddress, 
+  onDeleteAddress, 
+  onSetDefaultAddress,
+  loading 
+}) => {
+  const theme = useTheme();
+  const [openAddressDialog, setOpenAddressDialog] = useState(false);
+  const [addressFormMode, setAddressFormMode] = useState('add'); // 'add' or 'edit'
+  const [currentAddress, setCurrentAddress] = useState(null);
+  const [addressForm, setAddressForm] = useState({
+    fullName: '',
+    phoneNumber: '',
+    addressType: 'home', // 'home', 'work', 'other'
+    address: '',
+    city: 'Addis Ababa',
+    region: 'Addis Ababa',
+    zipCode: '',
+    deliveryInstructions: '',
+    coordinates: null
+  });
+  const [formError, setFormError] = useState('');
+  
+  // Handle address selection
+  const handleAddressSelect = (addressId) => {
+    onSelectAddress(addressId);
+  };
+  
+  // Open address dialog for adding new address
+  const handleAddAddress = () => {
+    setAddressFormMode('add');
+    setCurrentAddress(null);
+    setAddressForm({
+      fullName: '',
+      phoneNumber: '',
+      addressType: 'home',
+      address: '',
+      city: 'Addis Ababa',
+      region: 'Addis Ababa',
+      zipCode: '',
+      deliveryInstructions: '',
+      coordinates: null
+    });
+    setOpenAddressDialog(true);
+  };
+  
+  // Open address dialog for editing existing address
+  const handleEditAddress = (address) => {
+    setAddressFormMode('edit');
+    setCurrentAddress(address);
+    setAddressForm({
+      fullName: address.fullName || '',
+      phoneNumber: address.phoneNumber || '',
+      addressType: address.addressType || 'home',
+      address: address.address || '',
+      city: address.city || 'Addis Ababa',
+      region: address.region || 'Addis Ababa',
+      zipCode: address.zipCode || '',
+      deliveryInstructions: address.deliveryInstructions || '',
+      coordinates: address.coordinates || null
+    });
+    setOpenAddressDialog(true);
+  };
+  
+  // Handle address form input change
+  const handleAddressFormChange = (e) => {
+    const { name, value } = e.target;
+    setAddressForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  // Handle location selection from map
+  const handleLocationSelect = (locationData) => {
+    setAddressForm(prev => ({
+      ...prev,
+      coordinates: locationData.coordinates,
+      address: locationData.address
+    }));
+  };
+  
+  // Save or update address
+  const handleSaveAddress = () => {
+    // Validate form
+    if (!addressForm.fullName || !addressForm.phoneNumber || !addressForm.address) {
+      setFormError('Please fill in all required fields');
+      return;
+    }
+    
+    if (!addressForm.coordinates) {
+      setFormError('Please select a location on the map');
+      return;
+    }
+    
+    setFormError('');
+    
+    if (addressFormMode === 'add') {
+      onSaveAddress(addressForm);
+    } else {
+      onUpdateAddress(currentAddress.id, addressForm);
+    }
+    
+    setOpenAddressDialog(false);
+  };
+  
+  // Delete address
+  const handleDeleteAddress = (addressId) => {
+    if (window.confirm('Are you sure you want to delete this address?')) {
+      onDeleteAddress(addressId);
+    }
+  };
+  
+  // Set address as default
+  const handleSetDefaultAddress = (addressId) => {
+    onSetDefaultAddress(addressId);
+  };
+  
+  // Get address type icon
+  const getAddressTypeIcon = (type) => {
+    switch (type) {
+      case 'home':
+        return <HomeIcon fontSize="small" />;
+      case 'work':
+        return <BusinessIcon fontSize="small" />;
+      default:
+        return <LocationOnIcon fontSize="small" />;
+    }
+  };
+  
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+          Saved Addresses
+        </Typography>
+        
+        <Button
+          variant="outlined"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={handleAddAddress}
+          size="small"
+        >
+          Add New Address
+        </Button>
+      </Box>
+      
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : addresses.length === 0 ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          You don't have any saved addresses. Add a new address to save it for future use.
+        </Alert>
+      ) : (
+        <RadioGroup
+          value={selectedAddressId || ''}
+          onChange={(e) => handleAddressSelect(e.target.value)}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {addresses.map((address) => (
+              <Paper
+                key={address.id}
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  borderColor: selectedAddressId === address.id ? theme.palette.primary.main : 'inherit',
+                  background: alpha(theme.palette.background.paper, 0.7),
+                  backdropFilter: 'blur(10px)',
+                  position: 'relative',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    boxShadow: theme.shadows[2]
+                  }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                  <Radio
+                    checked={selectedAddressId === address.id}
+                    onChange={() => handleAddressSelect(address.id)}
+                    value={address.id}
+                    name="address-radio"
+                    sx={{ mt: -0.5, mr: 1 }}
+                  />
+                  
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      {getAddressTypeIcon(address.addressType)}
+                      <Typography variant="subtitle2" sx={{ ml: 1, fontWeight: 'bold' }}>
+                        {address.addressType === 'home' ? 'Home' : 
+                         address.addressType === 'work' ? 'Work' : 'Other'}
+                      </Typography>
+                      
+                      {address.isDefault && (
+                        <Box 
+                          sx={{ 
+                            ml: 1, 
+                            px: 1, 
+                            py: 0.2, 
+                            borderRadius: 1, 
+                            bgcolor: alpha(theme.palette.primary.main, 0.1),
+                            color: theme.palette.primary.main,
+                            fontSize: '0.7rem',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          DEFAULT
+                        </Box>
+                      )}
+                    </Box>
+                    
+                    <Typography variant="body1" sx={{ mb: 0.5 }}>
+                      {address.fullName}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      {address.phoneNumber}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      {address.address}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary">
+                      {address.city}, {address.region} {address.zipCode}
+                    </Typography>
+                    
+                    {address.deliveryInstructions && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                        Note: {address.deliveryInstructions}
+                      </Typography>
+                    )}
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleEditAddress(address)}
+                      sx={{ color: theme.palette.text.secondary }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleDeleteAddress(address.id)}
+                      sx={{ color: theme.palette.error.main }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                    
+                    {!address.isDefault && (
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleSetDefaultAddress(address.id)}
+                        sx={{ color: theme.palette.warning.main }}
+                        title="Set as default"
+                      >
+                        <StarBorderIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                </Box>
+              </Paper>
+            ))}
+          </Box>
+        </RadioGroup>
+      )}
+      
+      {/* Address Form Dialog */}
+      <Dialog 
+        open={openAddressDialog} 
+        onClose={() => setOpenAddressDialog(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          {addressFormMode === 'add' ? 'Add New Address' : 'Edit Address'}
+        </DialogTitle>
+        
+        <DialogContent>
+          {formError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {formError}
+            </Alert>
+          )}
+          
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label="Full Name"
+                name="fullName"
+                value={addressForm.fullName}
+                onChange={handleAddressFormChange}
+                error={formError && !addressForm.fullName}
+                helperText={formError && !addressForm.fullName ? 'Full name is required' : ''}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label="Phone Number"
+                name="phoneNumber"
+                value={addressForm.phoneNumber}
+                onChange={handleAddressFormChange}
+                error={formError && !addressForm.phoneNumber}
+                helperText={formError && !addressForm.phoneNumber ? 'Phone number is required' : ''}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>
+                Address Type
+              </Typography>
+              
+              <RadioGroup
+                row
+                name="addressType"
+                value={addressForm.addressType}
+                onChange={handleAddressFormChange}
+              >
+                <FormControlLabel value="home" control={<Radio />} label="Home" />
+                <FormControlLabel value="work" control={<Radio />} label="Work" />
+                <FormControlLabel value="other" control={<Radio />} label="Other" />
+              </RadioGroup>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                required
+                fullWidth
+                label="Address"
+                name="address"
+                value={addressForm.address}
+                onChange={handleAddressFormChange}
+                error={formError && !addressForm.address}
+                helperText={formError && !addressForm.address ? 'Address is required' : ''}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label="City"
+                name="city"
+                value={addressForm.city}
+                onChange={handleAddressFormChange}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Region"
+                name="region"
+                value={addressForm.region}
+                onChange={handleAddressFormChange}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Zip Code"
+                name="zipCode"
+                value={addressForm.zipCode}
+                onChange={handleAddressFormChange}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Delivery Instructions (Optional)"
+                name="deliveryInstructions"
+                value={addressForm.deliveryInstructions}
+                onChange={handleAddressFormChange}
+                multiline
+                rows={2}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <GoogleMapLocation 
+                onLocationSelect={handleLocationSelect}
+                initialLocation={addressForm.coordinates}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setOpenAddressDialog(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveAddress} 
+            variant="contained" 
+            color="primary"
+            startIcon={<SaveIcon />}
+          >
+            {addressFormMode === 'add' ? 'Save Address' : 'Update Address'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default SavedAddresses;

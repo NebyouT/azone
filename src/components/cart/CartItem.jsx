@@ -14,6 +14,8 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import { useCart } from '../../contexts/CartContext';
+import { formatCurrency } from '../../utils/formatters';
+import { CART_FALLBACK_IMAGE, handleImageError } from '../../utils/imageUtils';
 
 const CartItem = ({ item }) => {
   const { updateQuantity, removeFromCart } = useCart();
@@ -43,9 +45,10 @@ const CartItem = ({ item }) => {
     <Card sx={{ mb: 2, display: 'flex', p: 2 }}>
       <CardMedia
         component="img"
-        sx={{ width: 100, height: 100, objectFit: 'contain' }}
-        image={item.imageUrl || 'https://via.placeholder.com/100x100?text=No+Image'}
+        sx={{ width: 100, height: 100, objectFit: 'cover' }}
+        image={item.imageUrl || item.images?.[0] || CART_FALLBACK_IMAGE}
         alt={item.name}
+        onError={(e) => handleImageError(e, CART_FALLBACK_IMAGE)}
       />
       
       <CardContent sx={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', p: 2 }}>

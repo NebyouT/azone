@@ -601,12 +601,12 @@ const Navbar = () => {
               ) : (
                 <Button
                   component={RouterLink}
-                  to="/register"
+                  to="/profile"
                   size="small"
                   color="inherit"
                   sx={{ fontSize: '0.75rem', borderRadius: 0 }}
                 >
-                  {t('sellerDashboard')}
+                  {t('becomeSeller')}
                 </Button>
               )}
             </Box>

@@ -24,7 +24,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Stepper,
+  Step,
+  StepLabel,
+  Tooltip
 } from '@mui/material';
 import {
   ShoppingBag as OrderIcon,
@@ -34,10 +38,11 @@ import {
   Person as PersonIcon,
   Home as AddressIcon,
   Check as CheckIcon,
-  Cancel as CancelIcon
+  Cancel as CancelIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { getSellerOrderById, updateSellerOrderStatus } from '../../firebase/services';
+import { getSellerOrderById, updateSellerOrderStatus, getBuyerInfoForOrder } from '../../firebase/services';
 
 // Helper function to format currency
 const formatCurrency = (amount) => {
@@ -70,14 +75,33 @@ const getStatusColor = (status) => {
   switch (status) {
     case 'completed':
       return 'success';
+    case 'confirmed':
     case 'processing':
       return 'info';
     case 'shipped':
       return 'primary';
+    case 'delivered':
+      return 'secondary';
     case 'cancelled':
       return 'error';
     default:
       return 'default';
+  }
+};
+
+// Get next status based on current status
+const getNextStatus = (currentStatus) => {
+  switch (currentStatus) {
+    case 'pending':
+      return 'confirmed';
+    case 'confirmed':
+      return 'shipped';
+    case 'shipped':
+      return 'delivered';
+    case 'delivered':
+      return 'completed';
+    default:
+      return currentStatus;
   }
 };
 
@@ -91,34 +115,52 @@ const SellerOrderDetail = () => {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [updating, setUpdating] = useState(false);
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+  const [buyerInfo, setBuyerInfo] = useState(null);
+  const [buyerInfoLoading, setBuyerInfoLoading] = useState(false);
+  
+  // Define order status steps for the stepper
+  const orderSteps = ['pending', 'confirmed', 'shipped', 'delivered', 'completed'];
+  
+  const fetchOrderDetails = async () => {
+    if (!currentUser || !id) return;
+    
+    try {
+      setLoading(true);
+      const orderData = await getSellerOrderById(id);
+      
+      // Check if this seller owns this order
+      if (orderData.sellerId !== currentUser.uid) {
+        setError('You do not have permission to view this order');
+        setLoading(false);
+        return;
+      }
+      
+      setOrder(orderData);
+      
+      // Set the initial status
+      setSelectedStatus(orderData.status || 'pending');
+      
+      // Fetch buyer information
+      try {
+        setBuyerInfoLoading(true);
+        const info = await getBuyerInfoForOrder(id);
+        setBuyerInfo(info);
+      } catch (buyerError) {
+        console.error('Error fetching buyer info:', buyerError);
+        // Don't set an error, just set buyerInfo to null
+        setBuyerInfo(null);
+      } finally {
+        setBuyerInfoLoading(false);
+      }
+    } catch (err) {
+      console.error('Error fetching order details:', err);
+      setError('Failed to load order details. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
-    const fetchOrderDetails = async () => {
-      if (!currentUser || !id) return;
-      
-      try {
-        setLoading(true);
-        const orderData = await getSellerOrderById(id);
-        
-        // Check if this seller owns this order
-        if (orderData.sellerId !== currentUser.uid) {
-          setError('You do not have permission to view this order');
-          setLoading(false);
-          return;
-        }
-        
-        setOrder(orderData);
-        
-        // Set the initial status
-        setSelectedStatus(orderData.status || 'pending');
-      } catch (err) {
-        console.error('Error fetching order details:', err);
-        setError('Failed to load order details. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchOrderDetails();
   }, [id, currentUser]);
   
@@ -157,6 +199,10 @@ const SellerOrderDetail = () => {
     } finally {
       setUpdating(false);
     }
+  };
+  
+  const refreshOrder = () => {
+    fetchOrderDetails();
   };
   
   if (loading) {
@@ -206,6 +252,9 @@ const SellerOrderDetail = () => {
     );
   }
   
+  // Get the current step index for the stepper
+  const currentStepIndex = orderSteps.indexOf(order.status);
+  
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
@@ -215,15 +264,24 @@ const SellerOrderDetail = () => {
         </Typography>
       </Box>
       
-      <Button
-        component={Link}
-        to="/seller/dashboard"
-        startIcon={<BackIcon />}
-        variant="outlined"
-        sx={{ mb: 3 }}
-      >
-        Back to Dashboard
-      </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        <Button
+          component={Link}
+          to="/seller/dashboard"
+          startIcon={<BackIcon />}
+          variant="outlined"
+        >
+          Back to Dashboard
+        </Button>
+        
+        <Button
+          startIcon={<RefreshIcon />}
+          variant="outlined"
+          onClick={refreshOrder}
+        >
+          Refresh
+        </Button>
+      </Box>
       
       <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -231,8 +289,8 @@ const SellerOrderDetail = () => {
             Order #{order.id.substring(0, 8)}
           </Typography>
           <Chip 
-            label={selectedStatus.toUpperCase()} 
-            color={getStatusColor(selectedStatus)}
+            label={order.status.toUpperCase()} 
+            color={getStatusColor(order.status)}
             sx={{ fontWeight: 'medium' }}
           />
         </Box>
@@ -249,21 +307,45 @@ const SellerOrderDetail = () => {
         
         <Divider sx={{ my: 2 }} />
         
+        <Box sx={{ width: '100%', mb: 3 }}>
+          <Stepper activeStep={currentStepIndex} alternativeLabel>
+            {orderSteps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label.charAt(0).toUpperCase() + label.slice(1)}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+        </Box>
+        
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
               <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
               <Typography variant="subtitle1">Customer Information</Typography>
             </Box>
-            <Typography variant="body2">
-              {order.shippingAddress?.name}
-            </Typography>
-            <Typography variant="body2">
-              {order.shippingAddress?.email}
-            </Typography>
-            <Typography variant="body2">
-              {order.shippingAddress?.phone}
-            </Typography>
+            
+            {buyerInfoLoading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', my: 2 }}>
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+                <Typography variant="body2">Loading buyer information...</Typography>
+              </Box>
+            ) : buyerInfo ? (
+              <>
+                <Typography variant="body2">
+                  <strong>Name:</strong> {buyerInfo.name}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Email:</strong> {buyerInfo.email}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Phone:</strong> {buyerInfo.phone}
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Buyer information not available
+              </Typography>
+            )}
           </Grid>
           
           <Grid item xs={12} md={6}>
@@ -271,15 +353,36 @@ const SellerOrderDetail = () => {
               <AddressIcon sx={{ mr: 1, color: 'primary.main' }} />
               <Typography variant="subtitle1">Shipping Address</Typography>
             </Box>
-            <Typography variant="body2">
-              {order.shippingAddress?.street}
-            </Typography>
-            <Typography variant="body2">
-              {order.shippingAddress?.city}, {order.shippingAddress?.state} {order.shippingAddress?.zip}
-            </Typography>
-            <Typography variant="body2">
-              {order.shippingAddress?.country}
-            </Typography>
+            
+            {buyerInfo && buyerInfo.shippingAddress && typeof buyerInfo.shippingAddress === 'object' ? (
+              <>
+                <Typography variant="body2">
+                  {buyerInfo.shippingAddress.street}
+                </Typography>
+                <Typography variant="body2">
+                  {buyerInfo.shippingAddress.city}, {buyerInfo.shippingAddress.state} {buyerInfo.shippingAddress.zip}
+                </Typography>
+                <Typography variant="body2">
+                  {buyerInfo.shippingAddress.country}
+                </Typography>
+              </>
+            ) : order.shippingAddress && typeof order.shippingAddress === 'object' ? (
+              <>
+                <Typography variant="body2">
+                  {order.shippingAddress.street}
+                </Typography>
+                <Typography variant="body2">
+                  {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
+                </Typography>
+                <Typography variant="body2">
+                  {order.shippingAddress.country}
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Shipping address not available
+              </Typography>
+            )}
           </Grid>
         </Grid>
       </Paper>
@@ -290,9 +393,9 @@ const SellerOrderDetail = () => {
         </Typography>
         
         <List sx={{ width: '100%' }}>
-          {order.items.map((item) => (
+          {order.items.map((item, index) => (
             <ListItem 
-              key={item.productId} 
+              key={item.productId || index} 
               alignItems="flex-start"
               sx={{ 
                 borderBottom: '1px solid',
@@ -303,7 +406,7 @@ const SellerOrderDetail = () => {
               <ListItemAvatar>
                 <Avatar 
                   alt={item.name} 
-                  src={item.image} 
+                  src={item.image || item.imageUrl} 
                   variant="rounded"
                   sx={{ width: 60, height: 60, mr: 2 }}
                 />
@@ -324,6 +427,13 @@ const SellerOrderDetail = () => {
                         Price: {formatCurrency(item.price)}
                       </Typography>
                     </Box>
+                    {item.variant && (
+                      <Box component="div" sx={{ mt: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary" component="span">
+                          Variant: {item.variant}
+                        </Typography>
+                      </Box>
+                    )}
                   </>
                 }
                 sx={{ mr: 2 }}
@@ -368,8 +478,9 @@ const SellerOrderDetail = () => {
                 onChange={handleStatusChange}
               >
                 <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="processing">Processing</MenuItem>
+                <MenuItem value="confirmed">Confirmed</MenuItem>
                 <MenuItem value="shipped">Shipped</MenuItem>
+                <MenuItem value="delivered">Delivered</MenuItem>
                 <MenuItem value="completed">Completed</MenuItem>
                 <MenuItem value="cancelled">Cancelled</MenuItem>
               </Select>
@@ -392,8 +503,59 @@ const SellerOrderDetail = () => {
           <Typography variant="body2" color="text.secondary">
             <strong>Note:</strong> Updating the order status will notify the customer. Make sure you have taken appropriate action before changing the status.
           </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            - <strong>Confirmed</strong>: You've accepted the order and are preparing it
+            <br />
+            - <strong>Shipped</strong>: You've sent the items to the customer
+            <br />
+            - <strong>Delivered</strong>: The customer has received the items
+            <br />
+            - <strong>Completed</strong>: The order is fully processed and payment is released
+            <br />
+            - <strong>Cancelled</strong>: The order has been cancelled
+          </Typography>
         </Box>
       </Paper>
+      
+      {/* Order History */}
+      {order.notifications && order.notifications.length > 0 && (
+        <Paper elevation={2} sx={{ p: 3, mt: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Order History
+          </Typography>
+          
+          <List>
+            {[...order.notifications].reverse().map((notification, index) => (
+              <ListItem 
+                key={index}
+                sx={{ 
+                  borderBottom: index < order.notifications.length - 1 ? '1px solid' : 'none',
+                  borderColor: 'divider',
+                  py: 1
+                }}
+              >
+                <ListItemText
+                  primary={notification.message}
+                  secondary={
+                    notification.timestamp ? 
+                      formatDate(
+                        typeof notification.timestamp === 'string' 
+                          ? new Date(notification.timestamp) 
+                          : notification.timestamp
+                      ) 
+                      : 'N/A'
+                  }
+                />
+                <Chip 
+                  label={notification.status?.toUpperCase() || 'UPDATE'} 
+                  color={getStatusColor(notification.status)}
+                  size="small"
+                />
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
       
       {/* Confirmation Dialog */}
       <Dialog
@@ -408,9 +570,19 @@ const SellerOrderDetail = () => {
         <DialogContent>
           <DialogContentText id="alert-dialog-description">
             Are you sure you want to change the status of this order to <strong>{selectedStatus}</strong>?
+            {selectedStatus === 'confirmed' && (
+              <Box sx={{ mt: 2 }}>
+                This confirms that you've accepted the order and are preparing the items.
+              </Box>
+            )}
             {selectedStatus === 'shipped' && (
               <Box sx={{ mt: 2 }}>
                 This will indicate that you have shipped the items to the customer.
+              </Box>
+            )}
+            {selectedStatus === 'delivered' && (
+              <Box sx={{ mt: 2 }}>
+                This indicates that the customer has received the items.
               </Box>
             )}
             {selectedStatus === 'completed' && (

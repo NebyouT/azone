@@ -18,6 +18,8 @@ import {
   FavoriteBorder as FavoriteBorderIcon
 } from '@mui/icons-material';
 import { useCart } from '../../contexts/CartContext';
+import { formatCurrency } from '../../utils/formatters';
+import { getProductImageUrl, handleImageError } from '../../utils/imageUtils';
 
 const ProductCard = ({ product }) => {
   const { addToCart } = useCart();
@@ -58,9 +60,11 @@ const ProductCard = ({ product }) => {
       <Box sx={{ position: 'relative' }}>
         <CardMedia
           component="img"
-          height="200"
-          image={product.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image'}
+          height={200}
+          image={getProductImageUrl(product)}
           alt={product.name}
+          onError={(e) => handleImageError(e)}
+          sx={{ objectFit: 'cover' }}
         />
         <IconButton
           sx={{
