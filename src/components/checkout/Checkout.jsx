@@ -38,7 +38,6 @@ import { createOrder } from '../../firebase/services';
 import { getWalletBalance } from '../../firebase/walletServices';
 import PaymentOptions from './PaymentOptions';
 import SavedAddresses from './SavedAddresses';
-import GoogleMapLocation from './GoogleMapLocation';
 import { 
   getSavedAddresses, 
   saveAddress, 
@@ -47,7 +46,6 @@ import {
   updateDefaultAddress,
   getDefaultAddress
 } from '../../firebase/shippingServices';
-import { ENABLE_MAPS_BY_DEFAULT } from '../../config/mapConfig';
 
 // Helper function to format currency
 const formatCurrency = (amount) => {
@@ -121,9 +119,7 @@ const Checkout = () => {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [shippingTabValue, setShippingTabValue] = useState(0); // 0 for saved addresses, 1 for new address
-  const [mapCoordinates, setMapCoordinates] = useState(null);
   const [saveNewAddress, setSaveNewAddress] = useState(false);
-  const [useMapIntegration, setUseMapIntegration] = useState(ENABLE_MAPS_BY_DEFAULT);
 
   // Calculate totals
   const subtotal = cart.items && Array.isArray(cart.items) 
@@ -179,10 +175,8 @@ const Checkout = () => {
             city: defaultAddress.city || 'Addis Ababa',
             region: defaultAddress.region || 'Addis Ababa',
             zipCode: defaultAddress.zipCode || '',
-            deliveryInstructions: defaultAddress.deliveryInstructions || '',
-            coordinates: defaultAddress.coordinates || null
+            deliveryInstructions: defaultAddress.deliveryInstructions || ''
           });
-          setMapCoordinates(defaultAddress.coordinates);
         }
         
         setAddressesLoading(false);
@@ -230,10 +224,8 @@ const Checkout = () => {
         city: selectedAddress.city || 'Addis Ababa',
         region: selectedAddress.region || 'Addis Ababa',
         zipCode: selectedAddress.zipCode || '',
-        deliveryInstructions: selectedAddress.deliveryInstructions || '',
-        coordinates: selectedAddress.coordinates || null
+        deliveryInstructions: selectedAddress.deliveryInstructions || ''
       });
-      setMapCoordinates(selectedAddress.coordinates);
     }
   };
 
@@ -260,10 +252,8 @@ const Checkout = () => {
           city: defaultAddress.city || 'Addis Ababa',
           region: defaultAddress.region || 'Addis Ababa',
           zipCode: defaultAddress.zipCode || '',
-          deliveryInstructions: defaultAddress.deliveryInstructions || '',
-          coordinates: defaultAddress.coordinates || null
+          deliveryInstructions: defaultAddress.deliveryInstructions || ''
         });
-        setMapCoordinates(defaultAddress.coordinates);
       }
       
       setAddressesLoading(false);
@@ -294,10 +284,8 @@ const Checkout = () => {
           city: addressData.city || 'Addis Ababa',
           region: addressData.region || 'Addis Ababa',
           zipCode: addressData.zipCode || '',
-          deliveryInstructions: addressData.deliveryInstructions || '',
-          coordinates: addressData.coordinates || null
+          deliveryInstructions: addressData.deliveryInstructions || ''
         });
-        setMapCoordinates(addressData.coordinates);
       }
       
       setAddressesLoading(false);
@@ -331,10 +319,8 @@ const Checkout = () => {
             city: defaultAddress.city || 'Addis Ababa',
             region: defaultAddress.region || 'Addis Ababa',
             zipCode: defaultAddress.zipCode || '',
-            deliveryInstructions: defaultAddress.deliveryInstructions || '',
-            coordinates: defaultAddress.coordinates || null
+            deliveryInstructions: defaultAddress.deliveryInstructions || ''
           });
-          setMapCoordinates(defaultAddress.coordinates);
         } else {
           setSelectedAddressId(null);
           setShippingDetails({
@@ -344,10 +330,8 @@ const Checkout = () => {
             city: 'Addis Ababa',
             region: 'Addis Ababa',
             zipCode: '',
-            deliveryInstructions: '',
-            coordinates: null
+            deliveryInstructions: ''
           });
-          setMapCoordinates(null);
           setShippingTabValue(1); // Switch to new address tab
         }
       }
@@ -375,19 +359,6 @@ const Checkout = () => {
     } catch (err) {
       console.error('Error setting default address:', err);
       setAddressesLoading(false);
-    }
-  };
-
-  // Handle location selection from map
-  const handleLocationSelect = (locationData) => {
-    setMapCoordinates(locationData.coordinates);
-    
-    // Update address field with the selected location's address
-    if (locationData.address) {
-      setShippingDetails(prev => ({
-        ...prev,
-        address: locationData.address
-      }));
     }
   };
 
@@ -420,20 +391,6 @@ const Checkout = () => {
         if (!fullName || !phoneNumber || !address || !city) {
           setError('Please fill in all required fields');
           return;
-        }
-        
-        if (!mapCoordinates && useMapIntegration) {
-          setError('Please select your location on the map');
-          return;
-        }
-        
-        // If save new address is checked, save it
-        if (saveNewAddress) {
-          handleSaveAddress({
-            ...shippingDetails,
-            coordinates: mapCoordinates,
-            addressType: 'home'
-          });
         }
       }
     }
@@ -491,10 +448,7 @@ const Checkout = () => {
         tax,
         total,
         paymentMethod: 'wallet',
-        shippingAddress: {
-          ...shippingDetails,
-          coordinates: mapCoordinates
-        },
+        shippingAddress: shippingDetails,
         status: 'pending',
         paymentStatus: 'pending' // Will be updated when the order is completed
       };
@@ -851,71 +805,6 @@ const Checkout = () => {
                         </Button>
                       </Box>
                     </Grid>
-                    
-                    <Grid item xs={12}>
-                      <FormControlLabel
-                        control={
-                          <Switch 
-                            checked={useMapIntegration}
-                            onChange={(e) => setUseMapIntegration(e.target.checked)}
-                            color="primary"
-                          />
-                        }
-                        label="Use Map to Select Location (Requires Google Maps API Key)"
-                      />
-                    </Grid>
-                    
-                    {useMapIntegration ? (
-                      <Grid item xs={12}>
-                        <GoogleMapLocation 
-                          onLocationSelect={handleLocationSelect}
-                          initialLocation={mapCoordinates}
-                        />
-                      </Grid>
-                    ) : (
-                      <Grid container item xs={12} spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Latitude (Optional)"
-                            name="latitude"
-                            value={mapCoordinates?.lat || ''}
-                            onChange={(e) => {
-                              const lat = parseFloat(e.target.value) || '';
-                              setMapCoordinates(prev => ({
-                                ...prev,
-                                lat
-                              }));
-                            }}
-                            margin="normal"
-                            type="number"
-                            InputProps={{
-                              inputProps: { step: 0.000001 }
-                            }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Longitude (Optional)"
-                            name="longitude"
-                            value={mapCoordinates?.lng || ''}
-                            onChange={(e) => {
-                              const lng = parseFloat(e.target.value) || '';
-                              setMapCoordinates(prev => ({
-                                ...prev,
-                                lng
-                              }));
-                            }}
-                            margin="normal"
-                            type="number"
-                            InputProps={{
-                              inputProps: { step: 0.000001 }
-                            }}
-                          />
-                        </Grid>
-                      </Grid>
-                    )}
                   </Grid>
                 </Box>
               )}

@@ -1,40 +1,53 @@
 import { 
   getAuth, 
-  createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  signOut,
-  updateProfile,
+  createUserWithEmailAndPassword, 
+  signOut, 
+  updateProfile, 
+  sendPasswordResetEmail,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
   GoogleAuthProvider,
   FacebookAuthProvider,
   OAuthProvider,
   signInWithPopup,
   sendEmailVerification,
-  sendPasswordResetEmail,
   applyActionCode,
   verifyPasswordResetCode,
   confirmPasswordReset,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
+  PhoneAuthProvider
 } from 'firebase/auth';
 import { 
   getFirestore, 
   collection, 
   doc, 
-  getDoc, 
+  getDoc,
   getDocs, 
-  addDoc, 
+  setDoc, 
   updateDoc, 
   deleteDoc, 
   query, 
-  where,
-  orderBy,
-  limit,
+  where, 
+  orderBy, 
+  limit, 
+  startAfter,
   serverTimestamp,
-  setDoc,
+  Timestamp,
+  addDoc,
+  increment,
   writeBatch,
-  arrayUnion,
-  Timestamp
+  arrayUnion
 } from 'firebase/firestore';
+import { 
+  getStorage,
+  ref as storageRef,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
+import { initializeApp } from 'firebase/app';
 import { app } from './config';
 import { uploadImage, getPublicIdFromUrl } from '../cloudinary/services';
 import { initializeWallet, processPayment, transferFundsToSellerForCompletedOrder } from './walletServices';
@@ -62,56 +75,47 @@ appleProvider.addScope('name');
 
 // Validate Ethiopian phone number
 export const validateEthiopianPhoneNumber = (phoneNumber) => {
-  // Ethiopian phone numbers can be in formats:
-  // +251 9XXXXXXXX
-  // 251 9XXXXXXXX
-  // 09XXXXXXXX
-  // 9XXXXXXXX
-  const ethiopianPhoneRegex = /^(\+251|251)?9\d{8}$/;
+  if (!phoneNumber) return false;
   
-  // Remove any spaces, dashes or parentheses
-  const cleanNumber = phoneNumber.replace(/[\s\-()]/g, '');
+  // Remove any non-digit characters
+  const cleaned = phoneNumber.replace(/\D/g, '');
   
-  // If the number starts with 0, remove it and add the country code
-  if (cleanNumber.startsWith('0')) {
-    return ethiopianPhoneRegex.test('251' + cleanNumber.substring(1));
-  }
+  // Valid formats:
+  // 1. 0911234567 (10 digits starting with 0)
+  // 2. 911234567 (9 digits without leading 0)
+  // 3. 251911234567 (12 digits with country code)
   
-  // If it's just 9 digits starting with 9, add the country code
-  if (cleanNumber.length === 9 && cleanNumber.startsWith('9')) {
-    return ethiopianPhoneRegex.test('251' + cleanNumber);
-  }
-  
-  // Otherwise test as is
-  return ethiopianPhoneRegex.test(cleanNumber);
+  return (
+    (cleaned.startsWith('0') && cleaned.length === 10) ||
+    (!cleaned.startsWith('0') && cleaned.length === 9) ||
+    (cleaned.startsWith('251') && cleaned.length === 12)
+  );
 };
 
-// Format Ethiopian phone number to standard format
+// Format Ethiopian phone number for international format
 export const formatEthiopianPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return '';
+  
   // Remove any non-digit characters
-  const cleanNumber = phoneNumber.replace(/\D/g, '');
+  const cleaned = phoneNumber.replace(/\D/g, '');
   
-  // If it starts with 0, remove it
-  if (cleanNumber.startsWith('0')) {
-    return '+251' + cleanNumber.substring(1);
+  // Check if it already has the country code
+  if (cleaned.startsWith('251')) {
+    return '+' + cleaned;
   }
   
-  // If it's just 9 digits starting with 9
-  if (cleanNumber.length === 9 && cleanNumber.startsWith('9')) {
-    return '+251' + cleanNumber;
+  // Check if it starts with 0 (Ethiopian format)
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    return '+251' + cleaned.substring(1);
   }
   
-  // If it already has the country code without +
-  if (cleanNumber.startsWith('251') && cleanNumber.length === 12) {
-    return '+' + cleanNumber;
+  // If it's just 9 digits (without the leading 0)
+  if (cleaned.length === 9) {
+    return '+251' + cleaned;
   }
   
-  // If it already has the full format with +
-  if (cleanNumber.startsWith('251') && cleanNumber.length === 12) {
-    return '+' + cleanNumber;
-  }
-  
-  return phoneNumber; // Return as is if it doesn't match expected formats
+  // Return as is with + prefix if it doesn't match known patterns
+  return '+' + cleaned;
 };
 
 // User Registration
@@ -421,7 +425,7 @@ export const signInWithApple = async () => {
 };
 
 // User profile services
-export const updateUserProfile = async (userId, displayName, phoneNumber, role) => {
+export const updateUserProfile = async (userId, displayName, phoneNumber, role, photoURL) => {
   try {
     if (!userId) {
       const currentUser = getCurrentUser();
@@ -436,10 +440,12 @@ export const updateUserProfile = async (userId, displayName, phoneNumber, role) 
     }
     
     // Update auth profile
-    if (displayName) {
-      await updateProfile(auth.currentUser, {
-        displayName: displayName
-      });
+    const updateData = {};
+    if (displayName) updateData.displayName = displayName;
+    if (photoURL) updateData.photoURL = photoURL;
+    
+    if (Object.keys(updateData).length > 0) {
+      await updateProfile(auth.currentUser, updateData);
     }
     
     // Update user document in Firestore
@@ -448,6 +454,7 @@ export const updateUserProfile = async (userId, displayName, phoneNumber, role) 
       displayName: displayName || '',
       phoneNumber: formattedPhoneNumber,
       role: role || 'buyer',
+      photoURL: photoURL || '',
       updatedAt: serverTimestamp()
     });
     
@@ -458,8 +465,8 @@ export const updateUserProfile = async (userId, displayName, phoneNumber, role) 
   }
 };
 
-// Helper function to get user document
-updateUserProfile.getUserDocument = async (userId) => {
+// Upload profile image
+export const uploadProfileImage = async (file, userId) => {
   try {
     if (!userId) {
       const currentUser = getCurrentUser();
@@ -467,19 +474,145 @@ updateUserProfile.getUserDocument = async (userId) => {
       userId = currentUser.uid;
     }
     
-    const userRef = doc(db, 'users', userId);
+    if (!file) throw new Error('No file provided');
+    
+    // Create a reference to the profile image
+    const storage = getStorage();
+    const profileImageRef = storageRef(storage, `profileImages/${userId}/${Date.now()}_${file.name}`);
+    
+    // Upload the file
+    const uploadTask = uploadBytesResumable(profileImageRef, file);
+    
+    // Return a promise that resolves with the download URL
+    return new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          // Progress function
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Upload is ' + progress + '% done');
+        },
+        (error) => {
+          // Error function
+          console.error('Error uploading profile image:', error);
+          reject(error);
+        },
+        async () => {
+          // Complete function
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            
+            // Update user profile with the new image URL
+            await updateUserProfile(userId, null, null, null, downloadURL);
+            
+            resolve(downloadURL);
+          } catch (error) {
+            reject(error);
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.error('Error in uploadProfileImage:', error);
+    throw error;
+  }
+};
+
+// Initialize phone verification
+export const initPhoneVerification = async (phoneNumber, containerId) => {
+  try {
+    if (!phoneNumber) throw new Error('Phone number is required');
+    
+    // Format the phone number for Ethiopia
+    const formattedPhoneNumber = formatEthiopianPhoneNumber(phoneNumber);
+    console.log('Formatted phone number:', formattedPhoneNumber);
+    
+    // Clear any existing reCAPTCHA widgets
+    window.recaptchaVerifier = null;
+    
+    // Get the container element
+    const container = document.getElementById(containerId);
+    if (!container) {
+      throw new Error('reCAPTCHA container not found');
+    }
+    
+    // Clear the container
+    container.innerHTML = '';
+    
+    // Initialize reCAPTCHA verifier
+    window.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+      size: 'normal',
+      callback: (response) => {
+        console.log('reCAPTCHA verified');
+      },
+      'expired-callback': () => {
+        console.log('reCAPTCHA expired');
+      }
+    });
+    
+    // Render the reCAPTCHA
+    await window.recaptchaVerifier.render();
+    
+    // Request OTP
+    console.log('Sending OTP to:', formattedPhoneNumber);
+    const confirmationResult = await signInWithPhoneNumber(
+      auth, 
+      formattedPhoneNumber, 
+      window.recaptchaVerifier
+    );
+    
+    console.log('OTP sent successfully');
+    
+    // Return the confirmation result to be used for verifying the code
+    return confirmationResult;
+  } catch (error) {
+    console.error('Error initializing phone verification:', error);
+    throw error;
+  }
+};
+
+// Verify phone number with OTP
+export const verifyPhoneNumber = async (confirmationResult, verificationCode) => {
+  try {
+    if (!confirmationResult) throw new Error('Confirmation result is required');
+    if (!verificationCode) throw new Error('Verification code is required');
+    
+    // Verify the code
+    const result = await confirmationResult.confirm(verificationCode);
+    
+    // Get the user
+    const user = result.user;
+    
+    // Update the user's profile to mark phone as verified
+    const userRef = doc(db, 'users', user.uid);
+    
+    // Check if the user document exists
     const userDoc = await getDoc(userRef);
     
     if (userDoc.exists()) {
-      return {
-        id: userDoc.id,
-        ...userDoc.data()
-      };
+      // Update existing document
+      await updateDoc(userRef, {
+        phoneVerified: true,
+        phoneNumber: user.phoneNumber,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Create new user document
+      await setDoc(userRef, {
+        uid: user.uid,
+        displayName: user.displayName || '',
+        email: user.email || '',
+        phoneNumber: user.phoneNumber || '',
+        phoneVerified: true,
+        role: 'buyer', // Default role
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
     }
     
-    return null;
+    return true;
   } catch (error) {
-    console.error('Error getting user document:', error);
+    console.error('Error verifying phone number:', error);
     throw error;
   }
 };
@@ -852,7 +985,7 @@ export const getUserOrders = async (userId, includeHidden = false) => {
       basicOrders.sort((a, b) => {
         // Handle cases where createdAt might be missing
         if (!a.createdAt) return 1;
-        if (!b.createdAt) return -1;
+        if (!b.createdAt) return 1;
         
         // Convert to timestamps if they are Firestore timestamps
         const timeA = a.createdAt.toDate ? a.createdAt.toDate().getTime() : a.createdAt;

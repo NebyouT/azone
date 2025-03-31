@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -38,7 +38,9 @@ import {
   Zoom,
   useTheme,
   alpha,
-  Snackbar
+  Snackbar,
+  IconButton,
+  InputAdornment
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -57,12 +59,26 @@ import {
   Star as StarIcon,
   StarBorder as StarBorderIcon,
   History as HistoryIcon,
-  VerifiedUser as VerifiedUserIcon
+  VerifiedUser as VerifiedUserIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Send as SendIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserOrders, updateUserProfile, validateEthiopianPhoneNumber, getUserStatistics, isEmailVerified, resendVerificationEmail } from '../../firebase/services';
-import { db } from '../../firebase/config';
+import { 
+  getUserOrders, 
+  updateUserProfile, 
+  validateEthiopianPhoneNumber, 
+  getUserStatistics, 
+  isEmailVerified, 
+  resendVerificationEmail,
+  uploadProfileImage,
+  initPhoneVerification,
+  verifyPhoneNumber,
+  formatEthiopianPhoneNumber
+} from '../../firebase/services';
+import { auth, db, storage } from '../../firebase/config';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { sendEmailVerification } from 'firebase/auth';
 import WalletSummary from '../wallet/WalletSummary';
 import PendingReviews from '../reviews/PendingReviews';
 
@@ -90,6 +106,29 @@ const Profile = () => {
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
   const theme = useTheme();
   
+  // Profile image states
+  const [profileImage, setProfileImage] = useState(null);
+  const [profileImageURL, setProfileImageURL] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const fileInputRef = useRef(null);
+  
+  // Phone verification states
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState(null);
+  const recaptchaContainerRef = useRef(null);
+  
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+  
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -100,48 +139,59 @@ const Profile = () => {
           phoneNumber: currentUser.phoneNumber || '',
           role: currentUser.role || 'buyer'
         });
+        
+        // Set profile image URL if available
+        if (currentUser.photoURL) {
+          setProfileImageURL(currentUser.photoURL);
+        }
+        
+        // Check if phone is verified
+        if (currentUser.phoneVerified) {
+          setPhoneVerified(true);
+        }
+        
         setLoading(false);
-      } catch (err) {
-        console.error('Error fetching user data:', err);
-        setError('Failed to load user data');
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        setError('Failed to load user data. Please try again later.');
         setLoading(false);
       }
     };
     
-    const fetchUserOrders = async () => {
+    const fetchOrders = async () => {
       try {
-        setOrderLoading(true);
-        const userOrders = await getUserOrders(currentUser.uid);
-        setOrders(userOrders);
-      } catch (err) {
-        console.error('Error fetching orders:', err);
-        if (err.code === 'failed-precondition' && err.message.includes('index')) {
-          // Handle Firestore index error
-          console.log('Index error detected, using fallback query');
-        } else {
-          setError('Failed to load orders');
+        if (currentUser) {
+          const userOrders = await getUserOrders(currentUser.uid);
+          setOrders(userOrders);
         }
-      } finally {
+        setOrderLoading(false);
+      } catch (error) {
+        console.error('Error fetching orders:', error);
         setOrderLoading(false);
       }
     };
     
     const fetchUserStats = async () => {
       try {
-        setStatsLoading(true);
-        const stats = await getUserStatistics(currentUser.uid);
-        setUserStats(stats);
-      } catch (err) {
-        console.error('Error fetching user statistics:', err);
-      } finally {
+        if (currentUser) {
+          const stats = await getUserStatistics(currentUser.uid);
+          setUserStats(stats);
+        }
+        setStatsLoading(false);
+      } catch (error) {
+        console.error('Error fetching user statistics:', error);
         setStatsLoading(false);
       }
     };
     
     if (currentUser) {
       fetchUserData();
-      fetchUserOrders();
+      fetchOrders();
       fetchUserStats();
+    } else {
+      setLoading(false);
+      setOrderLoading(false);
+      setStatsLoading(false);
     }
   }, [currentUser]);
   
@@ -149,47 +199,52 @@ const Profile = () => {
     setTabValue(newValue);
   };
   
-  const handleEditToggle = () => {
-    setEditMode(!editMode);
-    // Reset form data if canceling edit
-    if (editMode) {
-      setFormData({
-        displayName: userData.displayName || '',
-        phoneNumber: userData.phoneNumber || '',
-        role: userData.role || 'buyer'
-      });
-      setPhoneError('');
-    }
+  const handleEditClick = () => {
+    setEditMode(true);
   };
   
-  const handleChange = (e) => {
+  const handleCancelEdit = () => {
+    // Reset form data to current user data
+    setFormData({
+      displayName: userData.displayName || '',
+      phoneNumber: userData.phoneNumber || '',
+      role: userData.role || 'buyer'
+    });
+    setPhoneError('');
+    setEditMode(false);
+  };
+  
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
+    
+    if (name === 'phoneNumber') {
+      // Validate phone number as user types
+      if (value && !validateEthiopianPhoneNumber(value)) {
+        setPhoneError('Please enter a valid Ethiopian phone number (e.g., 0911234567)');
+      } else {
+        setPhoneError('');
+      }
+    }
+    
     setFormData({
       ...formData,
       [name]: value
     });
-    
-    // Clear phone error when user types
-    if (name === 'phoneNumber') {
-      setPhoneError('');
-    }
   };
   
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setPhoneError('');
-    
-    // Validate phone number if provided
-    if (formData.phoneNumber && !validateEthiopianPhoneNumber(formData.phoneNumber)) {
-      setPhoneError('Please enter a valid Ethiopian phone number');
-      return;
-    }
-    
+  const handleSaveProfile = async () => {
     try {
+      // Validate phone number
+      if (formData.phoneNumber && !validateEthiopianPhoneNumber(formData.phoneNumber)) {
+        setPhoneError('Please enter a valid Ethiopian phone number (e.g., 0911234567)');
+        return;
+      }
+      
       setSaveLoading(true);
+      
+      // Update user profile
       await updateUserProfile(
-        currentUser.uid,
+        userData.uid,
         formData.displayName,
         formData.phoneNumber,
         formData.role
@@ -203,25 +258,261 @@ const Profile = () => {
         role: formData.role
       });
       
+      // Exit edit mode
       setEditMode(false);
-    } catch (err) {
-      console.error('Error updating profile:', err);
-      setError('Failed to update profile');
+      
+      // Show success message
+      setSnackbar({
+        open: true,
+        message: 'Profile updated successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to update profile: ${error.message}`,
+        severity: 'error'
+      });
     } finally {
       setSaveLoading(false);
     }
   };
   
-  const handleResendVerification = async () => {
-    try {
-      await resendVerificationEmail(currentUser);
-      alert('Verification email has been sent. Please check your inbox.');
-    } catch (err) {
-      console.error('Error sending verification email:', err);
-      setError('Failed to send verification email');
+  // Handle profile image upload
+  const handleImageClick = () => {
+    fileInputRef.current.click();
+  };
+  
+  const handleImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setSnackbar({
+          open: true,
+          message: 'Image size should be less than 5MB',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Check file type
+      if (!file.type.match('image.*')) {
+        setSnackbar({
+          open: true,
+          message: 'Please select an image file',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      setProfileImage(file);
+      
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setProfileImageURL(e.target.result);
+      };
+      reader.readAsDataURL(file);
+      
+      // Upload image
+      handleUploadImage(file);
     }
   };
   
+  const handleUploadImage = async (file) => {
+    try {
+      setUploadLoading(true);
+      
+      // Upload image to Firebase Storage
+      const downloadURL = await uploadProfileImage(file, userData.uid);
+      
+      // Update local state
+      setProfileImageURL(downloadURL);
+      
+      // Update user data
+      setUserData({
+        ...userData,
+        photoURL: downloadURL
+      });
+      
+      setSnackbar({
+        open: true,
+        message: 'Profile image updated successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to upload profile image: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setUploadLoading(false);
+      setUploadProgress(0);
+    }
+  };
+  
+  // Phone verification handlers
+  const handleVerifyPhone = async () => {
+    try {
+      if (!formData.phoneNumber) {
+        setSnackbar({
+          open: true,
+          message: 'Please enter a phone number to verify',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      if (!validateEthiopianPhoneNumber(formData.phoneNumber)) {
+        setSnackbar({
+          open: true,
+          message: 'Please enter a valid Ethiopian phone number (e.g., 0911234567)',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // First open the dialog so the reCAPTCHA container is available in the DOM
+      setVerificationError('');
+      setVerificationLoading(true);
+      setVerificationDialogOpen(true);
+      
+      // Wait for the dialog to open and the reCAPTCHA container to be rendered
+      setTimeout(async () => {
+        try {
+          console.log('Starting phone verification for:', formData.phoneNumber);
+          
+          // Initialize phone verification
+          const result = await initPhoneVerification(formData.phoneNumber, 'recaptcha-container');
+          setConfirmationResult(result);
+          
+          setSnackbar({
+            open: true,
+            message: 'Verification code sent to your phone',
+            severity: 'success'
+          });
+          
+          console.log('Verification code sent successfully');
+        } catch (error) {
+          console.error('Error initiating phone verification:', error);
+          setVerificationError(`Verification failed: ${error.message}`);
+          
+          // Close the dialog if there's a critical error
+          if (error.code === 'auth/invalid-phone-number' || 
+              error.code === 'auth/missing-phone-number' ||
+              error.code === 'auth/quota-exceeded') {
+            setTimeout(() => {
+              setVerificationDialogOpen(false);
+              setSnackbar({
+                open: true,
+                message: `Phone verification failed: ${error.message}`,
+                severity: 'error'
+              });
+            }, 2000);
+          }
+        } finally {
+          setVerificationLoading(false);
+        }
+      }, 1500); // Give the dialog more time to render
+    } catch (error) {
+      console.error('Error in handleVerifyPhone:', error);
+      setVerificationError(`Error: ${error.message}`);
+      setVerificationLoading(false);
+    }
+  };
+  
+  const handleVerificationCodeChange = (e) => {
+    setVerificationCode(e.target.value);
+  };
+  
+  const handleVerifyCode = async () => {
+    try {
+      if (!verificationCode) {
+        setVerificationError('Please enter the verification code');
+        return;
+      }
+      
+      setVerificationLoading(true);
+      
+      // Verify the code
+      await verifyPhoneNumber(confirmationResult, verificationCode);
+      
+      // Update local state
+      setPhoneVerified(true);
+      
+      // Update user data
+      setUserData({
+        ...userData,
+        phoneVerified: true
+      });
+      
+      // Close dialog
+      setVerificationDialogOpen(false);
+      
+      setSnackbar({
+        open: true,
+        message: 'Phone number verified successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error verifying code:', error);
+      setVerificationError(`Failed to verify code: ${error.message}`);
+      setSnackbar({
+        open: true,
+        message: `Failed to verify code: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+  
+  const handleCloseVerificationDialog = () => {
+    setVerificationDialogOpen(false);
+    setVerificationCode('');
+    setVerificationError('');
+  };
+  
+  const handleSnackbarClose = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({
+      ...snackbar,
+      open: false
+    });
+  };
+  
+  // Handle email verification
+  const handleResendVerification = async () => {
+    try {
+      setLoading(true);
+      
+      // Use the Firebase auth function to send verification email
+      await sendEmailVerification(auth.currentUser);
+      
+      setSnackbar({
+        open: true,
+        message: 'Verification email sent. Please check your inbox.',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error sending verification email:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to send verification email: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Calculate user rating based on completed orders and cancellations
   const calculateUserRating = () => {
     if (!userStats) return 0;
@@ -260,40 +551,6 @@ const Profile = () => {
     );
   };
   
-  const handleUpgradeToSeller = async () => {
-    try {
-      setUpgradeLoading(true);
-      setUpgradeError('');
-      
-      // Update user role in Firestore
-      const userRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userRef, {
-        role: 'seller',
-        updatedAt: serverTimestamp()
-      });
-      
-      // Update local state
-      setUserData(prev => ({
-        ...prev,
-        role: 'seller'
-      }));
-      
-      setUpgradeSuccess(true);
-      setUpgradeDialogOpen(false);
-      
-      // Refresh the page after a short delay to update auth context
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-      
-    } catch (error) {
-      console.error('Error upgrading account:', error);
-      setUpgradeError('Failed to upgrade account. Please try again.');
-    } finally {
-      setUpgradeLoading(false);
-    }
-  };
-  
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -317,51 +574,76 @@ const Profile = () => {
         <Grid item xs={12} md={4}>
           <Zoom in={true} style={{ transitionDelay: '100ms' }}>
             <Card 
-              elevation={3} 
+              elevation={3}
               sx={{ 
-                height: '100%', 
+                mb: 4,
                 borderRadius: 2,
-                background: theme.palette.mode === 'dark' 
-                  ? `linear-gradient(145deg, ${theme.palette.background.paper}, ${theme.palette.grey[900]})` 
-                  : `linear-gradient(145deg, ${theme.palette.background.paper}, ${theme.palette.grey[100]})`,
-                position: 'relative',
-                overflow: 'visible'
+                overflow: 'visible',
+                position: 'relative'
               }}
             >
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center',
-                  pt: 4, 
-                  pb: 2
-                }}
-              >
-                <Badge
-                  overlap="circular"
-                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                  badgeContent={
-                    userData.emailVerified ? (
-                      <Tooltip title="Email Verified">
-                        <VerifiedIcon color="primary" />
-                      </Tooltip>
-                    ) : null
-                  }
+              <CardContent sx={{ pt: 8, pb: 2 }}>
+                <Box 
+                  sx={{ 
+                    position: 'absolute',
+                    top: -40,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center'
+                  }}
                 >
-                  <Avatar
-                    alt={userData.displayName || 'User'}
-                    src={userData.photoURL}
-                    sx={{ 
-                      width: 100, 
-                      height: 100, 
-                      mb: 2,
-                      border: `4px solid ${theme.palette.primary.main}`,
-                      boxShadow: theme.shadows[4]
-                    }}
+                  <Badge
+                    overlap="circular"
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    badgeContent={
+                      <IconButton 
+                        color="primary"
+                        aria-label="upload picture"
+                        component="span"
+                        onClick={handleImageClick}
+                        disabled={uploadLoading}
+                        sx={{ 
+                          bgcolor: 'background.paper',
+                          boxShadow: 1,
+                          '&:hover': {
+                            bgcolor: alpha(theme.palette.primary.main, 0.1)
+                          }
+                        }}
+                      >
+                        <PhotoCameraIcon />
+                      </IconButton>
+                    }
                   >
-                    {userData.displayName ? userData.displayName[0].toUpperCase() : <PersonIcon />}
-                  </Avatar>
-                </Badge>
+                    <Avatar 
+                      src={profileImageURL || (userData?.photoURL || '')}
+                      alt={userData?.displayName || 'User'}
+                      sx={{ 
+                        width: 80, 
+                        height: 80,
+                        border: `2px solid ${theme.palette.primary.main}`,
+                        boxShadow: 2
+                      }}
+                    />
+                  </Badge>
+                  <input
+                    accept="image/*"
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageChange}
+                    style={{ display: 'none' }}
+                  />
+                  {uploadLoading && (
+                    <Box sx={{ width: '80%', mt: 1 }}>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={uploadProgress} 
+                        sx={{ height: 6, borderRadius: 3 }}
+                      />
+                    </Box>
+                  )}
+                </Box>
                 
                 <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
                   {userData.displayName || 'User'}
@@ -403,7 +685,7 @@ const Profile = () => {
                   <Button
                     variant="outlined"
                     startIcon={<EditIcon />}
-                    onClick={handleEditToggle}
+                    onClick={handleEditClick}
                     sx={{ mt: 2 }}
                   >
                     Edit Profile
@@ -414,21 +696,21 @@ const Profile = () => {
                       variant="outlined"
                       color="error"
                       startIcon={<CancelIcon />}
-                      onClick={handleEditToggle}
+                      onClick={handleCancelEdit}
                     >
                       Cancel
                     </Button>
                     <Button
                       variant="contained"
                       startIcon={<SaveIcon />}
-                      onClick={handleSubmit}
+                      onClick={handleSaveProfile}
                       disabled={saveLoading}
                     >
-                      {saveLoading ? <CircularProgress size={24} /> : 'Save'}
+                      {saveLoading ? 'Saving...' : 'Save'}
                     </Button>
                   </Box>
                 )}
-              </Box>
+              </CardContent>
               
               <Divider />
               
@@ -480,7 +762,7 @@ const Profile = () => {
                     )}
                   </List>
                 ) : (
-                  <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
+                  <Box component="form" onSubmit={handleSaveProfile} sx={{ mt: 1 }}>
                     <TextField
                       margin="normal"
                       fullWidth
@@ -488,7 +770,7 @@ const Profile = () => {
                       label="Display Name"
                       name="displayName"
                       value={formData.displayName}
-                      onChange={handleChange}
+                      onChange={handleInputChange}
                       autoFocus
                     />
                     
@@ -499,9 +781,9 @@ const Profile = () => {
                       label="Phone Number"
                       name="phoneNumber"
                       value={formData.phoneNumber}
-                      onChange={handleChange}
+                      onChange={handleInputChange}
                       error={!!phoneError}
-                      helperText={phoneError}
+                      helperText={phoneError || "Ethiopian phone number format: +251xxxxxxxxx"}
                     />
                     
                     <FormControl fullWidth margin="normal">
@@ -511,7 +793,7 @@ const Profile = () => {
                         id="role"
                         name="role"
                         value={formData.role}
-                        onChange={handleChange}
+                        onChange={handleInputChange}
                         label="Account Type"
                       >
                         <MenuItem value="buyer">Buyer</MenuItem>
@@ -560,162 +842,173 @@ const Profile = () => {
                 
                 {/* Profile Tab */}
                 <TabPanel value={tabValue} index={0}>
-                  {editMode ? (
-                    <Box component="form" onSubmit={handleSubmit} sx={{ p: 3 }}>
-                      <Typography variant="h6" gutterBottom>
+                  <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h6" component="h2" gutterBottom>
                         Edit Profile
                       </Typography>
-                      
-                      <Grid container spacing={3}>
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="Display Name"
-                            name="displayName"
-                            value={formData.displayName}
-                            onChange={handleChange}
-                            required
-                          />
-                        </Grid>
-                        
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="Phone Number"
-                            name="phoneNumber"
-                            value={formData.phoneNumber}
-                            onChange={handleChange}
-                            helperText={phoneError || "Ethiopian phone number format: +251xxxxxxxxx"}
-                            error={!!phoneError}
-                          />
-                        </Grid>
-                        
-                        <Grid item xs={12}>
-                          <FormControl fullWidth>
-                            <InputLabel>Role</InputLabel>
-                            <Select
-                              name="role"
-                              value={formData.role}
-                              onChange={handleChange}
-                              label="Role"
-                            >
-                              <MenuItem value="buyer">Buyer</MenuItem>
-                              <MenuItem value="seller">Seller</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                      </Grid>
-                      
-                      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                      {!editMode ? (
                         <Button
-                          onClick={handleEditToggle}
-                          startIcon={<CancelIcon />}
-                          sx={{ mr: 1 }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="submit"
                           variant="contained"
-                          startIcon={<SaveIcon />}
-                          disabled={saveLoading}
-                        >
-                          {saveLoading ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                      </Box>
-                    </Box>
-                  ) : (
-                    <Box sx={{ p: 3 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">
-                          Profile Information
-                        </Typography>
-                        <Button
+                          color="primary"
                           startIcon={<EditIcon />}
-                          onClick={handleEditToggle}
+                          onClick={handleEditClick}
+                          sx={{ borderRadius: 0 }}
                         >
                           Edit
                         </Button>
-                      </Box>
-                      
-                      <List>
-                        <ListItem>
-                          <ListItemIcon>
-                            <PersonIcon />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary="Display Name"
-                            secondary={userData.displayName || 'Not set'}
-                          />
-                        </ListItem>
-                        
-                        <ListItem>
-                          <ListItemIcon>
-                            <EmailIcon />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary="Email"
-                            secondary={
-                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                {userData.email}
-                                {userData.emailVerified ? (
-                                  <Tooltip title="Email Verified">
-                                    <VerifiedIcon color="success" sx={{ ml: 1, fontSize: 16 }} />
+                      ) : (
+                        <Box>
+                          <Button
+                            variant="outlined"
+                            color="inherit"
+                            startIcon={<CancelIcon />}
+                            onClick={handleCancelEdit}
+                            sx={{ mr: 1, borderRadius: 0 }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<SaveIcon />}
+                            onClick={handleSaveProfile}
+                            disabled={saveLoading}
+                            sx={{ borderRadius: 0 }}
+                          >
+                            {saveLoading ? 'Saving...' : 'Save'}
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                    
+                    <Divider sx={{ mb: 3 }} />
+                    
+                    <Typography variant="subtitle1" component="h3" fontWeight="bold" gutterBottom>
+                      Profile Information
+                    </Typography>
+                    
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Full Name"
+                          name="displayName"
+                          value={formData.displayName}
+                          onChange={handleInputChange}
+                          disabled={!editMode}
+                          variant={editMode ? "outlined" : "filled"}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <PersonIcon color="action" />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Email"
+                          value={userData?.email || ''}
+                          disabled
+                          variant="filled"
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <EmailIcon color="action" />
+                              </InputAdornment>
+                            ),
+                            endAdornment: userData?.emailVerified ? (
+                              <InputAdornment position="end">
+                                <Tooltip title="Email verified">
+                                  <VerifiedIcon color="success" />
+                                </Tooltip>
+                              </InputAdornment>
+                            ) : (
+                              <InputAdornment position="end">
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  color="primary"
+                                  onClick={handleResendVerification}
+                                  sx={{ borderRadius: 0 }}
+                                >
+                                  Verify
+                                </Button>
+                              </InputAdornment>
+                            )
+                          }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Phone Number (Ethiopian format)"
+                          name="phoneNumber"
+                          value={formData.phoneNumber}
+                          onChange={handleInputChange}
+                          disabled={!editMode}
+                          variant={editMode ? "outlined" : "filled"}
+                          error={!!phoneError}
+                          helperText={phoneError || "Format: 0911234567 or +251911234567"}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <PhoneIcon color="action" />
+                              </InputAdornment>
+                            ),
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                {phoneVerified ? (
+                                  <Tooltip title="Phone verified">
+                                    <VerifiedIcon color="success" />
                                   </Tooltip>
                                 ) : (
-                                  <Tooltip title="Email Not Verified">
-                                    <Button
-                                      size="small"
-                                      color="warning"
-                                      onClick={handleResendVerification}
-                                      sx={{ ml: 1 }}
-                                    >
-                                      Verify Email
-                                    </Button>
-                                  </Tooltip>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                        
-                        <ListItem>
-                          <ListItemIcon>
-                            <PhoneIcon />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary="Phone Number"
-                            secondary={userData.phoneNumber || 'Not set'}
-                          />
-                        </ListItem>
-                        
-                        <ListItem>
-                          <ListItemIcon>
-                            <VerifiedUserIcon />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary="Account Type"
-                            secondary={
-                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                {userData.role === 'seller' ? 'Seller' : 'Buyer'}
-                                {userData.role === 'buyer' && (
                                   <Button
+                                    variant="outlined"
                                     size="small"
                                     color="primary"
-                                    variant="outlined"
-                                    onClick={() => setUpgradeDialogOpen(true)}
-                                    sx={{ ml: 2, borderRadius: 0 }}
+                                    onClick={handleVerifyPhone}
+                                    disabled={!formData.phoneNumber || !!phoneError || verificationLoading}
+                                    sx={{ borderRadius: 0 }}
                                   >
-                                    Become a Seller
+                                    Verify
                                   </Button>
                                 )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                      </List>
-                    </Box>
-                  )}
+                              </InputAdornment>
+                            )
+                          }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth disabled={!editMode} variant={editMode ? "outlined" : "filled"}>
+                          <InputLabel id="role-label">Account Type</InputLabel>
+                          <Select
+                            labelId="role-label"
+                            id="role"
+                            name="role"
+                            value={formData.role}
+                            onChange={handleInputChange}
+                            label="Account Type"
+                          >
+                            <MenuItem value="buyer">Buyer</MenuItem>
+                            <MenuItem value="seller">Seller</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Member Since"
+                          value={userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'N/A'}
+                          disabled
+                          variant="filled"
+                        />
+                      </Grid>
+                    </Grid>
+                  </Paper>
                 </TabPanel>
                 
                 {/* Orders Tab */}
@@ -803,59 +1096,92 @@ const Profile = () => {
         </Grid>
       </Grid>
       
-      {/* Upgrade to Seller Dialog */}
+      {/* Phone Verification Dialog */}
       <Dialog
-        open={upgradeDialogOpen}
-        onClose={() => setUpgradeDialogOpen(false)}
-        PaperProps={{
-          sx: {
-            borderRadius: 0,
-          }
-        }}
+        open={verificationDialogOpen}
+        onClose={handleCloseVerificationDialog}
+        aria-labelledby="verification-dialog-title"
+        maxWidth="sm"
+        fullWidth
       >
-        <DialogTitle>Become a Seller</DialogTitle>
+        <DialogTitle id="verification-dialog-title">
+          Verify Your Phone Number
+        </DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            Upgrading your account to a seller will allow you to list products for sale on Azone.
-            You'll have access to the seller dashboard where you can manage your products, orders, and sales analytics.
-          </DialogContentText>
-          {upgradeError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {upgradeError}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body1" gutterBottom>
+              We're verifying: <strong>{formatEthiopianPhoneNumber(formData.phoneNumber)}</strong>
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              1. Complete the reCAPTCHA below
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              2. Wait for the SMS with your verification code
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              3. Enter the 6-digit code to verify your phone number
+            </Typography>
+          </Box>
+          
+          {verificationError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {verificationError}
             </Alert>
           )}
+          
+          {/* reCAPTCHA container - must be visible before verification starts */}
+          <Box id="recaptcha-container" ref={recaptchaContainerRef} sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}></Box>
+          
+          <TextField
+            fullWidth
+            label="Verification Code"
+            value={verificationCode}
+            onChange={handleVerificationCodeChange}
+            margin="normal"
+            variant="outlined"
+            placeholder="Enter 6-digit code"
+            disabled={!confirmationResult}
+            helperText={!confirmationResult ? "Complete the reCAPTCHA first" : "Enter the code sent to your phone"}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    color="primary"
+                    onClick={handleVerifyCode}
+                    disabled={!verificationCode || verificationLoading || !confirmationResult}
+                  >
+                    <SendIcon />
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button 
-            onClick={() => setUpgradeDialogOpen(false)}
-            sx={{ borderRadius: 0 }}
-          >
+          <Button onClick={handleCloseVerificationDialog} color="inherit">
             Cancel
           </Button>
-          <Button 
-            onClick={handleUpgradeToSeller}
+          <Button
+            onClick={handleVerifyCode}
+            color="primary"
             variant="contained"
-            disabled={upgradeLoading}
+            disabled={!verificationCode || verificationLoading || !confirmationResult}
             sx={{ borderRadius: 0 }}
           >
-            {upgradeLoading ? 'Upgrading...' : 'Upgrade to Seller'}
+            {verificationLoading ? 'Verifying...' : 'Verify'}
           </Button>
         </DialogActions>
       </Dialog>
       
-      {/* Success Snackbar */}
+      {/* Snackbar for notifications */}
       <Snackbar
-        open={upgradeSuccess}
-        autoHideDuration={5000}
-        onClose={() => setUpgradeSuccess(false)}
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setUpgradeSuccess(false)} 
-          severity="success"
-          sx={{ width: '100%', borderRadius: 0 }}
-        >
-          Your account has been upgraded to a seller account! Redirecting to seller dashboard...
+        <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Container>
