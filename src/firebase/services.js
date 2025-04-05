@@ -8,8 +8,6 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   GoogleAuthProvider,
-  FacebookAuthProvider,
-  OAuthProvider,
   signInWithPopup,
   sendEmailVerification,
   applyActionCode,
@@ -40,13 +38,6 @@ import {
   writeBatch,
   arrayUnion
 } from 'firebase/firestore';
-import { 
-  getStorage,
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject
-} from 'firebase/storage';
 import { initializeApp } from 'firebase/app';
 import { app } from './config';
 import { uploadImage, getPublicIdFromUrl } from '../cloudinary/services';
@@ -62,22 +53,13 @@ import {
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Initialize providers
+// Initialize Google provider
 const googleProvider = new GoogleAuthProvider();
-const facebookProvider = new FacebookAuthProvider();
-const appleProvider = new OAuthProvider('apple.com');
 
-// Configure providers
+// Configure Google provider
 googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
-
-facebookProvider.setCustomParameters({
-  'display': 'popup'
-});
-
-appleProvider.addScope('email');
-appleProvider.addScope('name');
 
 // Validate Ethiopian phone number
 export const validateEthiopianPhoneNumber = (phoneNumber) => {
@@ -362,74 +344,6 @@ export const signInWithGoogle = async () => {
   }
 };
 
-export const signInWithFacebook = async () => {
-  try {
-    const result = await signInWithPopup(auth, facebookProvider);
-    const user = result.user;
-    
-    // Check if user document exists
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    
-    if (!userDoc.exists()) {
-      // Create user document if it doesn't exist
-      const userData = {
-        uid: user.uid,
-        displayName: user.displayName || '',
-        email: user.email || '',
-        phoneNumber: user.phoneNumber || '',
-        photoURL: user.photoURL || '',
-        role: 'buyer', // Default role for social sign-ins
-        createdAt: serverTimestamp(),
-        provider: 'facebook'
-      };
-      
-      await setDoc(doc(db, 'users', user.uid), userData);
-      
-      // Initialize wallet for the new user
-      await initializeWallet(user.uid, 'buyer');
-    }
-    
-    return user;
-  } catch (error) {
-    console.error("Facebook sign-in error:", error);
-    throw error;
-  }
-};
-
-export const signInWithApple = async () => {
-  try {
-    const result = await signInWithPopup(auth, appleProvider);
-    const user = result.user;
-    
-    // Check if user document exists
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    
-    if (!userDoc.exists()) {
-      // Create user document if it doesn't exist
-      const userData = {
-        uid: user.uid,
-        displayName: user.displayName || '',
-        email: user.email || '',
-        phoneNumber: user.phoneNumber || '',
-        photoURL: user.photoURL || '',
-        role: 'buyer', // Default role for social sign-ins
-        createdAt: serverTimestamp(),
-        provider: 'apple'
-      };
-      
-      await setDoc(doc(db, 'users', user.uid), userData);
-      
-      // Initialize wallet for the new user
-      await initializeWallet(user.uid, 'buyer');
-    }
-    
-    return user;
-  } catch (error) {
-    console.error("Apple sign-in error:", error);
-    throw error;
-  }
-};
-
 // User profile services
 export const updateUserProfile = async (userId, displayName, phoneNumber, role, photoURL) => {
   try {
@@ -461,6 +375,8 @@ export const updateUserProfile = async (userId, displayName, phoneNumber, role, 
       phoneNumber: formattedPhoneNumber,
       role: role || 'buyer',
       photoURL: photoURL || '',
+      // Set phoneVerified to true automatically without verification
+      phoneVerified: phoneNumber ? true : false,
       updatedAt: serverTimestamp()
     });
     
@@ -482,42 +398,17 @@ export const uploadProfileImage = async (file, userId) => {
     
     if (!file) throw new Error('No file provided');
     
-    // Create a reference to the profile image
-    const storage = getStorage();
-    const profileImageRef = storageRef(storage, `profileImages/${userId}/${Date.now()}_${file.name}`);
+    // Upload the image to Cloudinary instead of Firebase Storage
+    const downloadURL = await uploadImage(file, `profile_${userId}`);
     
-    // Upload the file
-    const uploadTask = uploadBytesResumable(profileImageRef, file);
+    if (!downloadURL) {
+      throw new Error('Failed to upload image to Cloudinary');
+    }
     
-    // Return a promise that resolves with the download URL
-    return new Promise((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          // Progress function
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('Upload is ' + progress + '% done');
-        },
-        (error) => {
-          // Error function
-          console.error('Error uploading profile image:', error);
-          reject(error);
-        },
-        async () => {
-          // Complete function
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            
-            // Update user profile with the new image URL
-            await updateUserProfile(userId, null, null, null, downloadURL);
-            
-            resolve(downloadURL);
-          } catch (error) {
-            reject(error);
-          }
-        }
-      );
-    });
+    // Update user profile with the new image URL
+    await updateUserProfile(userId, null, null, null, downloadURL);
+    
+    return downloadURL;
   } catch (error) {
     console.error('Error in uploadProfileImage:', error);
     throw error;
@@ -684,30 +575,26 @@ export const addProduct = async (productData, imageFile, additionalImageFiles = 
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('You must be logged in to add a product');
     
-    // Upload product image to Cloudinary if provided
-    let imageUrl = null;
+    // Upload main product image to Cloudinary
+    let imageUrl = '';
     if (imageFile) {
-      // Upload to Cloudinary with seller ID as part of the folder path
       imageUrl = await uploadImage(imageFile, `products/${currentUser.uid}`);
     }
     
-    // Upload additional images if provided
+    // Upload additional images to Cloudinary
     let additionalImages = [];
     if (additionalImageFiles && additionalImageFiles.length > 0) {
-      // Process each additional image
+      // Create an array of promises for uploading all additional images
       const uploadPromises = additionalImageFiles.map(file => 
         uploadImage(file, `products/${currentUser.uid}/additional`)
       );
       
-      // Wait for all uploads to complete
+      // Wait for all uploads to complete and collect the URLs
       additionalImages = await Promise.all(uploadPromises);
-    } else if (productData.additionalImages && productData.additionalImages.length > 0) {
-      // Use existing additional images from form data if available (e.g., from data URLs)
-      additionalImages = productData.additionalImages;
     }
     
-    // Ensure hasVariants field is properly set
-    const hasVariants = productData.hasVariants === true || productData.hasVariants === false 
+    // Validate hasVariants
+    const hasVariants = productData.hasVariants === true 
       ? productData.hasVariants 
       : false;
     

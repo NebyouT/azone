@@ -273,6 +273,7 @@ const Navbar = () => {
           overflow: 'visible',
           borderRadius: 0,
           filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.1))',
+          minWidth: 200,
           '&:before': {
             content: '""',
             display: 'block',
@@ -290,26 +291,60 @@ const Navbar = () => {
       transformOrigin={{ horizontal: 'right', vertical: 'top' }}
       anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
     >
-      <MenuItem onClick={() => handleNavigate('/profile')}>
+      {/* User Info Section */}
+      {userDetails && (
+        <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            {userDetails?.photoURL ? (
+              <Avatar 
+                src={userDetails.photoURL} 
+                alt={userDetails.displayName || 'User'} 
+                sx={{ width: 40, height: 40, mr: 1.5 }} 
+              />
+            ) : (
+              <Avatar 
+                sx={{ 
+                  width: 40, 
+                  height: 40, 
+                  mr: 1.5,
+                  bgcolor: theme.palette.secondary.main
+                }}
+              >
+                {userDetails?.displayName?.charAt(0) || <PersonIcon />}
+              </Avatar>
+            )}
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                {userDetails.displayName || t('user')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                {userDetails.email}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      )}
+      
+      <MenuItem onClick={() => handleNavigate('/profile')} sx={{ py: 1.5 }}>
         <ListItemIcon>
           <PersonIcon fontSize="small" />
         </ListItemIcon>
         {t('profile')}
       </MenuItem>
-      <MenuItem onClick={() => handleNavigate('/orders')}>
+      <MenuItem onClick={() => handleNavigate('/orders')} sx={{ py: 1.5 }}>
         <ListItemIcon>
           <OrdersIcon fontSize="small" />
         </ListItemIcon>
         {t('orders')}
       </MenuItem>
-      <MenuItem onClick={() => handleNavigate('/wallet')}>
+      <MenuItem onClick={() => handleNavigate('/wallet')} sx={{ py: 1.5 }}>
         <ListItemIcon>
           <WalletIcon fontSize="small" />
         </ListItemIcon>
         {t('wallet')}
       </MenuItem>
       {isSeller && (
-        <MenuItem onClick={() => handleNavigate('/seller/dashboard')}>
+        <MenuItem onClick={() => handleNavigate('/seller/dashboard')} sx={{ py: 1.5 }}>
           <ListItemIcon>
             <StoreIcon fontSize="small" />
           </ListItemIcon>
@@ -317,9 +352,9 @@ const Navbar = () => {
         </MenuItem>
       )}
       <Divider />
-      <MenuItem onClick={handleLogout}>
+      <MenuItem onClick={handleLogout} sx={{ py: 1.5, color: 'error.main' }}>
         <ListItemIcon>
-          <LogoutIcon fontSize="small" />
+          <LogoutIcon fontSize="small" color="error" />
         </ListItemIcon>
         {t('logout')}
       </MenuItem>
@@ -951,7 +986,7 @@ const Navbar = () => {
 
             {/* Action Icons */}
             {!searchOpen && (
-              <Box sx={{ display: 'flex' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 {/* Notification Icon */}
                 {currentUser && (
                   <NotificationIcon />
@@ -973,6 +1008,92 @@ const Navbar = () => {
                   >
                     <WalletIcon />
                   </IconButton>
+                )}
+                
+                {/* Cart Icon */}
+                <IconButton
+                  component={RouterLink}
+                  to="/cart"
+                  size="large"
+                  aria-label="show cart items"
+                  color="inherit"
+                  sx={{
+                    ml: 1,
+                    transition: 'transform 0.2s',
+                    '&:hover': { transform: 'scale(1.1)' },
+                  }}
+                >
+                  <Badge badgeContent={itemCount} color="secondary">
+                    <ShoppingCartIcon />
+                  </Badge>
+                </IconButton>
+
+                {/* Profile Icon - Only for tablet and desktop */}
+                {!isMobile && currentUser && (
+                  <Tooltip title={t('account')}>
+                    <IconButton
+                      size="large"
+                      edge="end"
+                      aria-label="account of current user"
+                      aria-controls={menuId}
+                      aria-haspopup="true"
+                      onClick={handleProfileMenuOpen}
+                      color="inherit"
+                      sx={{
+                        ml: 1,
+                        transition: 'all 0.2s',
+                        border: '2px solid transparent',
+                        '&:hover': { 
+                          transform: 'scale(1.05)',
+                          border: '2px solid white',
+                        },
+                      }}
+                    >
+                      {userDetails?.photoURL ? (
+                        <Avatar 
+                          src={userDetails.photoURL} 
+                          alt={userDetails.displayName || 'User'} 
+                          sx={{ 
+                            width: 32, 
+                            height: 32,
+                            boxShadow: '0 0 8px rgba(255,255,255,0.5)'
+                          }} 
+                        />
+                      ) : (
+                        <Avatar 
+                          sx={{ 
+                            width: 32, 
+                            height: 32, 
+                            bgcolor: theme.palette.secondary.main,
+                            boxShadow: '0 0 8px rgba(255,255,255,0.5)'
+                          }}
+                        >
+                          {userDetails?.displayName?.charAt(0) || <PersonIcon />}
+                        </Avatar>
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Login/Register Button - Only for tablet and desktop */}
+                {!isMobile && !currentUser && (
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    component={RouterLink}
+                    to="/login"
+                    startIcon={<PersonIcon />}
+                    sx={{
+                      ml: 2,
+                      borderRadius: 0,
+                      boxShadow: '0 0 10px rgba(0,0,0,0.1)',
+                      '&:hover': {
+                        boxShadow: '0 0 15px rgba(0,0,0,0.2)',
+                      },
+                    }}
+                  >
+                    {t('login')}
+                  </Button>
                 )}
               </Box>
             )}

@@ -29,7 +29,8 @@ const Footer = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isMedium = useMediaQuery(theme.breakpoints.down('md'));
   const location = useLocation();
-  const { itemCount } = useCart();
+  const { cart } = useCart();
+  const itemCount = cart?.items?.reduce((count, item) => count + item.quantity, 0) || 0;
   const { t } = useLanguage();
 
   // Mobile bottom navigation component

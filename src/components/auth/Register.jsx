@@ -28,15 +28,13 @@ import {
   DialogActions
 } from '@mui/material';
 import {
+  Person as PersonIcon,
   Email as EmailIcon,
+  Phone as PhoneIcon,
   Lock as LockIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
-  Person as PersonIcon,
-  Phone as PhoneIcon,
   Google as GoogleIcon,
-  Facebook as FacebookIcon,
-  Apple as AppleIcon,
   MarkEmailRead as MarkEmailReadIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
@@ -44,8 +42,6 @@ import {
   registerUser, 
   validateEthiopianPhoneNumber,
   signInWithGoogle,
-  signInWithFacebook,
-  signInWithApple,
   resendVerificationEmail
 } from '../../firebase/services';
 
@@ -161,38 +157,21 @@ const Register = () => {
   
   const handleSocialSignIn = async (provider) => {
     setError('');
-    setLoading(true);
     
     try {
       switch (provider) {
         case 'Google':
           await signInWithGoogle();
           break;
-        case 'Facebook':
-          await signInWithFacebook();
-          break;
-        case 'Apple':
-          await signInWithApple();
-          break;
         default:
-          throw new Error(`Unsupported provider: ${provider}`);
+          throw new Error('Invalid provider');
       }
       
       // Navigate to home page after successful sign-in
       navigate('/');
     } catch (err) {
       console.error(`${provider} sign-in error:`, err);
-      
-      // Handle specific errors
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in was cancelled.');
-      } else if (err.code === 'auth/account-exists-with-different-credential') {
-        setError('An account already exists with the same email address but different sign-in credentials.');
-      } else {
-        setError(`Failed to sign in with ${provider}. ${err.message || 'Please try again.'}`);
-      }
-    } finally {
-      setLoading(false);
+      setError(err.message || `Failed to sign in with ${provider}. Please try again.`);
     }
   };
   
@@ -376,8 +355,8 @@ const Register = () => {
           
           {/* Social Sign-in Options */}
           <Box sx={{ width: '100%', mb: 3 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={4}>
+            <Grid container justifyContent="center">
+              <Grid item xs={12} sm={6}>
                 <Button
                   fullWidth
                   variant="outlined"
@@ -385,29 +364,7 @@ const Register = () => {
                   onClick={() => handleSocialSignIn('Google')}
                   sx={{ py: 1 }}
                 >
-                  Google
-                </Button>
-              </Grid>
-              <Grid item xs={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<FacebookIcon />}
-                  onClick={() => handleSocialSignIn('Facebook')}
-                  sx={{ py: 1 }}
-                >
-                  Facebook
-                </Button>
-              </Grid>
-              <Grid item xs={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<AppleIcon />}
-                  onClick={() => handleSocialSignIn('Apple')}
-                  sx={{ py: 1 }}
-                >
-                  Apple
+                  Sign up with Google
                 </Button>
               </Grid>
             </Grid>

@@ -72,9 +72,6 @@ import {
   isEmailVerified, 
   resendVerificationEmail,
   uploadProfileImage,
-  initPhoneVerification,
-  verifyPhoneNumber,
-  formatEthiopianPhoneNumber
 } from '../../firebase/services';
 import { auth, db, storage } from '../../firebase/config';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -113,15 +110,6 @@ const Profile = () => {
   const [uploadLoading, setUploadLoading] = useState(false);
   const fileInputRef = useRef(null);
   
-  // Phone verification states
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
-  const [verificationCode, setVerificationCode] = useState('');
-  const [verificationLoading, setVerificationLoading] = useState(false);
-  const [verificationError, setVerificationError] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState(null);
-  const recaptchaContainerRef = useRef(null);
-  
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -143,11 +131,6 @@ const Profile = () => {
         // Set profile image URL if available
         if (currentUser.photoURL) {
           setProfileImageURL(currentUser.photoURL);
-        }
-        
-        // Check if phone is verified
-        if (currentUser.phoneVerified) {
-          setPhoneVerified(true);
         }
         
         setLoading(false);
@@ -326,7 +309,7 @@ const Profile = () => {
     try {
       setUploadLoading(true);
       
-      // Upload image to Firebase Storage
+      // Upload image to Cloudinary via our service
       const downloadURL = await uploadProfileImage(file, userData.uid);
       
       // Update local state
@@ -356,128 +339,7 @@ const Profile = () => {
     }
   };
   
-  // Phone verification handlers
-  const handleVerifyPhone = async () => {
-    try {
-      if (!formData.phoneNumber) {
-        setSnackbar({
-          open: true,
-          message: 'Please enter a phone number to verify',
-          severity: 'error'
-        });
-        return;
-      }
-      
-      if (!validateEthiopianPhoneNumber(formData.phoneNumber)) {
-        setSnackbar({
-          open: true,
-          message: 'Please enter a valid Ethiopian phone number (e.g., 0911234567)',
-          severity: 'error'
-        });
-        return;
-      }
-      
-      // First open the dialog so the reCAPTCHA container is available in the DOM
-      setVerificationError('');
-      setVerificationLoading(true);
-      setVerificationDialogOpen(true);
-      
-      // Wait for the dialog to open and the reCAPTCHA container to be rendered
-      setTimeout(async () => {
-        try {
-          console.log('Starting phone verification for:', formData.phoneNumber);
-          
-          // Initialize phone verification
-          const result = await initPhoneVerification(formData.phoneNumber, 'recaptcha-container');
-          setConfirmationResult(result);
-          
-          setSnackbar({
-            open: true,
-            message: 'Verification code sent to your phone',
-            severity: 'success'
-          });
-          
-          console.log('Verification code sent successfully');
-        } catch (error) {
-          console.error('Error initiating phone verification:', error);
-          setVerificationError(`Verification failed: ${error.message}`);
-          
-          // Close the dialog if there's a critical error
-          if (error.code === 'auth/invalid-phone-number' || 
-              error.code === 'auth/missing-phone-number' ||
-              error.code === 'auth/quota-exceeded') {
-            setTimeout(() => {
-              setVerificationDialogOpen(false);
-              setSnackbar({
-                open: true,
-                message: `Phone verification failed: ${error.message}`,
-                severity: 'error'
-              });
-            }, 2000);
-          }
-        } finally {
-          setVerificationLoading(false);
-        }
-      }, 1500); // Give the dialog more time to render
-    } catch (error) {
-      console.error('Error in handleVerifyPhone:', error);
-      setVerificationError(`Error: ${error.message}`);
-      setVerificationLoading(false);
-    }
-  };
-  
-  const handleVerificationCodeChange = (e) => {
-    setVerificationCode(e.target.value);
-  };
-  
-  const handleVerifyCode = async () => {
-    try {
-      if (!verificationCode) {
-        setVerificationError('Please enter the verification code');
-        return;
-      }
-      
-      setVerificationLoading(true);
-      
-      // Verify the code
-      await verifyPhoneNumber(confirmationResult, verificationCode);
-      
-      // Update local state
-      setPhoneVerified(true);
-      
-      // Update user data
-      setUserData({
-        ...userData,
-        phoneVerified: true
-      });
-      
-      // Close dialog
-      setVerificationDialogOpen(false);
-      
-      setSnackbar({
-        open: true,
-        message: 'Phone number verified successfully',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error verifying code:', error);
-      setVerificationError(`Failed to verify code: ${error.message}`);
-      setSnackbar({
-        open: true,
-        message: `Failed to verify code: ${error.message}`,
-        severity: 'error'
-      });
-    } finally {
-      setVerificationLoading(false);
-    }
-  };
-  
-  const handleCloseVerificationDialog = () => {
-    setVerificationDialogOpen(false);
-    setVerificationCode('');
-    setVerificationError('');
-  };
-  
+  // Handle snackbar close
   const handleSnackbarClose = (event, reason) => {
     if (reason === 'clickaway') {
       return;
@@ -959,26 +821,6 @@ const Profile = () => {
                                 <PhoneIcon color="action" />
                               </InputAdornment>
                             ),
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                {phoneVerified ? (
-                                  <Tooltip title="Phone verified">
-                                    <VerifiedIcon color="success" />
-                                  </Tooltip>
-                                ) : (
-                                  <Button
-                                    variant="outlined"
-                                    size="small"
-                                    color="primary"
-                                    onClick={handleVerifyPhone}
-                                    disabled={!formData.phoneNumber || !!phoneError || verificationLoading}
-                                    sx={{ borderRadius: 0 }}
-                                  >
-                                    Verify
-                                  </Button>
-                                )}
-                              </InputAdornment>
-                            )
                           }}
                         />
                       </Grid>
@@ -1095,83 +937,6 @@ const Profile = () => {
           </Fade>
         </Grid>
       </Grid>
-      
-      {/* Phone Verification Dialog */}
-      <Dialog
-        open={verificationDialogOpen}
-        onClose={handleCloseVerificationDialog}
-        aria-labelledby="verification-dialog-title"
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle id="verification-dialog-title">
-          Verify Your Phone Number
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body1" gutterBottom>
-              We're verifying: <strong>{formatEthiopianPhoneNumber(formData.phoneNumber)}</strong>
-            </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              1. Complete the reCAPTCHA below
-            </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              2. Wait for the SMS with your verification code
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              3. Enter the 6-digit code to verify your phone number
-            </Typography>
-          </Box>
-          
-          {verificationError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {verificationError}
-            </Alert>
-          )}
-          
-          {/* reCAPTCHA container - must be visible before verification starts */}
-          <Box id="recaptcha-container" ref={recaptchaContainerRef} sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}></Box>
-          
-          <TextField
-            fullWidth
-            label="Verification Code"
-            value={verificationCode}
-            onChange={handleVerificationCodeChange}
-            margin="normal"
-            variant="outlined"
-            placeholder="Enter 6-digit code"
-            disabled={!confirmationResult}
-            helperText={!confirmationResult ? "Complete the reCAPTCHA first" : "Enter the code sent to your phone"}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    color="primary"
-                    onClick={handleVerifyCode}
-                    disabled={!verificationCode || verificationLoading || !confirmationResult}
-                  >
-                    <SendIcon />
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseVerificationDialog} color="inherit">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleVerifyCode}
-            color="primary"
-            variant="contained"
-            disabled={!verificationCode || verificationLoading || !confirmationResult}
-            sx={{ borderRadius: 0 }}
-          >
-            {verificationLoading ? 'Verifying...' : 'Verify'}
-          </Button>
-        </DialogActions>
-      </Dialog>
       
       {/* Snackbar for notifications */}
       <Snackbar

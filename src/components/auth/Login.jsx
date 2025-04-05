@@ -28,16 +28,12 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Google as GoogleIcon,
-  Facebook as FacebookIcon,
-  Apple as AppleIcon,
   MarkEmailRead as MarkEmailReadIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   loginUser, 
   signInWithGoogle, 
-  signInWithFacebook, 
-  signInWithApple,
   resendVerificationEmail,
   reloadUser,
   isEmailVerified 
@@ -132,12 +128,6 @@ const Login = () => {
       switch (provider) {
         case 'Google':
           await signInWithGoogle();
-          break;
-        case 'Facebook':
-          await signInWithFacebook();
-          break;
-        case 'Apple':
-          await signInWithApple();
           break;
         default:
           throw new Error('Invalid provider');
@@ -339,8 +329,8 @@ const Login = () => {
               </Typography>
             </Divider>
             
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
+            <Grid container justifyContent="center">
+              <Grid item xs={12} sm={6}>
                 <Button
                   fullWidth
                   variant="outlined"
@@ -349,33 +339,7 @@ const Login = () => {
                   disabled={loading}
                   sx={{ py: 1 }}
                 >
-                  Google
-                </Button>
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<FacebookIcon />}
-                  onClick={() => handleSocialSignIn('Facebook')}
-                  disabled={loading}
-                  sx={{ py: 1 }}
-                >
-                  Facebook
-                </Button>
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<AppleIcon />}
-                  onClick={() => handleSocialSignIn('Apple')}
-                  disabled={loading}
-                  sx={{ py: 1 }}
-                >
-                  Apple
+                  Sign in with Google
                 </Button>
               </Grid>
             </Grid>

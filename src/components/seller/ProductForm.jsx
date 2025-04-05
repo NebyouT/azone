@@ -211,10 +211,10 @@ const materials = [
   'Canvas', 'Fleece', 'Acrylic', 'Bamboo', 'Corduroy', 'Tweed', 'Jersey'
 ];
 
-const couriers = [
-  'DHL', 'FedEx', 'UPS', 'USPS', 'EMS', 'AliExpress Standard', 'Amazon Logistics',
-  'Local Courier', 'Aramex', 'TNT', 'China Post', 'Royal Mail', 'Australia Post',
-  'Canada Post', 'Japan Post', 'India Post', 'Self Pickup'
+// Updated shipping regions to only include Dire Dawa and Addis Ababa
+const shippingRegions = [
+  'Addis Ababa',
+  'Dire Dawa'
 ];
 
 const returnPeriods = [
@@ -224,18 +224,6 @@ const returnPeriods = [
   '30 Days',
   '60 Days',
   '90 Days'
-];
-
-const shippingRegions = [
-  'Worldwide',
-  'North America',
-  'Europe',
-  'Asia',
-  'Africa',
-  'South America',
-  'Australia & Oceania',
-  'Middle East',
-  'Specific Countries'
 ];
 
 // Styled component for the file upload area
@@ -291,9 +279,8 @@ const ProductForm = () => {
     // Shipping & Delivery
     shippingCostType: 'fixed', // 'fixed', 'weight-based', 'free'
     shippingCost: '0',
-    shippingRegions: ['Worldwide'],
+    shippingRegions: ['Addis Ababa'],
     estimatedDeliveryDays: '',
-    courierOptions: [],
     
     // Return & Refund
     returnPolicy: 'No Returns',
@@ -375,9 +362,8 @@ const ProductForm = () => {
             // Shipping & Delivery
             shippingCostType: product.shippingCostType || 'fixed',
             shippingCost: product.shippingCost?.toString() || '0',
-            shippingRegions: product.shippingRegions || ['Worldwide'],
+            shippingRegions: product.shippingRegions || ['Addis Ababa'],
             estimatedDeliveryDays: product.estimatedDeliveryDays || '',
-            courierOptions: product.courierOptions || [],
             
             // Return & Refund
             returnPolicy: product.returnPolicy || 'No Returns',
@@ -583,10 +569,6 @@ const ProductForm = () => {
       errors.estimatedDeliveryDays = 'Estimated delivery days is required';
     }
     
-    if (formData.courierOptions.length === 0) {
-      errors.courierOptions = 'Please select at least one courier option';
-    }
-    
     // Image validation
     if (!isEditMode && !imageFile && !imagePreview) {
       errors.image = 'Product image is required';
@@ -649,7 +631,7 @@ const ProductForm = () => {
         setActiveTab(2); // Pricing & Discount tab
       } else if (formErrors.quantity || formErrors.lowStockThreshold) {
         setActiveTab(3); // Inventory tab
-      } else if (formErrors.shippingCost || formErrors.estimatedDeliveryDays || formErrors.courierOptions) {
+      } else if (formErrors.shippingCost || formErrors.estimatedDeliveryDays) {
         setActiveTab(4); // Shipping tab
       } else if (formErrors.returnPolicy) {
         setActiveTab(5); // Return & Refund tab
@@ -695,7 +677,6 @@ const ProductForm = () => {
         shippingCost: formData.shippingCostType !== 'free' ? parseFloat(formData.shippingCost) : 0,
         shippingRegions: formData.shippingRegions,
         estimatedDeliveryDays: formData.estimatedDeliveryDays,
-        courierOptions: formData.courierOptions,
         
         // Return & Refund
         returnPolicy: formData.returnPolicy,
@@ -1455,34 +1436,6 @@ const ProductForm = () => {
                     error={!!formErrors.estimatedDeliveryDays}
                     helperText={formErrors.estimatedDeliveryDays}
                   />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <FormControl 
-                    fullWidth 
-                    required
-                    error={!!formErrors.courierOptions}
-                  >
-                    <InputLabel id="courierOptions-label">Courier Options</InputLabel>
-                    <Select
-                      labelId="courierOptions-label"
-                      id="courierOptions"
-                      name="courierOptions"
-                      value={formData.courierOptions}
-                      label="Courier Options"
-                      onChange={handleChange}
-                      multiple
-                    >
-                      {couriers.map(courier => (
-                        <MenuItem key={courier} value={courier}>
-                          {courier}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    {formErrors.courierOptions && (
-                      <FormHelperText>{formErrors.courierOptions}</FormHelperText>
-                    )}
-                  </FormControl>
                 </Grid>
               </Grid>
             </Box>
