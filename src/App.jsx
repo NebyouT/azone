@@ -30,6 +30,7 @@ import NotificationsPage from './components/notifications/NotificationsPage';
 import SellerDashboard from './components/seller/SellerDashboard';
 import ProductForm from './components/seller/ProductForm';
 import SellerOrderDetail from './components/seller/SellerOrderDetail';
+import SellerProfile from './components/seller/SellerProfile';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole }) => {
@@ -157,6 +158,11 @@ const App = () => {
                             <SellerOrderDetail />
                           </ProtectedRoute>
                         } 
+                      />
+                      {/* Seller Profile/Store Page - Accessible to all users */}
+                      <Route 
+                        path="store/:sellerId" 
+                        element={<SellerProfile />}
                       />
                     </Route>
                   </Routes>

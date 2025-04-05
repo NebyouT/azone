@@ -53,10 +53,11 @@ import {
   CheckCircle as CheckCircleIcon,
   Info as InfoIcon,
   ArrowForward as ArrowForwardIcon,
-  ZoomIn as ZoomInIcon
+  ZoomIn as ZoomInIcon,
+  Store as StoreIcon
 } from '@mui/icons-material';
 import { useCart } from '../../contexts/CartContext';
-import { getProductById, getRelatedProducts } from '../../firebase/services';
+import { getProductById, getRelatedProducts, getShopSettings } from '../../firebase/services';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { formatCurrency } from '../../utils/formatters';
 import { getProductImageUrl, handleImageError } from '../../utils/imageUtils';
@@ -84,6 +85,8 @@ const ProductDetail = () => {
   const [reviewStatsLoading, setReviewStatsLoading] = useState(true);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [contactMessage, setContactMessage] = useState('');
+  const [sellerInfo, setSellerInfo] = useState(null);
+  const [sellerLoading, setSellerLoading] = useState(true);
   
   // Fetch product details
   useEffect(() => {
@@ -103,6 +106,19 @@ const ProductDetail = () => {
         // If product has variants, select the first one by default
         if (productData.variants && productData.variants.length > 0) {
           setSelectedVariant(productData.variants[0]);
+        }
+        
+        // Fetch seller information if sellerId exists
+        if (productData.sellerId) {
+          try {
+            setSellerLoading(true);
+            const shopSettings = await getShopSettings(productData.sellerId);
+            setSellerInfo(shopSettings);
+          } catch (err) {
+            console.error('Error fetching seller information:', err);
+          } finally {
+            setSellerLoading(false);
+          }
         }
         
         // Fetch review statistics
@@ -188,9 +204,9 @@ const ProductDetail = () => {
 
   const handleViewStore = () => {
     if (product?.seller?.id) {
-      navigate(`/seller/${product.seller.id}`);
+      navigate(`/store/${product.seller.id}`);
     } else if (product?.sellerId) {
-      navigate(`/seller/${product.sellerId}`);
+      navigate(`/store/${product.sellerId}`);
     } else {
       // If no seller ID is available, show a notification
       alert('Store information not available');
@@ -580,62 +596,79 @@ const ProductDetail = () => {
               borderRadius: 1,
               mb: 3
             }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Avatar 
-                  src={product.seller?.avatar || ""}
-                  alt={product.seller?.name || "Seller"}
-                  sx={{ width: 40, height: 40, mr: 1.5 }}
-                />
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {product.seller?.name || "Azone Official Store"}
-                    </Typography>
-                    <VerifiedIcon 
-                      fontSize="small" 
-                      color="primary" 
-                      sx={{ ml: 0.5 }}
-                    />
+              {sellerLoading ? (
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Skeleton variant="circular" width={40} height={40} sx={{ mr: 1.5 }} />
+                  <Box>
+                    <Skeleton variant="text" width={120} />
+                    <Skeleton variant="text" width={80} />
                   </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    <TranslationWrapper>officialStore</TranslationWrapper> • {product.seller?.rating || 4.9} <TranslationWrapper>rating</TranslationWrapper>
-                  </Typography>
                 </Box>
-              </Box>
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleViewStore}
-                  sx={{ 
-                    borderRadius: 1,
-                    borderColor: theme.palette.divider,
-                    color: theme.palette.text.primary,
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.05),
-                      borderColor: theme.palette.primary.main
-                    }
-                  }}
-                >
-                  <TranslationWrapper>viewStore</TranslationWrapper>
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleContactSeller}
-                  sx={{ 
-                    borderRadius: 1,
-                    borderColor: theme.palette.divider,
-                    color: theme.palette.text.primary,
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.05),
-                      borderColor: theme.palette.primary.main
-                    }
-                  }}
-                >
-                  <TranslationWrapper>contactSeller</TranslationWrapper>
-                </Button>
-              </Box>
+              ) : (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Avatar 
+                      src={product.sellerAvatar || ""}
+                      alt={sellerInfo?.name || product.sellerName || "Seller"}
+                      sx={{ width: 40, height: 40, mr: 1.5 }}
+                    >
+                      {!product.sellerAvatar && <StoreIcon />}
+                    </Avatar>
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {sellerInfo?.name || product.sellerName || "Seller"}
+                        </Typography>
+                        {product.sellerVerified && (
+                          <VerifiedIcon 
+                            fontSize="small" 
+                            color="primary" 
+                            sx={{ ml: 0.5 }}
+                          />
+                        )}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {sellerInfo?.description || product.sellerDescription || t('seller')}
+                        {product.sellerRating && ` • ${product.sellerRating.toFixed(1)} ${t('rating')}`}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleViewStore}
+                      sx={{ 
+                        borderRadius: 1,
+                        borderColor: theme.palette.divider,
+                        color: theme.palette.text.primary,
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.05),
+                          borderColor: theme.palette.primary.main
+                        }
+                      }}
+                    >
+                      <TranslationWrapper>viewStore</TranslationWrapper>
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleContactSeller}
+                      sx={{ 
+                        borderRadius: 1,
+                        borderColor: theme.palette.divider,
+                        color: theme.palette.text.primary,
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.05),
+                          borderColor: theme.palette.primary.main
+                        }
+                      }}
+                    >
+                      <TranslationWrapper>contactSeller</TranslationWrapper>
+                    </Button>
+                  </Box>
+                </>
+              )}
             </Box>
           </Box>
         </Grid>
@@ -837,8 +870,10 @@ const ProductDetail = () => {
                   </Box>
                 </Box>
                 
-               
-                
+                {/* Review List */}
+                <Box sx={{ mb: 3 }}>
+                  <ReviewSection productId={id} />
+                </Box>
               </Box>
             )}
           </Box>

@@ -560,3 +560,79 @@ export const getReviewStatistics = async (productId) => {
     throw error;
   }
 };
+
+/**
+ * Get all reviews for a seller's products
+ * @param {string} sellerId - Seller ID
+ * @returns {Promise<Array>} - Array of reviews with product information
+ */
+export const getAllReviewsForSeller = async (sellerId) => {
+  try {
+    // First, get all products from this seller
+    const productsQuery = query(
+      collection(db, 'products'),
+      where('sellerId', '==', sellerId)
+    );
+    
+    const productsSnapshot = await getDocs(productsQuery);
+    const productIds = [];
+    const productsMap = {};
+    
+    productsSnapshot.forEach(doc => {
+      const productData = doc.data();
+      productIds.push(doc.id);
+      productsMap[doc.id] = {
+        id: doc.id,
+        name: productData.name,
+        imageUrl: productData.imageUrl || (productData.images && productData.images.length > 0 ? productData.images[0] : null)
+      };
+    });
+    
+    if (productIds.length === 0) {
+      return [];
+    }
+    
+    // Now get all reviews for these products
+    // Note: Firestore "in" queries are limited to 10 items, so we may need to batch
+    const allReviews = [];
+    
+    // Process in batches of 10 due to Firestore limitations
+    for (let i = 0; i < productIds.length; i += 10) {
+      const batchIds = productIds.slice(i, i + 10);
+      
+      // Using only the 'in' query without orderBy to avoid composite index requirement
+      const reviewsQuery = query(
+        collection(db, 'reviews'),
+        where('productId', 'in', batchIds)
+      );
+      
+      const reviewsSnapshot = await getDocs(reviewsQuery);
+      
+      reviewsSnapshot.forEach(doc => {
+        const reviewData = doc.data();
+        const productInfo = productsMap[reviewData.productId] || {};
+        
+        allReviews.push({
+          id: doc.id,
+          ...reviewData,
+          productName: productInfo.name,
+          productImage: productInfo.imageUrl,
+          // Format createdAt if it's a Firestore timestamp
+          createdAt: reviewData.createdAt
+        });
+      });
+    }
+    
+    // Sort reviews in memory instead of using Firestore orderBy
+    allReviews.sort((a, b) => {
+      const dateA = a.createdAt?.toDate?.() || new Date(0);
+      const dateB = b.createdAt?.toDate?.() || new Date(0);
+      return dateB - dateA; // Sort by newest first
+    });
+    
+    return allReviews;
+  } catch (error) {
+    console.error('Error getting seller reviews:', error);
+    throw error;
+  }
+};
