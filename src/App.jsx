@@ -4,6 +4,7 @@ import { CartProvider } from './contexts/CartContext';
 import ThemeProvider from './theme/ThemeProvider';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { WalletProvider } from './contexts/WalletContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 
 // Layout
 import Layout from './components/layout/Layout';
@@ -23,6 +24,7 @@ import Orders from './components/orders/Orders';
 import OrderDetail from './components/orders/OrderDetail';
 import WalletDashboard from './components/wallet/WalletDashboard';
 import SearchPage from './components/search/SearchPage';
+import NotificationsPage from './components/notifications/NotificationsPage';
 
 // Seller Components
 import SellerDashboard from './components/seller/SellerDashboard';
@@ -55,101 +57,111 @@ const App = () => {
         <LanguageProvider>
           <CartProvider>
             <WalletProvider>
-              <Router>
-                <Routes>
-                  <Route path="/" element={<Layout />}>
-                    <Route index element={<HomePage />} />
-                    <Route path="products" element={<ProductList />} />
-                    <Route path="products/:id" element={<ProductDetail />} />
-                    <Route path="cart" element={<Cart />} />
-                    <Route path="search" element={<SearchPage />} />
-                    <Route path="login" element={<Login />} />
-                    <Route path="register" element={<Register />} />
-                    <Route path="forgot-password" element={<ForgotPassword />} />
-                    <Route path="reset-password" element={<ResetPassword />} />
-                    <Route 
-                      path="checkout" 
-                      element={
-                        <ProtectedRoute>
-                          <Checkout />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="profile" 
-                      element={
-                        <ProtectedRoute>
-                          <Profile />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="orders" 
-                      element={
-                        <ProtectedRoute>
-                          <Orders />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="orders/:id" 
-                      element={
-                        <ProtectedRoute>
-                          <OrderDetail />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="wallet" 
-                      element={
-                        <ProtectedRoute>
-                          <WalletDashboard />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="seller/dashboard" 
-                      element={
-                        <ProtectedRoute requiredRole="seller">
-                          <SellerDashboard />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="seller/products/new" 
-                      element={
-                        <ProtectedRoute requiredRole="seller">
-                          <ProductForm />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="seller/products/add" 
-                      element={
-                        <ProtectedRoute requiredRole="seller">
-                          <ProductForm />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="seller/products/:id/edit" 
-                      element={
-                        <ProtectedRoute requiredRole="seller">
-                          <ProductForm />
-                        </ProtectedRoute>
-                      } 
-                    />
-                    <Route 
-                      path="seller/orders/:id" 
-                      element={
-                        <ProtectedRoute requiredRole="seller">
-                          <SellerOrderDetail />
-                        </ProtectedRoute>
-                      } 
-                    />
-                  </Route>
-                </Routes>
-              </Router>
+              <NotificationProvider>
+                <Router>
+                  <Routes>
+                    <Route path="/" element={<Layout />}>
+                      <Route index element={<HomePage />} />
+                      <Route path="products" element={<ProductList />} />
+                      <Route path="products/:id" element={<ProductDetail />} />
+                      <Route path="cart" element={<Cart />} />
+                      <Route path="search" element={<SearchPage />} />
+                      <Route path="login" element={<Login />} />
+                      <Route path="register" element={<Register />} />
+                      <Route path="forgot-password" element={<ForgotPassword />} />
+                      <Route path="reset-password" element={<ResetPassword />} />
+                      <Route 
+                        path="notifications" 
+                        element={
+                          <ProtectedRoute>
+                            <NotificationsPage />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="checkout" 
+                        element={
+                          <ProtectedRoute>
+                            <Checkout />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="profile" 
+                        element={
+                          <ProtectedRoute>
+                            <Profile />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="orders" 
+                        element={
+                          <ProtectedRoute>
+                            <Orders />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="orders/:id" 
+                        element={
+                          <ProtectedRoute>
+                            <OrderDetail />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="wallet" 
+                        element={
+                          <ProtectedRoute>
+                            <WalletDashboard />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="seller/dashboard" 
+                        element={
+                          <ProtectedRoute requiredRole="seller">
+                            <SellerDashboard />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="seller/products/new" 
+                        element={
+                          <ProtectedRoute requiredRole="seller">
+                            <ProductForm />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="seller/products/add" 
+                        element={
+                          <ProtectedRoute requiredRole="seller">
+                            <ProductForm />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="seller/products/:id/edit" 
+                        element={
+                          <ProtectedRoute requiredRole="seller">
+                            <ProductForm />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="seller/orders/:id" 
+                        element={
+                          <ProtectedRoute requiredRole="seller">
+                            <SellerOrderDetail />
+                          </ProtectedRoute>
+                        } 
+                      />
+                    </Route>
+                  </Routes>
+                </Router>
+              </NotificationProvider>
             </WalletProvider>
           </CartProvider>
         </LanguageProvider>

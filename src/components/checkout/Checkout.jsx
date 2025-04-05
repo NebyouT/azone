@@ -105,8 +105,9 @@ const Checkout = () => {
     phoneNumber: '',
     address: '',
     city: 'Addis Ababa',
-    region: 'Addis Ababa',
-    zipCode: '',
+    subCity: '',
+    woreda: '',
+    kebele: '',
     deliveryInstructions: ''
   });
   const [paymentMethod, setPaymentMethod] = useState('wallet');
@@ -173,8 +174,9 @@ const Checkout = () => {
             phoneNumber: defaultAddress.phoneNumber || '',
             address: defaultAddress.address || '',
             city: defaultAddress.city || 'Addis Ababa',
-            region: defaultAddress.region || 'Addis Ababa',
-            zipCode: defaultAddress.zipCode || '',
+            subCity: defaultAddress.subCity || '',
+            woreda: defaultAddress.woreda || '',
+            kebele: defaultAddress.kebele || '',
             deliveryInstructions: defaultAddress.deliveryInstructions || ''
           });
         }
@@ -222,8 +224,9 @@ const Checkout = () => {
         phoneNumber: selectedAddress.phoneNumber || '',
         address: selectedAddress.address || '',
         city: selectedAddress.city || 'Addis Ababa',
-        region: selectedAddress.region || 'Addis Ababa',
-        zipCode: selectedAddress.zipCode || '',
+        subCity: selectedAddress.subCity || '',
+        woreda: selectedAddress.woreda || '',
+        kebele: selectedAddress.kebele || '',
         deliveryInstructions: selectedAddress.deliveryInstructions || ''
       });
     }
@@ -250,8 +253,9 @@ const Checkout = () => {
           phoneNumber: defaultAddress.phoneNumber || '',
           address: defaultAddress.address || '',
           city: defaultAddress.city || 'Addis Ababa',
-          region: defaultAddress.region || 'Addis Ababa',
-          zipCode: defaultAddress.zipCode || '',
+          subCity: defaultAddress.subCity || '',
+          woreda: defaultAddress.woreda || '',
+          kebele: defaultAddress.kebele || '',
           deliveryInstructions: defaultAddress.deliveryInstructions || ''
         });
       }
@@ -282,8 +286,9 @@ const Checkout = () => {
           phoneNumber: addressData.phoneNumber || '',
           address: addressData.address || '',
           city: addressData.city || 'Addis Ababa',
-          region: addressData.region || 'Addis Ababa',
-          zipCode: addressData.zipCode || '',
+          subCity: addressData.subCity || '',
+          woreda: addressData.woreda || '',
+          kebele: addressData.kebele || '',
           deliveryInstructions: addressData.deliveryInstructions || ''
         });
       }
@@ -317,8 +322,9 @@ const Checkout = () => {
             phoneNumber: defaultAddress.phoneNumber || '',
             address: defaultAddress.address || '',
             city: defaultAddress.city || 'Addis Ababa',
-            region: defaultAddress.region || 'Addis Ababa',
-            zipCode: defaultAddress.zipCode || '',
+            subCity: defaultAddress.subCity || '',
+            woreda: defaultAddress.woreda || '',
+            kebele: defaultAddress.kebele || '',
             deliveryInstructions: defaultAddress.deliveryInstructions || ''
           });
         } else {
@@ -328,8 +334,9 @@ const Checkout = () => {
             phoneNumber: currentUser.phoneNumber || '',
             address: '',
             city: 'Addis Ababa',
-            region: 'Addis Ababa',
-            zipCode: '',
+            subCity: '',
+            woreda: '',
+            kebele: '',
             deliveryInstructions: ''
           });
           setShippingTabValue(1); // Switch to new address tab
@@ -387,8 +394,8 @@ const Checkout = () => {
         }
       } else {
         // If using new address, validate fields
-        const { fullName, phoneNumber, address, city } = shippingDetails;
-        if (!fullName || !phoneNumber || !address || !city) {
+        const { fullName, phoneNumber, address, city, subCity, woreda, kebele } = shippingDetails;
+        if (!fullName || !phoneNumber || !address || !city || !subCity || !woreda || !kebele) {
           setError('Please fill in all required fields');
           return;
         }
@@ -728,11 +735,14 @@ const Checkout = () => {
                     
                     <Grid item xs={12} sm={6}>
                       <TextField
+                        required
                         fullWidth
-                        label="Region"
-                        name="region"
-                        value={shippingDetails.region}
+                        label="Sub-City"
+                        name="subCity"
+                        value={shippingDetails.subCity}
                         onChange={handleShippingChange}
+                        error={error && !shippingDetails.subCity}
+                        helperText={error && !shippingDetails.subCity ? 'Sub-City is required' : ''}
                         variant="outlined"
                         size={isMobile ? "small" : "medium"}
                         sx={{
@@ -747,11 +757,36 @@ const Checkout = () => {
                     
                     <Grid item xs={12} sm={6}>
                       <TextField
+                        required
                         fullWidth
-                        label="Zip Code"
-                        name="zipCode"
-                        value={shippingDetails.zipCode}
+                        label="Woreda"
+                        name="woreda"
+                        value={shippingDetails.woreda}
                         onChange={handleShippingChange}
+                        error={error && !shippingDetails.woreda}
+                        helperText={error && !shippingDetails.woreda ? 'Woreda is required' : ''}
+                        variant="outlined"
+                        size={isMobile ? "small" : "medium"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            '&.Mui-focused fieldset': {
+                              borderColor: theme.palette.primary.main,
+                            },
+                          },
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        required
+                        fullWidth
+                        label="Kebele"
+                        name="kebele"
+                        value={shippingDetails.kebele}
+                        onChange={handleShippingChange}
+                        error={error && !shippingDetails.kebele}
+                        helperText={error && !shippingDetails.kebele ? 'Kebele is required' : ''}
                         variant="outlined"
                         size={isMobile ? "small" : "medium"}
                         sx={{
@@ -971,7 +1006,7 @@ const Checkout = () => {
                       {shippingDetails.address}
                     </Typography>
                     <Typography variant="body2">
-                      {shippingDetails.city}, {shippingDetails.region} {shippingDetails.zipCode}
+                      {shippingDetails.city}, {shippingDetails.subCity}, {shippingDetails.woreda} {shippingDetails.kebele}
                     </Typography>
                     <Typography variant="body2">
                       Phone: {shippingDetails.phoneNumber}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -28,7 +28,8 @@ import {
   Stepper,
   Step,
   StepLabel,
-  Tooltip
+  Tooltip,
+  TextField
 } from '@mui/material';
 import {
   ShoppingBag as OrderIcon,
@@ -105,6 +106,32 @@ const getNextStatus = (currentStatus) => {
   }
 };
 
+// Get available status options based on current status
+const getAvailableStatusOptions = (currentStatus) => {
+  // Handle null or undefined status
+  if (!currentStatus) return [];
+  
+  switch (currentStatus) {
+    case 'pending':
+      return ['confirmed', 'cancelled'];
+    case 'confirmed':
+      return ['shipped', 'cancelled'];
+    case 'shipped':
+      return ['delivered', 'cancelled'];
+    case 'delivered':
+      // Seller can't update after delivery - buyer must confirm
+      return [];
+    case 'completed':
+      // No more updates allowed after completion
+      return [];
+    case 'cancelled':
+      // No more updates allowed after cancellation
+      return [];
+    default:
+      return ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+  }
+};
+
 const SellerOrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -112,11 +139,13 @@ const SellerOrderDetail = () => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('pending');
   const [updating, setUpdating] = useState(false);
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [buyerInfo, setBuyerInfo] = useState(null);
   const [buyerInfoLoading, setBuyerInfoLoading] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancellationReasonError, setCancellationReasonError] = useState('');
   
   // Define order status steps for the stepper
   const orderSteps = ['pending', 'confirmed', 'shipped', 'delivered', 'completed'];
@@ -136,9 +165,6 @@ const SellerOrderDetail = () => {
       }
       
       setOrder(orderData);
-      
-      // Set the initial status
-      setSelectedStatus(orderData.status || 'pending');
       
       // Fetch buyer information
       try {
@@ -164,11 +190,29 @@ const SellerOrderDetail = () => {
     fetchOrderDetails();
   }, [id, currentUser]);
   
+  useEffect(() => {
+    // Update selectedStatus when order changes and is not null
+    if (order) {
+      setSelectedStatus(order.status || 'pending');
+    }
+  }, [order]);
+  
   const handleStatusChange = (event) => {
     setSelectedStatus(event.target.value);
+    // Reset cancellation reason when status is not cancelled
+    if (event.target.value !== 'cancelled') {
+      setCancellationReason('');
+      setCancellationReasonError('');
+    }
   };
   
   const handleOpenConfirmDialog = () => {
+    // Validate cancellation reason if status is cancelled
+    if (selectedStatus === 'cancelled' && !cancellationReason.trim()) {
+      setCancellationReasonError('Please provide a reason for cancellation');
+      return;
+    }
+    
     setOpenConfirmDialog(true);
   };
   
@@ -181,15 +225,17 @@ const SellerOrderDetail = () => {
       setUpdating(true);
       
       // Update the order status
-      await updateSellerOrderStatus(id, selectedStatus);
+      await updateSellerOrderStatus(id, selectedStatus, cancellationReason);
       
       // Update local state to reflect the change
       setOrder(prevOrder => ({
         ...prevOrder,
-        status: selectedStatus
+        status: selectedStatus,
+        ...(selectedStatus === 'cancelled' ? { cancellationReason } : {})
       }));
       
       setOpenConfirmDialog(false);
+      setCancellationReason('');
       
       // Show success message or notification
       // You could add a snackbar or toast notification here
@@ -204,6 +250,18 @@ const SellerOrderDetail = () => {
   const refreshOrder = () => {
     fetchOrderDetails();
   };
+  
+  // Check if the order status can be updated
+  const canUpdateStatus = useMemo(() => {
+    // Return false if order is null or undefined
+    if (!order) return false;
+    
+    // Can't update if order is completed or delivered
+    if (order.status === 'completed' || order.status === 'delivered' || order.status === 'cancelled') {
+      return false;
+    }
+    return true;
+  }, [order]);
   
   if (loading) {
     return (
@@ -254,6 +312,9 @@ const SellerOrderDetail = () => {
   
   // Get the current step index for the stepper
   const currentStepIndex = orderSteps.indexOf(order.status);
+  
+  // Get available status options based on current status
+  const availableStatusOptions = getAvailableStatusOptions(order.status);
   
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
@@ -466,55 +527,72 @@ const SellerOrderDetail = () => {
           Update Order Status
         </Typography>
         
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth>
-              <InputLabel id="order-status-label">Status</InputLabel>
-              <Select
-                labelId="order-status-label"
-                id="order-status"
-                value={selectedStatus}
-                label="Status"
-                onChange={handleStatusChange}
+        {!canUpdateStatus ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {order.status === 'delivered' ? 
+              'This order is marked as delivered. Waiting for buyer confirmation to complete the order.' : 
+              order.status === 'cancelled' ?
+              'This order has been cancelled and cannot be updated further.' :
+              'This order is completed. No further status updates are allowed.'}
+          </Alert>
+        ) : (
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="order-status-label">Status</InputLabel>
+                <Select
+                  labelId="order-status-label"
+                  id="order-status"
+                  value={selectedStatus}
+                  label="Status"
+                  onChange={handleStatusChange}
+                  disabled={!canUpdateStatus}
+                >
+                  {availableStatusOptions.map(status => (
+                    <MenuItem key={status} value={status}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleOpenConfirmDialog}
+                startIcon={selectedStatus === 'cancelled' ? <CancelIcon /> : <CheckIcon />}
+                fullWidth
+                disabled={!canUpdateStatus}
               >
-                <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="confirmed">Confirmed</MenuItem>
-                <MenuItem value="shipped">Shipped</MenuItem>
-                <MenuItem value="delivered">Delivered</MenuItem>
-                <MenuItem value="completed">Completed</MenuItem>
-                <MenuItem value="cancelled">Cancelled</MenuItem>
-              </Select>
-            </FormControl>
+                Update Status
+              </Button>
+            </Grid>
+            
+            {selectedStatus === 'cancelled' && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Cancellation Reason"
+                  variant="outlined"
+                  value={cancellationReason}
+                  onChange={(e) => {
+                    setCancellationReason(e.target.value);
+                    if (e.target.value.trim()) {
+                      setCancellationReasonError('');
+                    }
+                  }}
+                  error={!!cancellationReasonError}
+                  helperText={cancellationReasonError}
+                  required
+                  placeholder="Please explain why you are cancelling this order"
+                  multiline
+                  rows={2}
+                />
+              </Grid>
+            )}
           </Grid>
-          <Grid item xs={12} md={6}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleOpenConfirmDialog}
-              startIcon={selectedStatus === 'cancelled' ? <CancelIcon /> : <CheckIcon />}
-              fullWidth
-            >
-              Update Status
-            </Button>
-          </Grid>
-        </Grid>
-        
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            <strong>Note:</strong> Updating the order status will notify the customer. Make sure you have taken appropriate action before changing the status.
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            - <strong>Confirmed</strong>: You've accepted the order and are preparing it
-            <br />
-            - <strong>Shipped</strong>: You've sent the items to the customer
-            <br />
-            - <strong>Delivered</strong>: The customer has received the items
-            <br />
-            - <strong>Completed</strong>: The order is fully processed and payment is released
-            <br />
-            - <strong>Cancelled</strong>: The order has been cancelled
-          </Typography>
-        </Box>
+        )}
       </Paper>
       
       {/* Order History */}
@@ -582,17 +660,15 @@ const SellerOrderDetail = () => {
             )}
             {selectedStatus === 'delivered' && (
               <Box sx={{ mt: 2 }}>
-                This indicates that the customer has received the items.
-              </Box>
-            )}
-            {selectedStatus === 'completed' && (
-              <Box sx={{ mt: 2 }}>
-                This will mark the order as completed and indicate that the customer has received the items.
+                This indicates that the customer has received the items. The customer will be notified to confirm delivery.
               </Box>
             )}
             {selectedStatus === 'cancelled' && (
               <Box sx={{ mt: 2, color: 'error.main' }}>
                 This will cancel the order. This action cannot be undone.
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Cancellation reason: {cancellationReason}
+                </Typography>
               </Box>
             )}
           </DialogContentText>

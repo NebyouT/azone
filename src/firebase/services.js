@@ -50,7 +50,13 @@ import {
 import { initializeApp } from 'firebase/app';
 import { app } from './config';
 import { uploadImage, getPublicIdFromUrl } from '../cloudinary/services';
-import { initializeWallet, processPayment, transferFundsToSellerForCompletedOrder } from './walletServices';
+import { 
+  processPayment, 
+  TRANSACTION_TYPES, 
+  TRANSACTION_STATUS,
+  holdPaymentInEscrow,
+  releasePaymentFromEscrow
+} from './walletServices';
 
 // Initialize Firebase services
 const auth = getAuth(app);
@@ -880,7 +886,9 @@ export const createOrder = async (userId, orderData) => {
       updatedAt: serverTimestamp(),
       status: orderData.status || 'pending',
       // Ensure shippingAddress is properly set
-      shippingAddress: orderData.shippingAddress || orderData.shippingDetails || {}
+      shippingAddress: orderData.shippingAddress || orderData.shippingDetails || {},
+      // Add payment status
+      paymentStatus: 'pending'
     };
     
     // Create order document
@@ -896,24 +904,19 @@ export const createOrder = async (userId, orderData) => {
     // Create separate seller orders
     await createSellerOrders(orderWithId);
     
-    // If using wallet payment, process the payment AFTER order creation
-    // This is done outside the transaction to avoid the "reads before writes" error
+    // If using wallet payment, hold the payment in escrow
     if (orderData.paymentMethod === 'wallet') {
       try {
-        // Get seller ID from first item (assuming all items are from same seller for now)
-        const sellerId = orderData.items?.[0]?.sellerId;
+        // Hold the total amount in escrow
+        await holdPaymentInEscrow(userId, orderData.total, orderRef.id);
         
-        if (sellerId) {
-          await processPayment(userId, sellerId, orderData.total, orderRef.id);
-          
-          // Update order payment status to 'paid'
-          await updateDoc(orderRef, {
-            paymentStatus: 'paid',
-            updatedAt: serverTimestamp()
-          });
-        }
+        // Update order payment status to 'held_in_escrow'
+        await updateDoc(orderRef, {
+          paymentStatus: 'held_in_escrow',
+          updatedAt: serverTimestamp()
+        });
       } catch (paymentError) {
-        console.error("Error processing payment:", paymentError);
+        console.error("Error holding payment in escrow:", paymentError);
         // Don't fail the order creation if payment fails
         // We'll have a background job to retry failed payments
       }
@@ -1076,6 +1079,9 @@ export const confirmOrderDelivery = async (orderId) => {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('You must be logged in to confirm order delivery');
     
+    // Validate orderId
+    if (!orderId) throw new Error('Order ID is required');
+    
     // Get the order data
     const orderRef = doc(db, 'orders', orderId);
     const orderSnap = await getDoc(orderRef);
@@ -1084,14 +1090,12 @@ export const confirmOrderDelivery = async (orderId) => {
       throw new Error('Order not found');
     }
     
-    const orderData = orderSnap.data();
+    // Get order data and ensure the ID is explicitly set
+    const orderData = {
+      ...orderSnap.data(),
+      id: orderId  // Explicitly set the ID to ensure it's available
+    };
     
-    // Check if this user owns this order
-    if (orderData.userId !== currentUser.uid) {
-      throw new Error('You do not have permission to confirm this order');
-    }
-    
-    // Check if order is in a status that can be confirmed
     if (orderData.status !== 'delivered') {
       throw new Error('Only delivered orders can be confirmed as received');
     }
@@ -1112,17 +1116,67 @@ export const confirmOrderDelivery = async (orderId) => {
       statusHistory: arrayUnion(statusUpdate),
       deliveryConfirmedAt: serverTimestamp(),
       completedBy: 'buyer',
-      buyerConfirmed: true
+      buyerConfirmed: true,
+      canReview: true // Enable reviews for this order
     });
     
-    // Release payment to seller
-    await releasePaymentToSeller(orderData, batch);
+    // Update all related seller orders to completed status
+    // First, find all seller orders related to this main order
+    const sellerOrdersQuery = query(
+      collection(db, 'sellerOrders'),
+      where('mainOrderId', '==', orderId)
+    );
+    
+    const sellerOrdersSnap = await getDocs(sellerOrdersQuery);
+    
+    // Update each seller order to completed status
+    sellerOrdersSnap.forEach((doc) => {
+      const sellerOrderRef = doc.ref;
+      const sellerOrderData = doc.data();
+      
+      // Create a notification for the seller
+      const notification = {
+        message: `Order #${orderId.substring(0, 8)} has been confirmed as delivered by the buyer and marked as completed.`,
+        timestamp: new Date().toISOString(), // Use ISO string instead of serverTimestamp
+        status: 'completed',
+        buyerId: currentUser.uid,
+        buyerName: currentUser.displayName || 'Buyer'
+      };
+      
+      const notifications = sellerOrderData.notifications || [];
+      notifications.push(notification);
+      
+      batch.update(sellerOrderRef, {
+        status: 'completed',
+        updatedAt: serverTimestamp(),
+        deliveryConfirmedAt: serverTimestamp(),
+        buyerConfirmed: true,
+        notifications
+      });
+    });
+    
+    try {
+      // Release payment to seller - pass the order data with explicit ID
+      await releasePaymentToSeller(orderData, batch);
+    } catch (paymentError) {
+      console.error('Error releasing payment:', paymentError);
+      // Don't throw the error here, continue with order status update
+      // but add a note about payment failure
+      batch.update(orderRef, {
+        paymentStatus: 'failed',
+        paymentError: paymentError.message,
+        paymentErrorAt: serverTimestamp()
+      });
+    }
     
     // Commit the batch
     await batch.commit();
     
     // Update user statistics
     await updateUserCompletionStats(currentUser.uid, 'buyer');
+    
+    // Update product sold counts
+    await updateProductSoldCounts(orderId);
     
     return true;
   } catch (error) {
@@ -1142,80 +1196,102 @@ export const releasePaymentToSeller = async (orderData, batch) => {
       throw new Error('Order has no items');
     }
     
-    // For now, we'll handle the case where all items are from the same seller
-    // In a multi-seller scenario, this would need to be split by seller
-    const firstItem = orderData.items[0];
-    const sellerId = firstItem.sellerId || orderData.sellerId;
+    // Group items by seller to handle multi-seller orders
+    const itemsBySeller = {};
     
-    if (!sellerId) {
-      throw new Error('Seller ID could not be found in order data');
+    // Calculate total product amount and delivery cost for each seller
+    orderData.items.forEach(item => {
+      const sellerId = item.sellerId;
+      if (!sellerId) return;
+      
+      if (!itemsBySeller[sellerId]) {
+        itemsBySeller[sellerId] = {
+          items: [],
+          productAmount: 0,
+          deliveryAmount: 0
+        };
+      }
+      
+      itemsBySeller[sellerId].items.push(item);
+      itemsBySeller[sellerId].productAmount += (item.price * item.quantity);
+      
+      // Add delivery cost if it exists and belongs to this seller
+      if (item.deliveryCost && typeof item.deliveryCost === 'number') {
+        itemsBySeller[sellerId].deliveryAmount += item.deliveryCost;
+      }
+    });
+    
+    // If there's a single delivery cost for the whole order, distribute it proportionally
+    if (orderData.deliveryCost && typeof orderData.deliveryCost === 'number') {
+      const totalItems = orderData.items.length;
+      const costPerItem = orderData.deliveryCost / totalItems;
+      
+      Object.keys(itemsBySeller).forEach(sellerId => {
+        const sellerItemCount = itemsBySeller[sellerId].items.length;
+        itemsBySeller[sellerId].deliveryAmount += (costPerItem * sellerItemCount);
+      });
     }
     
-    // Safely extract order data with fallbacks
-    const totalAmount = orderData.totalAmount || orderData.total || 0;
-    const orderId = orderData.id || 'unknown';
-    const userId = orderData.userId;
-    
-    if (!userId) {
+    const buyerId = orderData.userId;
+    if (!buyerId) {
       throw new Error('Buyer ID is required to release payment');
     }
     
-    console.log('Releasing payment to seller:', sellerId, 'for order:', orderId, 'amount:', totalAmount);
-    
-    // Format order ID safely for display
-    const orderIdDisplay = typeof orderId === 'string' ? orderId.substring(0, 8) : 'unknown';
-    
-    // Get seller wallet
-    const sellerWalletRef = doc(db, 'wallets', sellerId);
-    const sellerWalletSnap = await getDoc(sellerWalletRef);
-    
-    if (!sellerWalletSnap.exists()) {
-      // Create seller wallet if it doesn't exist
-      batch.set(sellerWalletRef, {
-        userId: sellerId,
-        balance: totalAmount,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      // Update existing seller wallet
-      const sellerWallet = sellerWalletSnap.data();
-      batch.update(sellerWalletRef, {
-        balance: (sellerWallet.balance || 0) + totalAmount,
-        updatedAt: serverTimestamp()
-      });
+    const orderId = orderData.id;
+    if (!orderId || orderId === 'unknown') {
+      throw new Error('Valid order ID is required to release payment');
     }
     
-    // Record transaction for seller
-    const sellerTransactionRef = doc(collection(db, 'transactions'));
-    batch.set(sellerTransactionRef, {
-      userId: sellerId,
-      type: 'credit',
-      amount: totalAmount,
-      description: `Payment received for order #${orderIdDisplay}`,
-      status: 'completed',
-      orderId,
-      createdAt: serverTimestamp()
+    // Process payment for each seller
+    const paymentPromises = Object.keys(itemsBySeller).map(async (sellerId) => {
+      const sellerData = itemsBySeller[sellerId];
+      const productAmount = sellerData.productAmount;
+      const deliveryAmount = sellerData.deliveryAmount;
+      const totalSellerAmount = productAmount + deliveryAmount;
+      
+      console.log(`Releasing payment of ${totalSellerAmount} ETB (${productAmount} product + ${deliveryAmount} delivery) to seller ${sellerId} for order ${orderId}`);
+      
+      try {
+        // Use the new releasePaymentFromEscrow function to handle the transfer
+        // This ensures only product price and delivery cost are transferred (no tax)
+        const paymentResult = await releasePaymentFromEscrow(sellerId, orderId, productAmount, deliveryAmount);
+        
+        // Add seller notification about payment
+        const sellerNotificationRef = collection(db, 'users', sellerId, 'notifications');
+        batch.set(doc(sellerNotificationRef), {
+          type: 'payment_received',
+          orderId: orderId,
+          amount: totalSellerAmount,
+          message: `Payment of ${totalSellerAmount} ETB has been released to your wallet for order #${orderId.substring(0, 8)} (${productAmount} ETB product + ${deliveryAmount} ETB delivery)`,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+        
+        return paymentResult;
+      } catch (paymentError) {
+        console.error(`Error releasing payment to seller ${sellerId}:`, paymentError);
+        throw paymentError;
+      }
     });
     
-    // Record transaction for buyer
-    const buyerTransactionRef = doc(collection(db, 'transactions'));
-    batch.set(buyerTransactionRef, {
-      userId: userId,
-      type: 'debit',
-      amount: totalAmount,
-      description: `Payment released for order #${orderIdDisplay}`,
-      status: 'completed',
-      orderId,
-      createdAt: serverTimestamp()
+    // Wait for all payments to be processed
+    await Promise.all(paymentPromises);
+    
+    // Update order payment status only if we have a valid order ID
+    const orderRef = doc(db, 'orders', orderId);
+    batch.update(orderRef, {
+      paymentStatus: 'completed',
+      paymentReleasedAt: serverTimestamp()
     });
     
+    return true;
   } catch (error) {
     console.error('Error releasing payment to seller:', error);
     throw error;
   }
 };
 
+// Get seller orders for a seller
 export const getSellerOrders = async (sellerId) => {
   try {
     if (!sellerId) {
@@ -1319,7 +1395,7 @@ export const getSellerOrderById = async (orderDocId) => {
 };
 
 // Update the status of a seller order
-export const updateSellerOrderStatus = async (orderDocId, status) => {
+export const updateSellerOrderStatus = async (orderDocId, status, cancellationReason = '') => {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('You must be logged in to update an order');
@@ -1339,14 +1415,42 @@ export const updateSellerOrderStatus = async (orderDocId, status) => {
       throw new Error('You do not have permission to update this order');
     }
     
+    // Check if the order is already completed or delivered - can't update in these cases
+    if (orderData.status === 'completed') {
+      throw new Error('This order is already completed and cannot be updated');
+    }
+    
+    // If the order is delivered, only the buyer can confirm completion
+    if (orderData.status === 'delivered') {
+      throw new Error('This order is marked as delivered. Waiting for buyer confirmation.');
+    }
+    
+    // Validate status transition
+    const validTransitions = {
+      'pending': ['confirmed', 'cancelled'],
+      'confirmed': ['shipped', 'cancelled'],
+      'shipped': ['delivered', 'cancelled']
+    };
+    
+    if (validTransitions[orderData.status] && !validTransitions[orderData.status].includes(status)) {
+      throw new Error(`Cannot change order status from '${orderData.status}' to '${status}'. Valid next statuses are: ${validTransitions[orderData.status].join(', ')}`);
+    }
+    
     // If trying to mark as completed, only allow changing to 'shipped' status
     // The buyer will need to confirm delivery to complete the order
     if (status === 'completed') {
-      status = 'shipped';
+      throw new Error('Cannot directly mark an order as completed. The buyer must confirm delivery first.');
+    }
+    
+    // If cancelling, require a reason
+    if (status === 'cancelled' && !cancellationReason.trim()) {
+      throw new Error('A reason for cancellation is required');
     }
     
     // Create a notification for the customer
-    const notificationMessage = getStatusNotificationMessage(status, currentUser.displayName || 'Seller');
+    const notificationMessage = status === 'cancelled'
+      ? `Order cancelled by seller. Reason: ${cancellationReason}`
+      : getStatusNotificationMessage(status, currentUser.displayName || 'Seller');
     
     // Add notification to the order - use a regular Date object instead of serverTimestamp for array items
     const notification = {
@@ -1366,7 +1470,8 @@ export const updateSellerOrderStatus = async (orderDocId, status) => {
       notifications,
       updatedAt: serverTimestamp(), // serverTimestamp is fine for direct field updates
       ...(status === 'shipped' ? { sellerMarkedShipped: true } : {}),
-      ...(status === 'delivered' ? { sellerMarkedDelivered: true } : {})
+      ...(status === 'delivered' ? { sellerMarkedDelivered: true } : {}),
+      ...(status === 'cancelled' ? { cancellationReason } : {})
     };
     
     await updateDoc(orderRef, sellerOrderUpdate);
@@ -1383,7 +1488,11 @@ export const updateSellerOrderStatus = async (orderDocId, status) => {
           // Update the status for this seller's items in the main order
           const updatedItems = mainOrderData.items.map(item => {
             if (item.sellerId === currentUser.uid) {
-              return { ...item, status };
+              return { 
+                ...item, 
+                status,
+                ...(status === 'cancelled' ? { cancellationReason } : {})
+              };
             }
             return item;
           });
@@ -1393,21 +1502,20 @@ export const updateSellerOrderStatus = async (orderDocId, status) => {
             status,
             updatedBy: currentUser.uid,
             updaterRole: 'seller',
-            timestamp: new Date().toISOString() // Use ISO string instead of serverTimestamp
+            timestamp: new Date().toISOString(), // Use ISO string instead of serverTimestamp
+            ...(status === 'cancelled' ? { cancellationReason } : {})
           };
           
           // Update main order document
           const mainOrderUpdate = {
             items: updatedItems,
             updatedAt: serverTimestamp(),
-            statusHistory: arrayUnion(statusUpdate)
+            statusHistory: arrayUnion(statusUpdate),
+            status // Update the main order status for all status changes
           };
           
-          // If the status is 'delivered', update the main order status as well
+          // If the status is 'delivered', send notification to buyer that they need to confirm delivery
           if (status === 'delivered') {
-            mainOrderUpdate.status = 'delivered';
-            
-            // Send notification to buyer that they need to confirm delivery
             try {
               // Add notification to user's notifications collection
               if (mainOrderData.userId) {
@@ -1530,14 +1638,14 @@ export const cancelOrder = async (orderId) => {
         })
       );
       
-      // Add notification for seller
+      // Add seller notification about cancellation
       const sellerOrderData = doc.data();
       if (sellerOrderData.sellerId) {
         const notification = {
           type: 'order_update',
           orderId: doc.id,
           mainOrderId: orderId,
-          message: `Order #${orderId.slice(0, 8)} has been cancelled by the buyer.`,
+          message: `Order #${orderId.substring(0, 8)} has been cancelled by the buyer.`,
           status: 'cancelled',
           read: false,
           createdAt: serverTimestamp()
@@ -1636,11 +1744,11 @@ export const hideOrderFromView = async (orderId, userId) => {
     // Get the order to verify it belongs to the user
     const orderRef = doc(db, 'orders', orderId);
     const orderSnap = await getDoc(orderRef);
-
+    
     if (!orderSnap.exists()) {
       throw new Error('Order not found');
     }
-
+    
     const orderData = orderSnap.data();
     
     // Verify the order belongs to the user
@@ -1682,7 +1790,7 @@ export const restoreHiddenOrder = async (orderId, userId) => {
     // Get the order to verify it exists
     const orderRef = doc(db, 'orders', orderId);
     const orderSnap = await getDoc(orderRef);
-
+    
     if (!orderSnap.exists()) {
       throw new Error('Order not found');
     }

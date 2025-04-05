@@ -31,7 +31,9 @@ export const TRANSACTION_TYPES = {
   PURCHASE: 'purchase',
   SALE: 'sale',
   REFUND: 'refund',
-  TRANSFER: 'transfer'
+  TRANSFER: 'transfer',
+  ESCROW: 'escrow',
+  ESCROW_RELEASE: 'escrow_release'
 };
 
 // Transaction status
@@ -367,15 +369,34 @@ export const withdrawFunds = async (userId, amount, method) => {
  * @param {number} amount - The payment amount
  * @param {string} orderId - The order ID
  * @returns {Promise<object>} - The transaction object
+ * @deprecated Use holdPaymentInEscrow instead for initial payment
  */
 export const processPayment = async (buyerId, sellerId, amount, orderId) => {
+  console.warn('processPayment is deprecated. Use holdPaymentInEscrow for initial payment and releasePaymentFromEscrow after delivery confirmation.');
+  
+  try {
+    // Hold payment in escrow instead of direct transfer
+    return await holdPaymentInEscrow(buyerId, amount, orderId);
+  } catch (error) {
+    console.error('Error processing payment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Hold payment in escrow for an order
+ * @param {string} buyerId - The buyer's user ID
+ * @param {number} amount - The total payment amount
+ * @param {string} orderId - The order ID
+ * @returns {Promise<object>} - The transaction object
+ */
+export const holdPaymentInEscrow = async (buyerId, amount, orderId) => {
   try {
     if (amount <= 0) {
       throw new Error('Amount must be greater than zero');
     }
     
-    // First, get all the data we need outside the transaction
-    // This ensures we don't mix reads and writes in the transaction
+    // Get buyer wallet data
     const buyerWalletRef = doc(db, 'wallets', buyerId);
     const buyerWalletSnap = await getDoc(buyerWalletRef);
     
@@ -402,33 +423,22 @@ export const processPayment = async (buyerId, sellerId, amount, orderId) => {
     const buyerNewBalance = buyerCurrentBalance - amount;
     const buyerEncryptedBalance = encrypt(buyerNewBalance.toString());
     
-    // Get seller wallet data
-    const sellerWalletRef = doc(db, 'wallets', sellerId);
-    const sellerWalletSnap = await getDoc(sellerWalletRef);
-    
-    if (!sellerWalletSnap.exists()) {
-      throw new Error('Seller wallet not found');
-    }
-    
-    const sellerWalletData = sellerWalletSnap.data();
-    
-    // Calculate seller balance
-    let sellerCurrentBalance;
-    if (sellerWalletData.encryptedBalance) {
-      sellerCurrentBalance = parseFloat(decrypt(sellerWalletData.encryptedBalance));
-    } else {
-      sellerCurrentBalance = sellerWalletData.balance || 0;
-    }
-    
-    // Calculate new seller balance
-    const sellerNewBalance = sellerCurrentBalance + amount;
-    const sellerEncryptedBalance = encrypt(sellerNewBalance.toString());
-    
     // Prepare transaction data
     const encryptedAmount = encrypt(amount.toString());
     
-    // Now perform all writes in a batch instead of a transaction
-    // This avoids the transaction read-before-write requirement
+    // Create escrow document
+    const escrowData = {
+      buyerId,
+      orderId,
+      encryptedAmount,
+      amount, // For backward compatibility
+      currency: 'ETB',
+      status: 'held',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    // Perform all writes in a batch
     const batch = writeBatch(db);
     
     // Update buyer wallet
@@ -438,24 +448,20 @@ export const processPayment = async (buyerId, sellerId, amount, orderId) => {
       updatedAt: serverTimestamp()
     });
     
-    // Update seller wallet
-    batch.update(sellerWalletRef, {
-      encryptedBalance: sellerEncryptedBalance,
-      balance: sellerNewBalance,
-      updatedAt: serverTimestamp()
-    });
+    // Create escrow record
+    const escrowRef = doc(collection(db, 'escrow'));
+    batch.set(escrowRef, escrowData);
     
     // Create buyer transaction record
     const buyerTransactionData = {
       userId: buyerId,
-      relatedUserId: sellerId,
-      type: TRANSACTION_TYPES.PURCHASE,
+      type: TRANSACTION_TYPES.ESCROW,
       encryptedAmount,
       amount: -amount,
       currency: 'ETB',
       orderId,
       status: TRANSACTION_STATUS.COMPLETED,
-      description: `Payment for order #${orderId}`,
+      description: `Payment held in escrow for order #${orderId}`,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
@@ -463,17 +469,122 @@ export const processPayment = async (buyerId, sellerId, amount, orderId) => {
     const buyerTransactionRef = doc(collection(db, 'transactions'));
     batch.set(buyerTransactionRef, buyerTransactionData);
     
+    // Commit all the writes
+    await batch.commit();
+    
+    return {
+      escrowId: escrowRef.id,
+      buyerTransaction: {
+        id: buyerTransactionRef.id,
+        ...buyerTransactionData,
+        amount: -amount // Return unencrypted amount
+      }
+    };
+  } catch (error) {
+    console.error('Error holding payment in escrow:', error);
+    throw error;
+  }
+};
+
+/**
+ * Release payment from escrow to seller
+ * @param {string} sellerId - The seller's user ID
+ * @param {string} orderId - The order ID
+ * @param {number} productAmount - The product price amount
+ * @param {number} deliveryAmount - The delivery cost amount
+ * @returns {Promise<object>} - The transaction object
+ */
+export const releasePaymentFromEscrow = async (sellerId, orderId, productAmount, deliveryAmount) => {
+  try {
+    // Find the escrow record for this order
+    const escrowQuery = query(
+      collection(db, 'escrow'),
+      where('orderId', '==', orderId),
+      where('status', '==', 'held')
+    );
+    
+    const escrowSnap = await getDocs(escrowQuery);
+    
+    if (escrowSnap.empty) {
+      throw new Error('No escrow payment found for this order');
+    }
+    
+    const escrowDoc = escrowSnap.docs[0];
+    const escrowData = escrowDoc.data();
+    const escrowRef = doc(db, 'escrow', escrowDoc.id);
+    
+    // Calculate the amount to release to seller (product + delivery, no tax)
+    const releaseAmount = productAmount + deliveryAmount;
+    
+    // Ensure we're not releasing more than what's in escrow
+    const totalEscrowAmount = escrowData.amount;
+    if (releaseAmount > totalEscrowAmount) {
+      throw new Error('Release amount exceeds escrow amount');
+    }
+    
+    // Get seller wallet data
+    const sellerWalletRef = doc(db, 'wallets', sellerId);
+    const sellerWalletSnap = await getDoc(sellerWalletRef);
+    
+    // Calculate seller balance
+    let sellerCurrentBalance = 0;
+    if (sellerWalletSnap.exists()) {
+      const sellerWalletData = sellerWalletSnap.data();
+      if (sellerWalletData.encryptedBalance) {
+        sellerCurrentBalance = parseFloat(decrypt(sellerWalletData.encryptedBalance));
+      } else {
+        sellerCurrentBalance = sellerWalletData.balance || 0;
+      }
+    }
+    
+    // Calculate new seller balance
+    const sellerNewBalance = sellerCurrentBalance + releaseAmount;
+    const sellerEncryptedBalance = encrypt(sellerNewBalance.toString());
+    
+    // Prepare transaction data
+    const encryptedAmount = encrypt(releaseAmount.toString());
+    
+    // Perform all writes in a batch
+    const batch = writeBatch(db);
+    
+    // Update escrow status
+    batch.update(escrowRef, {
+      status: 'released',
+      releasedAmount: releaseAmount,
+      releasedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    // Update or create seller wallet
+    if (sellerWalletSnap.exists()) {
+      batch.update(sellerWalletRef, {
+        encryptedBalance: sellerEncryptedBalance,
+        balance: sellerNewBalance,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      batch.set(sellerWalletRef, {
+        userId: sellerId,
+        encryptedBalance: sellerEncryptedBalance,
+        balance: sellerNewBalance,
+        currency: 'ETB',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        isActive: true
+      });
+    }
+    
     // Create seller transaction record
     const sellerTransactionData = {
       userId: sellerId,
-      relatedUserId: buyerId,
-      type: TRANSACTION_TYPES.SALE,
+      relatedUserId: escrowData.buyerId,
+      type: TRANSACTION_TYPES.ESCROW_RELEASE,
       encryptedAmount,
-      amount,
+      amount: releaseAmount,
       currency: 'ETB',
       orderId,
       status: TRANSACTION_STATUS.COMPLETED,
-      description: `Payment received for order #${orderId}`,
+      description: `Payment received for order #${orderId} (product + delivery only)`,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
@@ -485,163 +596,14 @@ export const processPayment = async (buyerId, sellerId, amount, orderId) => {
     await batch.commit();
     
     return {
-      buyerTransaction: {
-        id: buyerTransactionRef.id,
-        ...buyerTransactionData,
-        amount: -amount // Return unencrypted amount
-      },
       sellerTransaction: {
         id: sellerTransactionRef.id,
         ...sellerTransactionData,
-        amount // Return unencrypted amount
+        amount: releaseAmount
       }
     };
   } catch (error) {
-    console.error('Error processing payment:', error);
-    throw error;
-  }
-};
-
-/**
- * Process a refund from seller to buyer
- * @param {string} sellerId - The seller's user ID
- * @param {string} buyerId - The buyer's user ID
- * @param {number} amount - The refund amount
- * @param {string} orderId - The order ID
- * @returns {Promise<object>} - The transaction object
- */
-export const processRefund = async (sellerId, buyerId, amount, orderId) => {
-  try {
-    if (amount <= 0) {
-      throw new Error('Amount must be greater than zero');
-    }
-    
-    return await runTransaction(db, async (transaction) => {
-      // Get seller wallet
-      const sellerWalletRef = doc(db, 'wallets', sellerId);
-      const sellerWalletDoc = await transaction.get(sellerWalletRef);
-      
-      if (!sellerWalletDoc.exists()) {
-        throw new Error('Seller wallet not found');
-      }
-      
-      const sellerWalletData = sellerWalletDoc.data();
-      
-      // Calculate new balance
-      let sellerCurrentBalance;
-      
-      // If balance is encrypted, decrypt it first
-      if (sellerWalletData.encryptedBalance) {
-        sellerCurrentBalance = parseFloat(decrypt(sellerWalletData.encryptedBalance));
-      } else {
-        // Backward compatibility
-        sellerCurrentBalance = sellerWalletData.balance || 0;
-      }
-      
-      // Check if sufficient funds
-      if (sellerCurrentBalance < amount) {
-        throw new Error('Insufficient funds');
-      }
-      
-      // Calculate new balance
-      const sellerNewBalance = sellerCurrentBalance - amount;
-      
-      // Encrypt the new balance
-      const sellerEncryptedBalance = encrypt(sellerNewBalance.toString());
-      
-      // Update seller wallet with encrypted balance
-      transaction.update(sellerWalletRef, {
-        encryptedBalance: sellerEncryptedBalance,
-        balance: sellerNewBalance, // For backward compatibility
-        updatedAt: serverTimestamp()
-      });
-      
-      // Get buyer wallet
-      const buyerWalletRef = doc(db, 'wallets', buyerId);
-      const buyerWalletDoc = await transaction.get(buyerWalletRef);
-      
-      if (!buyerWalletDoc.exists()) {
-        throw new Error('Buyer wallet not found');
-      }
-      
-      const buyerWalletData = buyerWalletDoc.data();
-      
-      // Calculate new balance
-      let buyerCurrentBalance;
-      
-      // If balance is encrypted, decrypt it first
-      if (buyerWalletData.encryptedBalance) {
-        buyerCurrentBalance = parseFloat(decrypt(buyerWalletData.encryptedBalance));
-      } else {
-        // Backward compatibility
-        buyerCurrentBalance = buyerWalletData.balance || 0;
-      }
-      
-      // Calculate new balance
-      const buyerNewBalance = buyerCurrentBalance + amount;
-      
-      // Encrypt the new balance
-      const buyerEncryptedBalance = encrypt(buyerNewBalance.toString());
-      
-      // Update buyer wallet with encrypted balance
-      transaction.update(buyerWalletRef, {
-        encryptedBalance: buyerEncryptedBalance,
-        balance: buyerNewBalance, // For backward compatibility
-        updatedAt: serverTimestamp()
-      });
-      
-      // Create seller transaction record with encrypted amount
-      const encryptedAmount = encrypt(amount.toString());
-      const sellerTransactionData = {
-        userId: sellerId,
-        relatedUserId: buyerId,
-        type: TRANSACTION_TYPES.REFUND,
-        encryptedAmount,
-        amount: -amount, // Negative for seller (backward compatibility)
-        currency: 'ETB',
-        orderId,
-        status: TRANSACTION_STATUS.COMPLETED,
-        description: `Refund issued for order #${orderId}`,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      
-      const sellerTransactionRef = doc(collection(db, 'transactions'));
-      transaction.set(sellerTransactionRef, sellerTransactionData);
-      
-      // Create buyer transaction record with encrypted amount
-      const buyerTransactionData = {
-        userId: buyerId,
-        relatedUserId: sellerId,
-        type: TRANSACTION_TYPES.REFUND,
-        encryptedAmount,
-        amount, // Positive for buyer (backward compatibility)
-        currency: 'ETB',
-        orderId,
-        status: TRANSACTION_STATUS.COMPLETED,
-        description: `Refund received for order #${orderId}`,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      
-      const buyerTransactionRef = doc(collection(db, 'transactions'));
-      transaction.set(buyerTransactionRef, buyerTransactionData);
-      
-      return {
-        sellerTransaction: {
-          id: sellerTransactionRef.id,
-          ...sellerTransactionData,
-          amount: -amount // Return unencrypted amount
-        },
-        buyerTransaction: {
-          id: buyerTransactionRef.id,
-          ...buyerTransactionData,
-          amount // Return unencrypted amount
-        }
-      };
-    });
-  } catch (error) {
-    console.error('Error processing refund:', error);
+    console.error('Error releasing payment from escrow:', error);
     throw error;
   }
 };

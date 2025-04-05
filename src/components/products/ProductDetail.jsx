@@ -12,8 +12,6 @@ import {
   CircularProgress,
   TextField,
   IconButton,
-  Tabs,
-  Tab,
   Paper,
   Breadcrumbs,
   Link,
@@ -646,24 +644,47 @@ const ProductDetail = () => {
       {/* Product Details Tabs */}
       <Box sx={{ mt: 4 }}>
         <Paper elevation={0} sx={{ borderRadius: 1, border: `1px solid ${theme.palette.divider}` }}>
-          <Tabs
-            value={activeTab}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
+          <Box 
+            sx={{ 
+              display: 'flex',
               borderBottom: `1px solid ${theme.palette.divider}`,
-              '& .MuiTab-root': {
-                fontWeight: 'bold',
-                textTransform: 'none',
-                minWidth: 120,
+              px: 2,
+              overflowX: 'auto',
+              '&::-webkit-scrollbar': {
+                height: 6
               },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                borderRadius: 3
+              }
             }}
           >
-            <Tab label={<TranslationWrapper translationKey="description">Description</TranslationWrapper>} />
-            <Tab label={<TranslationWrapper translationKey="specifications">Specifications</TranslationWrapper>} />
-            <Tab label={<><TranslationWrapper translationKey="reviews">Reviews</TranslationWrapper> ({reviewStats?.totalReviews || 0})</>} />
-          </Tabs>
+            {[
+              { key: 'description', label: 'Description' },
+              { key: 'specifications', label: 'Specifications' },
+              { key: 'reviews', label: `Reviews (${reviewStats?.totalReviews || 0})` }
+            ].map((tab, index) => (
+              <Box
+                key={tab.key}
+                onClick={() => handleTabChange(null, index)}
+                sx={{
+                  py: 2,
+                  px: 3,
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  color: activeTab === index ? theme.palette.primary.main : theme.palette.text.primary,
+                  borderBottom: activeTab === index ? `2px solid ${theme.palette.primary.main}` : '2px solid transparent',
+                  whiteSpace: 'nowrap',
+                  '&:hover': {
+                    color: theme.palette.primary.main,
+                    backgroundColor: alpha(theme.palette.primary.main, 0.05)
+                  }
+                }}
+              >
+                <TranslationWrapper translationKey={tab.key}>{tab.label}</TranslationWrapper>
+              </Box>
+            ))}
+          </Box>
           
           <Box sx={{ p: 3 }}>
             {activeTab === 0 && (
@@ -816,93 +837,14 @@ const ProductDetail = () => {
                   </Box>
                 </Box>
                 
-                {/* Reviews List - Placeholder */}
-                <Box>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    <TranslationWrapper>customerFeedback</TranslationWrapper>
-                  </Typography>
-                  
-                  {/* Sample reviews - in a real app, these would come from the database */}
-                  {[1, 2, 3].map((review) => (
-                    <Box 
-                      key={review}
-                      sx={{ 
-                        mb: 3,
-                        pb: 3,
-                        borderBottom: review < 3 ? `1px solid ${theme.palette.divider}` : 'none'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Avatar 
-                          sx={{ 
-                            width: 40, 
-                            height: 40, 
-                            mr: 1.5,
-                            bgcolor: theme.palette.primary.main
-                          }}
-                        >
-                          {['JD', 'SM', 'AK'][review - 1]}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="subtitle2">
-                            {['John Doe', 'Sarah Miller', 'Alex Kim'][review - 1]}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Rating 
-                              value={[5, 4, 5][review - 1]} 
-                              size="small" 
-                              readOnly 
-                              sx={{ color: theme.palette.warning.main }}
-                            />
-                            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                              {['2 weeks ago', '1 month ago', '3 days ago'][review - 1]}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </Box>
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        {[
-                          'Great product! Exactly as described and arrived quickly. The quality is excellent and I would definitely buy from this seller again.',
-                          'Good value for money. The product is nice but slightly different from the pictures. Overall satisfied with my purchase.',
-                          'Excellent quality and fast shipping. The seller was very responsive to my questions. Highly recommended!'
-                        ][review - 1]}
-                      </Typography>
-                    </Box>
-                  ))}
-                  
-                  <Button
-                    variant="outlined"
-                    endIcon={<ArrowForwardIcon />}
-                    sx={{ 
-                      mt: 2,
-                      borderRadius: 1,
-                      textTransform: 'none'
-                    }}
-                  >
-                    <TranslationWrapper>viewAllReviews</TranslationWrapper>
-                  </Button>
-                </Box>
+               
+                
               </Box>
             )}
           </Box>
         </Paper>
       </Box>
 
-      {/* Product description */}
-      <Box sx={{ mt: 6 }}>
-        <Typography variant="h5" gutterBottom>
-          {t('productDescription')}
-        </Typography>
-        <Typography variant="body1">
-          {product.description}
-        </Typography>
-      </Box>
-      
-      {/* Reviews Section */}
-      <Box id="reviews-section">
-        <ReviewSection productId={id} />
-      </Box>
-      
       {/* Related Products */}
       <RelatedProducts categoryId={product.category} currentProductId={id} />
 
@@ -953,6 +895,11 @@ const ProductDetail = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Reviews Section */}
+      <Box id="reviews-section">
+        <ReviewSection productId={id} />
+      </Box>
     </Container>
   );
 };
@@ -964,6 +911,13 @@ const ProductImageGallery = ({ images, name }) => {
   const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
   const [showZoom, setShowZoom] = useState(false);
   const imageContainerRef = useRef(null);
+  
+  // Set main image when images prop changes
+  useEffect(() => {
+    if (images && images.length > 0) {
+      setMainImage(images[0]);
+    }
+  }, [images]);
 
   const handleThumbnailClick = (image) => {
     setMainImage(image);
@@ -987,6 +941,28 @@ const ProductImageGallery = ({ images, name }) => {
     setShowZoom(false);
   };
 
+  // If no images are provided, show a placeholder
+  if (!images || images.length === 0) {
+    return (
+      <Box 
+        sx={{ 
+          width: '100%',
+          height: { xs: 300, sm: 400, md: 500 },
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: alpha(theme.palette.primary.main, 0.05),
+          borderRadius: 1,
+          border: `1px solid ${theme.palette.divider}`,
+        }}
+      >
+        <Typography variant="body1" color="text.secondary">
+          <TranslationWrapper>No images available</TranslationWrapper>
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
       {/* Thumbnails */}
@@ -1000,7 +976,7 @@ const ProductImageGallery = ({ images, name }) => {
         maxHeight: { sm: '500px' },
         py: 1
       }}>
-        {images?.map((image, index) => (
+        {images.map((image, index) => (
           <Box
             key={index}
             onClick={() => handleThumbnailClick(image)}
@@ -1021,6 +997,10 @@ const ProductImageGallery = ({ images, name }) => {
               src={image}
               alt={`${name} - view ${index + 1}`}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = 'https://via.placeholder.com/150?text=Image+Not+Available';
+              }}
             />
           </Box>
         ))}
@@ -1045,13 +1025,17 @@ const ProductImageGallery = ({ images, name }) => {
         onMouseLeave={handleMouseLeave}
       >
         <img
-          src={mainImage || images?.[0]}
+          src={mainImage || images[0]}
           alt={name}
           style={{ 
             width: '100%', 
             height: '100%', 
             objectFit: 'contain',
             display: 'block'
+          }}
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = 'https://via.placeholder.com/400x500?text=Image+Not+Available';
           }}
         />
         
@@ -1064,7 +1048,7 @@ const ProductImageGallery = ({ images, name }) => {
               left: 0,
               width: '100%',
               height: '100%',
-              backgroundImage: `url(${mainImage || images?.[0]})`,
+              backgroundImage: `url(${mainImage || images[0]})`,
               backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%`,
               backgroundSize: '200%',
               backgroundRepeat: 'no-repeat',

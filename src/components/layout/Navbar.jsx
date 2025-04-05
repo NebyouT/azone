@@ -59,6 +59,7 @@ import { logoutUser } from '../../firebase/services';
 import { useColorMode } from '../../theme/ThemeProvider';
 import { glassmorphism } from '../../theme/futuristicTheme';
 import { useLanguage } from '../../contexts/LanguageContext';
+import NotificationIcon from '../notifications/NotificationIcon';
 
 // Styled components
 const Search = styled('div')(({ theme }) => ({
@@ -170,7 +171,8 @@ const MaterialUISwitch = styled(Switch)(({ theme }) => ({
 const Navbar = () => {
   const navigate = useNavigate();
   const { currentUser, userDetails, isSeller, isAdmin } = useAuth();
-  const { itemCount } = useCart();
+  const cart = useCart();
+  const itemCount = cart?.itemCount || 0;
   const { mode, toggleColorMode } = useColorMode();
   const { language, changeLanguage, t } = useLanguage();
   const theme = useTheme();
@@ -950,6 +952,11 @@ const Navbar = () => {
             {/* Action Icons */}
             {!searchOpen && (
               <Box sx={{ display: 'flex' }}>
+                {/* Notification Icon */}
+                {currentUser && (
+                  <NotificationIcon />
+                )}
+                
                 {/* Wallet Icon */}
                 {currentUser && (
                   <IconButton

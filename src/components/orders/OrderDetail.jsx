@@ -193,7 +193,7 @@ const OrderDetail = () => {
   
   // Check for reviewable products when order is loaded
   useEffect(() => {
-    if (order && order.status === 'completed') {
+    if (order && (order.status === 'completed' || order.status === 'delivered')) {
       checkReviewableProducts();
     }
   }, [order]);
@@ -277,6 +277,12 @@ const OrderDetail = () => {
   // Handle order delivery confirmation
   const handleConfirmDelivery = async () => {
     try {
+      // Validate order ID
+      if (!id) {
+        setError('Invalid order ID. Please try refreshing the page.');
+        return;
+      }
+      
       setActionLoading(true);
       await confirmOrderDelivery(id);
       setSuccessMessage('Order delivery confirmed successfully! Payment has been released to the seller.');
@@ -427,12 +433,42 @@ const OrderDetail = () => {
         {order.status === 'cancelled' && (
           <Alert severity="error" sx={{ mt: 2, mb: 2, borderRadius: 0 }}>
             This order has been cancelled.
+            {order.cancellationReason && (
+              <Typography variant="body2" sx={{ mt: 1, fontWeight: 'medium' }}>
+                Reason: {order.cancellationReason}
+              </Typography>
+            )}
           </Alert>
         )}
         
         {order.status === 'delivered' && !order.buyerConfirmed && (
-          <Alert severity="info" sx={{ mt: 2, mb: 2, borderRadius: 0 }}>
-            The seller has marked this order as delivered. Please confirm if you have received it or report if you haven't.
+          <Alert severity="info" sx={{ mt: 2, mb: 2, borderRadius: 0, bgcolor: alpha(theme.palette.info.main, 0.1) }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mb: 1 }}>
+              Your order has been marked as delivered by the seller!
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              Please confirm if you have received your order. Once confirmed, payment will be released to the seller and you'll be able to leave reviews.
+            </Typography>
+            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<ThumbUpIcon />}
+                onClick={() => setConfirmDialogOpen(true)}
+                sx={{ borderRadius: 0 }}
+              >
+                Confirm Delivery
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<ThumbDownIcon />}
+                onClick={() => setDenyDialogOpen(true)}
+                sx={{ borderRadius: 0 }}
+              >
+                Not Delivered
+              </Button>
+            </Box>
           </Alert>
         )}
         
@@ -515,9 +551,20 @@ const OrderDetail = () => {
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Typography variant="subtitle1">
-                    {item.name}
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="subtitle1">
+                      {item.name}
+                    </Typography>
+                    {item.status === 'cancelled' && (
+                      <Chip 
+                        size="small"
+                        label="CANCELLED" 
+                        color="error"
+                        icon={<CancelIcon fontSize="small" />}
+                        sx={{ fontWeight: 'medium' }}
+                      />
+                    )}
+                  </Box>
                 }
                 secondary={
                   <Box component="span" sx={{ display: 'block' }}>
@@ -530,6 +577,11 @@ const OrderDetail = () => {
                     {item.variant && (
                       <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
                         Variant: {item.variant}
+                      </Typography>
+                    )}
+                    {item.status === 'cancelled' && item.cancellationReason && (
+                      <Typography variant="body2" component="span" sx={{ display: 'block', mt: 0.5, color: 'error.main', fontWeight: 'medium' }}>
+                        Cancelled by seller. Reason: {item.cancellationReason}
                       </Typography>
                     )}
                     {item.sellerId && (
@@ -707,7 +759,7 @@ const OrderDetail = () => {
       </Paper>
       
       {/* Review Section for Completed Orders */}
-      {order && order.status === 'completed' && reviewableProducts.length > 0 && (
+      {order && (order.status === 'completed' || (order.canReview && reviewableProducts.length > 0)) && (
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <RateReviewIcon sx={{ mr: 1, color: 'primary.main' }} />

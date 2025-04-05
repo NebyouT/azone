@@ -17,7 +17,12 @@ import {
   CircularProgress,
   Alert,
   useTheme,
-  alpha
+  alpha,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Autocomplete
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -28,9 +33,33 @@ import {
   Business as BusinessIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  Place as PlaceIcon
 } from '@mui/icons-material';
-import GoogleMapLocation from './GoogleMapLocation';
+
+// Known locations in Addis Ababa and Dire Dawa
+const KNOWN_LOCATIONS = {
+  'Addis Ababa': [
+    'Bole', 'Kazanchis', 'Piassa', 'Merkato', 'Meskel Square', 'Mexico Square', 
+    'Sarbet', 'Megenagna', 'Ayat', 'CMC', 'Gerji', 'Lideta', 'Jemo', 'Lebu',
+    'Kality', 'Akaki', 'Shola', 'Arat Kilo', 'Sidist Kilo', 'Addis Ketema'
+  ],
+  'Dire Dawa': [
+    'Kezira', 'Addis Ketema', 'Melka Jebdu', 'Sabian', 'Ashewa', 'Gendekore',
+    'Legehare', 'Dechatu', 'Konel', 'Taiwan'
+  ]
+};
+
+// Sub-cities in Addis Ababa and Dire Dawa
+const SUB_CITIES = {
+  'Addis Ababa': [
+    'Addis Ketema', 'Akaky Kaliti', 'Arada', 'Bole', 'Gullele', 'Kirkos',
+    'Kolfe Keranio', 'Lideta', 'Nifas Silk-Lafto', 'Yeka'
+  ],
+  'Dire Dawa': [
+    'Dire Dawa City Administration'
+  ]
+};
 
 const SavedAddresses = ({ 
   addresses, 
@@ -52,10 +81,12 @@ const SavedAddresses = ({
     addressType: 'home', // 'home', 'work', 'other'
     address: '',
     city: 'Addis Ababa',
-    region: 'Addis Ababa',
-    zipCode: '',
-    deliveryInstructions: '',
-    coordinates: null
+    subCity: '',
+    woreda: '',
+    kebele: '',
+    knownLocation: '',
+    customLocation: '',
+    deliveryInstructions: ''
   });
   const [formError, setFormError] = useState('');
   
@@ -74,10 +105,12 @@ const SavedAddresses = ({
       addressType: 'home',
       address: '',
       city: 'Addis Ababa',
-      region: 'Addis Ababa',
-      zipCode: '',
-      deliveryInstructions: '',
-      coordinates: null
+      subCity: '',
+      woreda: '',
+      kebele: '',
+      knownLocation: '',
+      customLocation: '',
+      deliveryInstructions: ''
     });
     setOpenAddressDialog(true);
   };
@@ -92,10 +125,12 @@ const SavedAddresses = ({
       addressType: address.addressType || 'home',
       address: address.address || '',
       city: address.city || 'Addis Ababa',
-      region: address.region || 'Addis Ababa',
-      zipCode: address.zipCode || '',
-      deliveryInstructions: address.deliveryInstructions || '',
-      coordinates: address.coordinates || null
+      subCity: address.subCity || '',
+      woreda: address.woreda || '',
+      kebele: address.kebele || '',
+      knownLocation: address.knownLocation || '',
+      customLocation: address.customLocation || '',
+      deliveryInstructions: address.deliveryInstructions || ''
     });
     setOpenAddressDialog(true);
   };
@@ -103,40 +138,60 @@ const SavedAddresses = ({
   // Handle address form input change
   const handleAddressFormChange = (e) => {
     const { name, value } = e.target;
-    setAddressForm(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    // Reset known location when city changes
+    if (name === 'city') {
+      setAddressForm(prev => ({
+        ...prev,
+        [name]: value,
+        knownLocation: '',
+        subCity: ''
+      }));
+    } else {
+      setAddressForm(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
   
-  // Handle location selection from map
-  const handleLocationSelect = (locationData) => {
+  // Handle known location selection
+  const handleKnownLocationChange = (event, value) => {
     setAddressForm(prev => ({
       ...prev,
-      coordinates: locationData.coordinates,
-      address: locationData.address
+      knownLocation: value || ''
     }));
   };
   
   // Save or update address
   const handleSaveAddress = () => {
     // Validate form
-    if (!addressForm.fullName || !addressForm.phoneNumber || !addressForm.address) {
+    if (!addressForm.fullName || !addressForm.phoneNumber || !addressForm.address || 
+        !addressForm.city || !addressForm.subCity || !addressForm.woreda || !addressForm.kebele) {
       setFormError('Please fill in all required fields');
-      return;
-    }
-    
-    if (!addressForm.coordinates) {
-      setFormError('Please select a location on the map');
       return;
     }
     
     setFormError('');
     
+    // Prepare address data with the combined address field
+    const locationInfo = addressForm.knownLocation 
+      ? `Near ${addressForm.knownLocation}` 
+      : addressForm.customLocation 
+        ? `Near ${addressForm.customLocation}` 
+        : '';
+    
+    const formattedAddress = {
+      ...addressForm,
+      address: `${addressForm.address}${locationInfo ? `, ${locationInfo}` : ''}`,
+      // Format the full address for display
+      formattedAddress: `${addressForm.address}, Kebele ${addressForm.kebele}, Woreda ${addressForm.woreda}, ${addressForm.subCity}, ${addressForm.city}`
+    };
+    
     if (addressFormMode === 'add') {
-      onSaveAddress(addressForm);
+      onSaveAddress(formattedAddress);
     } else {
-      onUpdateAddress(currentAddress.id, addressForm);
+      onUpdateAddress(currentAddress.id, formattedAddress);
     }
     
     setOpenAddressDialog(false);
@@ -263,7 +318,7 @@ const SavedAddresses = ({
                     </Typography>
                     
                     <Typography variant="body2" color="text.secondary">
-                      {address.city}, {address.region} {address.zipCode}
+                      {address.formattedAddress || `Kebele ${address.kebele}, Woreda ${address.woreda}, ${address.subCity}, ${address.city}`}
                     </Typography>
                     
                     {address.deliveryInstructions && (
@@ -370,48 +425,112 @@ const SavedAddresses = ({
               </RadioGroup>
             </Grid>
             
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth required>
+                <InputLabel id="city-label">City</InputLabel>
+                <Select
+                  labelId="city-label"
+                  name="city"
+                  value={addressForm.city}
+                  label="City"
+                  onChange={handleAddressFormChange}
+                >
+                  <MenuItem value="Addis Ababa">Addis Ababa</MenuItem>
+                  <MenuItem value="Dire Dawa">Dire Dawa</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth required>
+                <InputLabel id="sub-city-label">Sub City</InputLabel>
+                <Select
+                  labelId="sub-city-label"
+                  name="subCity"
+                  value={addressForm.subCity}
+                  label="Sub City"
+                  onChange={handleAddressFormChange}
+                  error={formError && !addressForm.subCity}
+                >
+                  {SUB_CITIES[addressForm.city]?.map((subCity) => (
+                    <MenuItem key={subCity} value={subCity}>{subCity}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label="Woreda"
+                name="woreda"
+                value={addressForm.woreda}
+                onChange={handleAddressFormChange}
+                error={formError && !addressForm.woreda}
+                helperText={formError && !addressForm.woreda ? 'Woreda is required' : ''}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label="Kebele"
+                name="kebele"
+                value={addressForm.kebele}
+                onChange={handleAddressFormChange}
+                error={formError && !addressForm.kebele}
+                helperText={formError && !addressForm.kebele ? 'Kebele is required' : ''}
+              />
+            </Grid>
+            
             <Grid item xs={12}>
               <TextField
                 required
                 fullWidth
-                label="Address"
+                label="Street Address"
                 name="address"
                 value={addressForm.address}
                 onChange={handleAddressFormChange}
                 error={formError && !addressForm.address}
-                helperText={formError && !addressForm.address ? 'Address is required' : ''}
+                helperText={formError && !addressForm.address ? 'Street address is required' : ''}
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
-              <TextField
-                required
-                fullWidth
-                label="City"
-                name="city"
-                value={addressForm.city}
-                onChange={handleAddressFormChange}
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Region"
-                name="region"
-                value={addressForm.region}
-                onChange={handleAddressFormChange}
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Zip Code"
-                name="zipCode"
-                value={addressForm.zipCode}
-                onChange={handleAddressFormChange}
-              />
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>
+                Nearby Landmark
+              </Typography>
+              
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Autocomplete
+                    options={KNOWN_LOCATIONS[addressForm.city] || []}
+                    value={addressForm.knownLocation}
+                    onChange={handleKnownLocationChange}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Select a Known Location"
+                        fullWidth
+                      />
+                    )}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Or Enter Custom Location"
+                    name="customLocation"
+                    value={addressForm.customLocation}
+                    onChange={handleAddressFormChange}
+                    disabled={!!addressForm.knownLocation}
+                    helperText={addressForm.knownLocation ? "Clear known location to use custom" : ""}
+                  />
+                </Grid>
+              </Grid>
             </Grid>
             
             <Grid item xs={12}>
@@ -423,13 +542,6 @@ const SavedAddresses = ({
                 onChange={handleAddressFormChange}
                 multiline
                 rows={2}
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <GoogleMapLocation 
-                onLocationSelect={handleLocationSelect}
-                initialLocation={addressForm.coordinates}
               />
             </Grid>
           </Grid>

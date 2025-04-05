@@ -537,6 +537,71 @@ const WalletPage = () => {
     });
   };
   
+  // Group transactions by type
+  const groupTransactionsByType = (transactions) => {
+    return transactions.reduce((groups, transaction) => {
+      // Determine the group based on transaction type and direction
+      let group = 'other';
+      
+      if (transaction.type === TRANSACTION_TYPES.DEPOSIT) {
+        group = 'deposits';
+      } else if (transaction.type === TRANSACTION_TYPES.PAYMENT) {
+        if (transaction.amount < 0) {
+          group = 'payments';
+        } else {
+          group = 'earnings';
+        }
+      } else if (transaction.type === TRANSACTION_TYPES.WITHDRAWAL) {
+        group = 'withdrawals';
+      } else if (transaction.type === TRANSACTION_TYPES.REFUND) {
+        group = 'refunds';
+      }
+      
+      if (!groups[group]) {
+        groups[group] = [];
+      }
+      
+      groups[group].push(transaction);
+      return groups;
+    }, {});
+  };
+
+  // Get transaction group title
+  const getTransactionGroupTitle = (groupName) => {
+    switch (groupName) {
+      case 'deposits':
+        return 'Deposits';
+      case 'payments':
+        return 'Payments for Orders';
+      case 'earnings':
+        return 'Earnings from Sales';
+      case 'withdrawals':
+        return 'Withdrawals';
+      case 'refunds':
+        return 'Refunds';
+      default:
+        return 'Other Transactions';
+    }
+  };
+
+  // Get transaction group icon
+  const getTransactionGroupIcon = (groupName) => {
+    switch (groupName) {
+      case 'deposits':
+        return <ArrowDownwardIcon color="success" />;
+      case 'payments':
+        return <PaymentIcon color="primary" />;
+      case 'earnings':
+        return <MoneyIcon color="success" />;
+      case 'withdrawals':
+        return <ArrowUpwardIcon color="error" />;
+      case 'refunds':
+        return <ReceiptIcon color="secondary" />;
+      default:
+        return <HistoryIcon />;
+    }
+  };
+
   // Render loading state
   if (loading) {
     return (
@@ -978,100 +1043,133 @@ const WalletPage = () => {
   );
   
   // Render transaction history
-  const renderTransactionHistory = () => (
-    <Paper elevation={2} sx={{ p: 2, mt: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
-          <HistoryIcon sx={{ mr: 1 }} /> Transaction History
-        </Typography>
-        <Button
-          startIcon={<RefreshIcon />}
-          onClick={fetchAllData}
-          disabled={refreshing}
-          size="small"
-          color="primary"
-          variant="outlined"
-        >
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </Button>
-      </Box>
-      
-      {transactions.length === 0 ? (
-        <Box sx={{ textAlign: 'center', py: 4, bgcolor: 'background.paper', borderRadius: 1 }}>
-          <ReceiptIcon sx={{ fontSize: 40, color: 'text.secondary', opacity: 0.5, mb: 1 }} />
-          <Typography variant="body1" color="text.secondary">
-            No transactions found
+  const renderTransactionHistory = () => {
+    // Group transactions by type
+    const groupedTransactions = groupTransactionsByType(transactions);
+    const groups = Object.keys(groupedTransactions);
+    
+    return (
+      <Paper elevation={2} sx={{ p: 2, mt: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <HistoryIcon sx={{ mr: 1 }} />
+          <Typography variant="h6">
+            Transaction History
           </Typography>
         </Box>
-      ) : (
-        <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
-          {transactions.map((transaction) => (
-            <ListItem 
-              key={transaction.id} 
-              divider
-              sx={{
-                borderLeft: 3,
-                borderColor: transaction.amount > 0 ? 'success.main' : 'error.main',
-                mb: 1,
-                bgcolor: 'background.paper',
-                borderRadius: 1,
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: 'background.default',
-                  transform: 'translateX(4px)'
-                }
-              }}
-            >
-              <Box sx={{ mr: 2 }}>
-                {getTransactionIcon(transaction.type)}
-              </Box>
-              <ListItemText
-                primary={
-                  <Typography variant="body1" fontWeight="medium">
-                    {transaction.amount > 0 ? 'Deposit' : 'Withdrawal'}
-                    {transaction.method && ` via ${transaction.method}`}
+        
+        {transactions.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4, bgcolor: 'background.paper', borderRadius: 1 }}>
+            <ReceiptIcon sx={{ fontSize: 40, color: 'text.secondary', opacity: 0.5, mb: 1 }} />
+            <Typography variant="body1" color="text.secondary">
+              No transactions found
+            </Typography>
+          </Box>
+        ) : (
+          <Box>
+            {groups.map((group) => (
+              <Box key={group} sx={{ mb: 3 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  mb: 1, 
+                  pb: 1, 
+                  borderBottom: '1px solid',
+                  borderColor: 'divider'
+                }}>
+                  {getTransactionGroupIcon(group)}
+                  <Typography variant="subtitle1" sx={{ ml: 1, fontWeight: 'medium' }}>
+                    {getTransactionGroupTitle(group)} ({groupedTransactions[group].length})
                   </Typography>
-                }
-                secondary={
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDate(transaction.createdAt)}
-                    </Typography>
-                    {transaction.description && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                        {transaction.description}
-                      </Typography>
-                    )}
-                  </Box>
-                }
-              />
-              <ListItemSecondaryAction>
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <Typography
-                    variant="body1"
-                    color={transaction.amount > 0 ? 'success.main' : 'error.main'}
-                    sx={{ fontWeight: 'bold' }}
-                  >
-                    {transaction.amount > 0 ? '+' : ''}{formatCurrency(transaction.amount)} ETB
-                  </Typography>
-                  
-                  {/* Show status chip for withdrawals */}
-                  {transaction.type === TRANSACTION_TYPES.WITHDRAWAL && (
-                    <Chip
-                      size="small"
-                      label={transaction.status}
-                      color={getStatusColor(transaction.status)}
-                      sx={{ mt: 1 }}
-                    />
-                  )}
                 </Box>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Paper>
-  );
+                
+                <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+                  {groupedTransactions[group].map((transaction) => (
+                    <ListItem 
+                      key={transaction.id} 
+                      divider
+                      sx={{
+                        borderLeft: 3,
+                        borderColor: transaction.amount > 0 ? 'success.main' : 'error.main',
+                        mb: 1,
+                        bgcolor: 'background.paper',
+                        borderRadius: 1,
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          bgcolor: 'background.default',
+                          transform: 'translateX(4px)'
+                        }
+                      }}
+                    >
+                      <Box sx={{ mr: 2 }}>
+                        {getTransactionIcon(transaction.type)}
+                      </Box>
+                      <ListItemText
+                        primary={
+                          <Typography variant="body1" fontWeight="medium">
+                            {transaction.description || 
+                              (transaction.type === TRANSACTION_TYPES.PAYMENT && transaction.amount < 0 
+                                ? 'Payment for Order' 
+                                : transaction.type === TRANSACTION_TYPES.PAYMENT && transaction.amount > 0
+                                  ? 'Earnings from Sale'
+                                  : transaction.type === TRANSACTION_TYPES.DEPOSIT
+                                    ? 'Deposit to Wallet'
+                                    : transaction.type === TRANSACTION_TYPES.WITHDRAWAL
+                                      ? 'Withdrawal from Wallet'
+                                      : transaction.type === TRANSACTION_TYPES.REFUND
+                                        ? 'Refund'
+                                        : 'Transaction')}
+                            {transaction.method && ` via ${transaction.method}`}
+                          </Typography>
+                        }
+                        secondary={
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatDate(transaction.createdAt)}
+                            </Typography>
+                            {transaction.orderId && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                Order ID: {transaction.orderId.substring(0, 8)}
+                              </Typography>
+                            )}
+                            {transaction.reference && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                Ref: {transaction.reference}
+                              </Typography>
+                            )}
+                          </Box>
+                        }
+                      />
+                      <ListItemSecondaryAction>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                          <Typography
+                            variant="body1"
+                            color={transaction.amount > 0 ? 'success.main' : 'error.main'}
+                            sx={{ fontWeight: 'bold' }}
+                          >
+                            {transaction.amount > 0 ? '+' : ''}{formatCurrency(transaction.amount)} ETB
+                          </Typography>
+                          
+                          {/* Show status chip for withdrawals */}
+                          {transaction.type === TRANSACTION_TYPES.WITHDRAWAL && (
+                            <Chip
+                              label={transaction.status}
+                              color={getStatusColor(transaction.status)}
+                              size="small"
+                              sx={{ mt: 1 }}
+                            />
+                          )}
+                        </Box>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Paper>
+    );
+  };
   
   // Render withdrawal requests
   const renderWithdrawalRequests = () => (
@@ -1091,64 +1189,161 @@ const WalletPage = () => {
           </Typography>
         </Box>
       ) : (
-        <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
-          {withdrawalRequests.map((request) => (
-            <ListItem 
-              key={request.id} 
-              divider
-              sx={{
-                borderLeft: 3,
-                borderColor: 
-                  request.status === WITHDRAWAL_STATUS.COMPLETED
-                    ? 'success.main'
-                    : request.status === WITHDRAWAL_STATUS.PENDING
-                    ? 'warning.main'
-                    : request.status === WITHDRAWAL_STATUS.REJECTED
-                    ? 'error.main'
-                    : 'grey.500',
-                mb: 1,
-                bgcolor: 'background.paper',
-                borderRadius: 1,
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: 'background.default',
-                  transform: 'translateX(4px)'
-                }
-              }}
-            >
-              <Box sx={{ mr: 2 }}>
-                {request.method === WITHDRAWAL_METHODS.CBE ? <BankIcon /> : <PhoneIcon />}
-              </Box>
-              <ListItemText
-                primary={
-                  <Typography variant="body1" fontWeight="medium">
-                    {formatCurrency(request.amount)} ETB via {request.method === WITHDRAWAL_METHODS.CBE ? 'CBE' : 'Telebirr'}
-                  </Typography>
-                }
-                secondary={
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDate(request.createdAt)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {request.method === WITHDRAWAL_METHODS.CBE 
-                        ? `Account: ${request.bankDetails?.accountNumber}` 
-                        : `Phone: ${request.bankDetails?.phoneNumber}`}
-                    </Typography>
+        <Box>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            mb: 1, 
+            pb: 1, 
+            borderBottom: '1px solid',
+            borderColor: 'divider'
+          }}>
+            <ArrowUpwardIcon color="error" />
+            <Typography variant="subtitle1" sx={{ ml: 1, fontWeight: 'medium' }}>
+              Pending Withdrawals ({withdrawalRequests.filter(r => r.status === TRANSACTION_STATUS.PENDING).length})
+            </Typography>
+          </Box>
+          
+          <List sx={{ bgcolor: 'background.paper', borderRadius: 1, mb: 3 }}>
+            {withdrawalRequests
+              .filter(r => r.status === TRANSACTION_STATUS.PENDING)
+              .map((request) => (
+                <ListItem 
+                  key={request.id} 
+                  divider
+                  sx={{
+                    borderLeft: 3,
+                    borderColor: 'warning.main',
+                    mb: 1,
+                    bgcolor: 'background.paper',
+                    borderRadius: 1
+                  }}
+                >
+                  <Box sx={{ mr: 2 }}>
+                    <ArrowUpwardIcon color="error" />
                   </Box>
-                }
-              />
-              <ListItemSecondaryAction>
-                <Chip
-                  label={request.status}
-                  color={getStatusColor(request.status)}
-                  size="small"
-                  sx={{ fontWeight: 'medium' }}
-                />
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
+                  <ListItemText
+                    primary={
+                      <Typography variant="body1" fontWeight="medium">
+                        Withdrawal Request {request.method && `via ${request.method}`}
+                      </Typography>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatDate(request.createdAt)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {request.method === WITHDRAWAL_METHODS.CBE 
+                            ? `Account: ${request.bankDetails?.accountNumber}` 
+                            : `Phone: ${request.bankDetails?.phoneNumber}`}
+                        </Typography>
+                        {request.bankDetails?.fullName && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            Name: {request.bankDetails.fullName}
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <Typography
+                        variant="body1"
+                        color="error.main"
+                        sx={{ fontWeight: 'bold' }}
+                      >
+                        {formatCurrency(request.amount)} ETB
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={request.status}
+                        color={getStatusColor(request.status)}
+                        sx={{ mt: 1 }}
+                      />
+                    </Box>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+          </List>
+          
+          {withdrawalRequests.some(r => r.status !== TRANSACTION_STATUS.PENDING) && (
+            <>
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                mb: 1, 
+                pb: 1, 
+                borderBottom: '1px solid',
+                borderColor: 'divider'
+              }}>
+                <HistoryIcon color="action" />
+                <Typography variant="subtitle1" sx={{ ml: 1, fontWeight: 'medium' }}>
+                  Past Withdrawal Requests ({withdrawalRequests.filter(r => r.status !== TRANSACTION_STATUS.PENDING).length})
+                </Typography>
+              </Box>
+              
+              <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+                {withdrawalRequests
+                  .filter(r => r.status !== TRANSACTION_STATUS.PENDING)
+                  .map((request) => (
+                    <ListItem 
+                      key={request.id} 
+                      divider
+                      sx={{
+                        borderLeft: 3,
+                        borderColor: request.status === TRANSACTION_STATUS.COMPLETED ? 'success.main' : 'error.main',
+                        mb: 1,
+                        bgcolor: 'background.paper',
+                        borderRadius: 1,
+                        opacity: 0.8
+                      }}
+                    >
+                      <Box sx={{ mr: 2 }}>
+                        <ArrowUpwardIcon color={request.status === TRANSACTION_STATUS.COMPLETED ? 'success' : 'error'} />
+                      </Box>
+                      <ListItemText
+                        primary={
+                          <Typography variant="body1" fontWeight="medium">
+                            Withdrawal Request {request.method && `via ${request.method}`}
+                          </Typography>
+                        }
+                        secondary={
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatDate(request.createdAt)}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              {request.method === WITHDRAWAL_METHODS.CBE 
+                                ? `Account: ${request.bankDetails?.accountNumber}` 
+                                : `Phone: ${request.bankDetails?.phoneNumber}`}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                      <ListItemSecondaryAction>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                          <Typography
+                            variant="body1"
+                            color={request.status === TRANSACTION_STATUS.COMPLETED ? 'success.main' : 'error.main'}
+                            sx={{ fontWeight: 'bold' }}
+                          >
+                            {formatCurrency(request.amount)} ETB
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={request.status}
+                            color={getStatusColor(request.status)}
+                            sx={{ mt: 1 }}
+                          />
+                        </Box>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+              </List>
+            </>
+          )}
+        </Box>
       )}
     </Paper>
   );

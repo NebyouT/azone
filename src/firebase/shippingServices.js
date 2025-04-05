@@ -68,6 +68,11 @@ export const saveAddress = async (userId, addressData, setAsDefault = false) => 
     if (!userId) throw new Error('User ID is required');
     if (!addressData) throw new Error('Address data is required');
     
+    // Validate required Ethiopian address fields
+    if (!addressData.city || !addressData.subCity || !addressData.woreda || !addressData.kebele) {
+      throw new Error('City, Sub-City, Woreda, and Kebele are required for Ethiopian addresses');
+    }
+    
     // If this is set as default, update all other addresses to not be default
     if (setAsDefault) {
       await updateDefaultAddress(userId, null);
@@ -77,9 +82,14 @@ export const saveAddress = async (userId, addressData, setAsDefault = false) => 
     const addresses = await getSavedAddresses(userId);
     const isFirstAddress = addresses.length === 0;
     
+    // Format the address for display if not already formatted
+    const formattedAddress = addressData.formattedAddress || 
+      `${addressData.address}, Kebele ${addressData.kebele}, Woreda ${addressData.woreda}, ${addressData.subCity}, ${addressData.city}`;
+    
     const addressesRef = collection(db, 'users', userId, 'addresses');
     const docRef = await addDoc(addressesRef, {
       ...addressData,
+      formattedAddress,
       isDefault: setAsDefault || isFirstAddress,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
@@ -88,6 +98,7 @@ export const saveAddress = async (userId, addressData, setAsDefault = false) => 
     return {
       id: docRef.id,
       ...addressData,
+      formattedAddress,
       isDefault: setAsDefault || isFirstAddress
     };
   } catch (error) {
@@ -101,31 +112,34 @@ export const saveAddress = async (userId, addressData, setAsDefault = false) => 
  * @param {string} userId - The user ID
  * @param {string} addressId - The address ID
  * @param {object} addressData - The updated address data
- * @param {boolean} setAsDefault - Whether to set this address as default
  * @returns {Promise<object>} - The updated address
  */
-export const updateAddress = async (userId, addressId, addressData, setAsDefault = false) => {
+export const updateAddress = async (userId, addressId, addressData) => {
   try {
     if (!userId) throw new Error('User ID is required');
     if (!addressId) throw new Error('Address ID is required');
     if (!addressData) throw new Error('Address data is required');
     
-    // If this is set as default, update all other addresses to not be default
-    if (setAsDefault) {
-      await updateDefaultAddress(userId, addressId);
+    // Validate required Ethiopian address fields
+    if (!addressData.city || !addressData.subCity || !addressData.woreda || !addressData.kebele) {
+      throw new Error('City, Sub-City, Woreda, and Kebele are required for Ethiopian addresses');
     }
+    
+    // Format the address for display if not already formatted
+    const formattedAddress = addressData.formattedAddress || 
+      `${addressData.address}, Kebele ${addressData.kebele}, Woreda ${addressData.woreda}, ${addressData.subCity}, ${addressData.city}`;
     
     const addressRef = doc(db, 'users', userId, 'addresses', addressId);
     await updateDoc(addressRef, {
       ...addressData,
-      isDefault: setAsDefault ? true : addressData.isDefault,
+      formattedAddress,
       updatedAt: serverTimestamp()
     });
     
     return {
       id: addressId,
       ...addressData,
-      isDefault: setAsDefault ? true : addressData.isDefault
+      formattedAddress
     };
   } catch (error) {
     console.error('Error updating address:', error);
