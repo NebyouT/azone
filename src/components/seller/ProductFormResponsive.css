@@ -1,0 +1,117 @@
+/* ProductFormResponsive.css */
+/* Mobile-first responsive styles for the product form */
+
+/* Make form fields more visible on mobile */
+.responsive-form-field {
+  margin-bottom: 12px !important;
+}
+
+.responsive-form-field input,
+.responsive-form-field textarea,
+.responsive-form-field .MuiSelect-select,
+.responsive-form-field .MuiInputLabel-root {
+  font-size: 0.9rem !important;
+}
+
+.responsive-form-field .MuiFormHelperText-root {
+  font-size: 0.75rem !important;
+}
+
+/* Adjust tab sizes for mobile */
+.responsive-tabs .MuiTab-root {
+  min-height: 48px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+
+.responsive-tabs .MuiSvgIcon-root {
+  font-size: 1.1rem;
+  margin-right: 4px;
+}
+
+/* Section headings */
+.form-section-title {
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 8px !important;
+}
+
+.form-section-subtitle {
+  font-size: 0.8rem !important;
+  margin-bottom: 16px !important;
+}
+
+/* Button styles */
+.responsive-button {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 0.85rem !important;
+}
+
+/* Upload area */
+.responsive-upload-area {
+  padding: 16px !important;
+  min-height: 120px !important;
+}
+
+.responsive-upload-icon {
+  font-size: 32px !important;
+  margin-bottom: 8px !important;
+}
+
+/* Media queries for larger screens */
+@media (min-width: 600px) {
+  .responsive-tabs .MuiTab-root {
+    min-height: 56px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+  
+  .responsive-tabs .MuiSvgIcon-root {
+    font-size: 1.25rem;
+    margin-right: 6px;
+  }
+  
+  .form-section-title {
+    font-size: 1.25rem !important;
+  }
+  
+  .form-section-subtitle {
+    font-size: 0.875rem !important;
+  }
+  
+  .responsive-button {
+    width: auto;
+    margin-bottom: 0;
+  }
+  
+  .responsive-upload-area {
+    padding: 24px !important;
+    min-height: 150px !important;
+  }
+  
+  .responsive-upload-icon {
+    font-size: 40px !important;
+    margin-bottom: 12px !important;
+  }
+}
+
+@media (min-width: 960px) {
+  .responsive-form-field input,
+  .responsive-form-field textarea,
+  .responsive-form-field .MuiSelect-select,
+  .responsive-form-field .MuiInputLabel-root {
+    font-size: 1rem !important;
+  }
+  
+  .responsive-tabs .MuiTab-root {
+    min-height: 64px;
+    padding: 6px 16px;
+    font-size: 0.875rem;
+  }
+  
+  .responsive-tabs .MuiSvgIcon-root {
+    font-size: 1.5rem;
+    margin-right: 8px;
+  }
+}

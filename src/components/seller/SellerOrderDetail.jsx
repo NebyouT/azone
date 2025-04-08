@@ -190,6 +190,13 @@ const SellerOrderDetail = () => {
     fetchOrderDetails();
   }, [id, currentUser]);
   
+  // Retry fetching buyer info if not available initially
+  useEffect(() => {
+    if (order && (!buyerInfo || Object.keys(buyerInfo).length === 0) && !buyerInfoLoading) {
+      fetchBuyerInfo();
+    }
+  }, [order, buyerInfo, buyerInfoLoading]);
+  
   useEffect(() => {
     // Update selectedStatus when order changes and is not null
     if (order) {
@@ -256,12 +263,23 @@ const SellerOrderDetail = () => {
     // Return false if order is null or undefined
     if (!order) return false;
     
-    // Can't update if order is completed or delivered
+    // Can't update if order is completed, delivered or cancelled
     if (order.status === 'completed' || order.status === 'delivered' || order.status === 'cancelled') {
       return false;
     }
     return true;
   }, [order]);
+  
+  // Check if buyer info is available
+  const hasBuyerInfo = useMemo(() => {
+    return buyerInfo && Object.keys(buyerInfo).length > 0;
+  }, [buyerInfo]);
+  
+  // Check if shipping address is available
+  const hasShippingAddress = useMemo(() => {
+    return (buyerInfo && buyerInfo.shippingAddress && typeof buyerInfo.shippingAddress === 'object') ||
+           (order && order.shippingAddress && typeof order.shippingAddress === 'object');
+  }, [buyerInfo, order]);
   
   if (loading) {
     return (
@@ -391,17 +409,17 @@ const SellerOrderDetail = () => {
                 <Typography variant="body2">Loading buyer information...</Typography>
               </Box>
             ) : buyerInfo ? (
-              <>
-                <Typography variant="body2">
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   <strong>Name:</strong> {buyerInfo.name}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   <strong>Email:</strong> {buyerInfo.email}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   <strong>Phone:</strong> {buyerInfo.phone}
                 </Typography>
-              </>
+              </Box>
             ) : (
               <Typography variant="body2" color="text.secondary">
                 Buyer information not available
@@ -416,29 +434,29 @@ const SellerOrderDetail = () => {
             </Box>
             
             {buyerInfo && buyerInfo.shippingAddress && typeof buyerInfo.shippingAddress === 'object' ? (
-              <>
-                <Typography variant="body2">
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {buyerInfo.shippingAddress.street}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {buyerInfo.shippingAddress.city}, {buyerInfo.shippingAddress.state} {buyerInfo.shippingAddress.zip}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {buyerInfo.shippingAddress.country}
                 </Typography>
-              </>
+              </Box>
             ) : order.shippingAddress && typeof order.shippingAddress === 'object' ? (
-              <>
-                <Typography variant="body2">
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {order.shippingAddress.street}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {order.shippingAddress.country}
                 </Typography>
-              </>
+              </Box>
             ) : (
               <Typography variant="body2" color="text.secondary">
                 Shipping address not available
@@ -474,30 +492,30 @@ const SellerOrderDetail = () => {
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Typography variant="subtitle1">
+                  <Typography variant="subtitle1" sx={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                     {item.name}
                   </Typography>
                 }
                 secondary={
                   <>
-                    <Typography variant="body2" color="text.secondary" component="span">
+                    <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block' }}>
                       Quantity: {item.quantity}
                     </Typography>
                     <Box component="div" sx={{ mt: 0.5 }}>
-                      <Typography variant="body2" color="text.secondary" component="span">
+                      <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block' }}>
                         Price: {formatCurrency(item.price)}
                       </Typography>
                     </Box>
                     {item.variant && (
                       <Box component="div" sx={{ mt: 0.5 }}>
-                        <Typography variant="body2" color="text.secondary" component="span">
+                        <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', wordBreak: 'break-word' }}>
                           Variant: {item.variant}
                         </Typography>
                       </Box>
                     )}
                   </>
                 }
-                sx={{ mr: 2 }}
+                sx={{ mr: 2, width: { xs: '100%', sm: 'auto' } }}
               />
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
                 {formatCurrency(item.price * item.quantity)}

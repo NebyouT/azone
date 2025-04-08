@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -65,7 +65,12 @@ const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
   };
   
   return (
-    <Box sx={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
+    <Box sx={{ 
+      position: 'relative', 
+      overflow: 'hidden', 
+      borderRadius: 0,
+      width: '100%',
+    }}>
       {items.map((item, index) => (
         <Box
           key={item.id}
@@ -82,15 +87,17 @@ const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
         onClick={handlePrev}
         sx={{
           position: 'absolute',
-          left: { xs: 8, md: 16 },
+          left: { xs: 0, md: 0 },
           top: '50%',
           transform: 'translateY(-50%)',
           bgcolor: alpha(theme.palette.background.paper, 0.7),
           '&:hover': { bgcolor: alpha(theme.palette.background.paper, 0.9) },
           zIndex: 1,
-          width: { xs: 36, md: 48 },
-          height: { xs: 36, md: 48 },
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          width: { xs: 40, md: 60 },
+          height: { xs: 60, md: 100 },
+          borderRadius: 0,
+          borderTopRightRadius: '4px',
+          borderBottomRightRadius: '4px',
         }}
       >
         <ArrowBackIosIcon fontSize={isMobile ? 'small' : 'medium'} />
@@ -100,15 +107,17 @@ const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
         onClick={handleNext}
         sx={{
           position: 'absolute',
-          right: { xs: 8, md: 16 },
+          right: { xs: 0, md: 0 },
           top: '50%',
           transform: 'translateY(-50%)',
           bgcolor: alpha(theme.palette.background.paper, 0.7),
           '&:hover': { bgcolor: alpha(theme.palette.background.paper, 0.9) },
           zIndex: 1,
-          width: { xs: 36, md: 48 },
-          height: { xs: 36, md: 48 },
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          width: { xs: 40, md: 60 },
+          height: { xs: 60, md: 100 },
+          borderRadius: 0,
+          borderTopLeftRadius: '4px',
+          borderBottomLeftRadius: '4px',
         }}
       >
         <ArrowForwardIosIcon fontSize={isMobile ? 'small' : 'medium'} />
@@ -129,15 +138,15 @@ const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
             key={index}
             onClick={() => setActiveIndex(index)}
             sx={{
-              width: { xs: 8, md: 12 },
-              height: { xs: 8, md: 12 },
-              borderRadius: '50%',
+              width: { xs: 24, md: 32 },
+              height: { xs: 4, md: 5 },
+              borderRadius: 0,
               mx: 0.5,
               bgcolor: index === activeIndex ? 'primary.main' : alpha(theme.palette.background.paper, 0.7),
               cursor: 'pointer',
               transition: 'all 0.3s ease',
               '&:hover': {
-                transform: 'scale(1.2)',
+                transform: 'scaleY(1.5)',
               }
             }}
           />
@@ -262,11 +271,11 @@ const HomePage = () => {
       key={banner.id}
       sx={{
         position: 'relative',
-        height: { xs: '50vh', sm: '60vh', md: '70vh' },
-        maxHeight: 700,
+        height: { xs: isMobile ? 'calc(60vh + 80px)' : '60vh', sm: '70vh', md: '80vh' },
+        maxHeight: isMobile ? 'none' : 800,
         width: '100%',
         overflow: 'hidden',
-        borderRadius: 4,
+        borderRadius: 0,
       }}
     >
       <Box
@@ -288,7 +297,7 @@ const HomePage = () => {
           left: 0,
           width: '100%',
           height: '100%',
-          background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)',
+          background: 'linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 30%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0) 100%)',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -302,10 +311,12 @@ const HomePage = () => {
             color="white" 
             gutterBottom
             sx={{ 
-              fontWeight: 800,
-              fontSize: { xs: '2rem', sm: '2.5rem', md: '3.5rem' },
-              textShadow: '0 2px 10px rgba(0,0,0,0.3)',
-              mb: 2
+              fontWeight: 900,
+              fontSize: { xs: '2.2rem', sm: '3rem', md: '4rem' },
+              textShadow: '0 2px 10px rgba(0,0,0,0.4)',
+              mb: 2,
+              textTransform: 'uppercase',
+              letterSpacing: '1px'
             }}
           >
             {banner.title}
@@ -316,9 +327,11 @@ const HomePage = () => {
             color="white" 
             sx={{ 
               mb: 4,
-              maxWidth: '80%',
-              textShadow: '0 2px 5px rgba(0,0,0,0.3)',
-              fontSize: { xs: '1rem', sm: '1.2rem', md: '1.25rem' },
+              maxWidth: '90%',
+              textShadow: '0 2px 5px rgba(0,0,0,0.4)',
+              fontSize: { xs: '1.1rem', sm: '1.3rem', md: '1.5rem' },
+              fontWeight: 400,
+              letterSpacing: '0.5px',
             }}
           >
             {banner.description}
@@ -331,11 +344,16 @@ const HomePage = () => {
             onClick={() => navigate(banner.link)}
             sx={{
               background: theme.palette.gradients.primary,
-              px: { xs: 3, md: 4 },
-              py: { xs: 1, md: 1.5 },
-              boxShadow: '0 4px 14px rgba(0, 188, 212, 0.4)',
+              px: { xs: 4, md: 5 },
+              py: { xs: 1.5, md: 2 },
+              boxShadow: 'none',
+              borderRadius: 0,
+              fontWeight: 600,
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
               '&:hover': {
-                boxShadow: '0 6px 20px rgba(0, 188, 212, 0.6)',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                background: theme.palette.gradients.secondary,
               }
             }}
           >
@@ -348,28 +366,81 @@ const HomePage = () => {
   
   return (
     <TranslationWrapper>
-      <Box sx={{ width: '100%', overflowX: 'hidden' }}>
+      <Box sx={{ 
+        width: '100%', 
+        overflowX: 'hidden',
+        ...(isMobile && {
+          paddingTop: 0,
+          marginTop: 0
+        })
+      }}>
         {/* Hero Banner Carousel */}
-        <Box sx={{ mb: { xs: 4, md: 8 } }}>
+        <Box 
+          className="hero-container"
+          sx={{ 
+            mb: { xs: 4, md: 8 }, 
+            width: '100vw',
+            position: 'relative',
+            left: '50%',
+            right: '50%',
+            marginLeft: '-50vw',
+            marginRight: '-50vw',
+            marginTop: isMobile ? '-80px' : 0, // Remove space from top completely on mobile (matches navbar height)
+            paddingTop: 0,
+            '&::before': {
+              content: '""',
+              display: isMobile ? 'block' : 'none',
+              height: '80px', // Matches navbar height
+              width: '100%',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              zIndex: 10,
+              background: 'transparent'
+            }
+          }}>
           <SimpleCarousel items={bannerItems} />
         </Box>
         
         {/* Features Section */}
-        <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
-          <Grid container spacing={3}>
+        <Box 
+          sx={{ 
+            mb: { xs: 4, md: 8 },
+            px: { xs: 1, md: 3 },
+            width: '100%',
+            overflowX: 'hidden'
+          }}
+        >
+          <Box 
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              width: '100%',
+              gap: { xs: 0.5, md: 3 }
+            }}
+          >
             {features.map(feature => (
-              <Grid item xs={6} md={3} key={feature.id}>
+              <Box 
+                key={feature.id}
+                sx={{
+                  flex: 1,
+                  minWidth: 0, // Important for flex items to shrink below their content size
+                }}
+              >
                 <Paper
                   elevation={0}
                   sx={{
                     ...glassmorphism(0.7, 5, isDark),
-                    p: { xs: 2, md: 3 },
+                    p: { xs: 0.5, sm: 1, md: 3 },
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     textAlign: 'center',
-                    borderRadius: 4,
+                    borderRadius: { xs: 1, md: 4 },
                     ...cardHoverEffect,
                   }}
                 >
@@ -378,130 +449,140 @@ const HomePage = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: { xs: 50, md: 60 },
-                      height: { xs: 50, md: 60 },
+                      width: { xs: 24, sm: 30, md: 60 },
+                      height: { xs: 24, sm: 30, md: 60 },
                       borderRadius: '50%',
-                      mb: 2,
+                      mb: { xs: 0.5, md: 2 },
                       background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.8)}, ${alpha(theme.palette.secondary.main, 0.8)})`,
                       color: 'white',
                     }}
                   >
-                    {feature.icon}
+                    {React.cloneElement(feature.icon, { 
+                      fontSize: isMobile ? 'small' : 'large',
+                      style: { fontSize: isMobile ? '14px' : '24px' }
+                    })}
                   </Box>
                   <Typography 
                     variant="h6" 
                     component="h3" 
-                    gutterBottom
+                    noWrap
                     sx={{ 
                       fontWeight: 600,
-                      fontSize: { xs: '1rem', md: '1.25rem' }
+                      fontSize: { xs: '0.6rem', sm: '0.75rem', md: '1.25rem' },
+                      mb: { xs: 0, md: 1 },
+                      width: '100%',
+                      textOverflow: 'ellipsis',
                     }}
                   >
                     {feature.title}
                   </Typography>
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary"
-                    sx={{ 
-                      fontSize: { xs: '0.8rem', md: '0.875rem' }
-                    }}
-                  >
-                    {feature.description}
-                  </Typography>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-        </Container>
-        
-        {/* Categories Section */}
-        <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
-          <Box sx={{ mb: 4, textAlign: 'center' }}>
-            <Typography 
-              variant="h4" 
-              component="h2" 
-              gutterBottom
-              sx={{ 
-                fontWeight: 700,
-                background: theme.palette.gradients.primary,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                display: 'inline-block',
-                mb: 1
-              }}
-            >
-              Shop by Category
-            </Typography>
-            <Typography 
-              variant="body1" 
-              color="text.secondary"
-              sx={{ 
-                maxWidth: 700,
-                mx: 'auto',
-                mb: 3,
-                px: 2
-              }}
-            >
-              Explore our wide range of products across different categories
-            </Typography>
-          </Box>
-          
-          <Grid container spacing={3}>
-            {categories.map(category => (
-              <Grid item xs={6} md={3} key={category.id}>
-                <Card 
-                  sx={{ 
-                    height: '100%',
-                    borderRadius: 4,
-                    overflow: 'hidden',
-                    ...cardHoverEffect,
-                    position: 'relative',
-                  }}
-                  onClick={() => navigate(`/products?category=${category.name.toLowerCase()}`)}
-                >
-                  <CardMedia
-                    component="img"
-                    image={category.image}
-                    alt={category.name}
-                    sx={{ 
-                      height: { xs: 140, sm: 180, md: 220 },
-                      transition: 'transform 0.5s ease',
-                      '&:hover': {
-                        transform: 'scale(1.05)',
-                      },
-                    }}
-                  />
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, rgba(0,0,0,0) 100%)',
-                      p: 2,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
+                  {!isMobile && (
                     <Typography 
-                      variant="h6" 
-                      component="h3" 
-                      color="white"
+                      variant="body2" 
+                      color="text.secondary"
                       sx={{ 
-                        fontWeight: 600,
-                        textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                        fontSize: { xs: '1rem', md: '1.25rem' }
+                        fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' },
                       }}
                     >
-                      {category.name}
+                      {feature.description}
                     </Typography>
-                  </Box>
-                </Card>
-              </Grid>
+                  )}
+                </Paper>
+              </Box>
             ))}
-          </Grid>
-        </Container>
+          </Box>
+        </Box>
+        
+        {/* Categories Section - Hidden on Mobile */}
+        {!isMobile && (
+          <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
+            <Box sx={{ mb: 4, textAlign: 'center' }}>
+              <Typography 
+                variant="h4" 
+                component="h2" 
+                gutterBottom
+                sx={{ 
+                  fontWeight: 700,
+                  background: theme.palette.gradients.primary,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  display: 'inline-block',
+                  mb: 1
+                }}
+              >
+                Shop by Category
+              </Typography>
+              <Typography 
+                variant="body1" 
+                color="text.secondary"
+                sx={{ 
+                  maxWidth: 700,
+                  mx: 'auto',
+                  mb: 3,
+                  px: 2
+                }}
+              >
+                Explore our wide range of products across different categories
+              </Typography>
+            </Box>
+            
+            <Grid container spacing={3}>
+              {categories.map(category => (
+                <Grid item xs={6} md={3} key={category.id}>
+                  <Card 
+                    sx={{ 
+                      height: '100%',
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                      ...cardHoverEffect,
+                      position: 'relative',
+                    }}
+                    onClick={() => navigate(`/products?category=${category.name.toLowerCase()}`)}
+                  >
+                    <CardMedia
+                      component="img"
+                      image={category.image}
+                      alt={category.name}
+                      sx={{ 
+                        height: { xs: 140, sm: 180, md: 220 },
+                        transition: 'transform 0.5s ease',
+                        '&:hover': {
+                          transform: 'scale(1.05)',
+                        },
+                      }}
+                    />
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, rgba(0,0,0,0) 100%)',
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography 
+                        variant="h6" 
+                        component="h3" 
+                        color="white"
+                        sx={{ 
+                          fontWeight: 600,
+                          textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                          fontSize: { xs: '1rem', md: '1.25rem' }
+                        }}
+                      >
+                        {category.name}
+                      </Typography>
+                    </Box>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Container>
+        )}
         
         {/* Featured Products Section */}
         <Container maxWidth="xl" sx={{ mb: { xs: 4, md: 8 } }}>
@@ -549,7 +630,29 @@ const HomePage = () => {
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
               <CircularProgress />
             </Box>
+          ) : isMobile ? (
+            // Mobile-specific grid with forced 2 columns - matching product page
+            <Box sx={{ 
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: 1,
+              width: '100%',
+              px: 1
+            }}>
+              {featuredProducts.map((product) => (
+                <Box 
+                  key={product.id}
+                  sx={{
+                    width: '100%',
+                    height: '100%'
+                  }}
+                >
+                  <ProductCard product={product} />
+                </Box>
+              ))}
+            </Box>
           ) : (
+            // Desktop grid using MUI Grid
             <Grid container spacing={3}>
               {featuredProducts.map(product => (
                 <Grid item xs={6} sm={6} md={3} key={product.id}>
@@ -606,9 +709,31 @@ const HomePage = () => {
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
               <CircularProgress />
             </Box>
+          ) : isMobile ? (
+            // Mobile-specific grid with forced 2 columns - matching product page
+            <Box sx={{ 
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: 1,
+              width: '100%',
+              px: 1
+            }}>
+              {newArrivals.slice(0, 4).map((product) => (
+                <Box 
+                  key={product.id}
+                  sx={{
+                    width: '100%',
+                    height: '100%'
+                  }}
+                >
+                  <ProductCard product={product} />
+                </Box>
+              ))}
+            </Box>
           ) : (
+            // Desktop grid using MUI Grid
             <Grid container spacing={3}>
-              {newArrivals.slice(0, isMobile ? 4 : 8).map(product => (
+              {newArrivals.slice(0, 8).map(product => (
                 <Grid item xs={6} sm={6} md={3} key={product.id}>
                   <ProductCard product={product} />
                 </Grid>

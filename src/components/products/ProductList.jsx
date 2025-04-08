@@ -11,7 +11,9 @@ import {
   Select,
   MenuItem,
   TextField,
-  InputAdornment
+  InputAdornment,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { Search as SearchIcon } from '@mui/icons-material';
 import ProductCard from './ProductCard';
@@ -27,6 +29,10 @@ const ProductList = ({ category = null }) => {
   const [sortBy, setSortBy] = useState('createdAt');
   const [page, setPage] = useState(1);
   const [itemsPerPage] = useState(12);
+  
+  // Theme and responsive breakpoints
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -92,7 +98,11 @@ const ProductList = ({ category = null }) => {
   }
 
   return (
-    <Container sx={{ pb: { xs: 8, sm: 4 } }}>
+    <Container disableGutters={isMobile} sx={{ 
+      pb: { xs: 8, sm: 4 }, 
+      px: { xs: isMobile ? 0 : 2, sm: 3 },
+      maxWidth: isMobile ? '100%' : 'xl'
+    }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
           {category ? `${category} Products` : 'All Products'}
@@ -138,21 +148,45 @@ const ProductList = ({ category = null }) => {
           </Typography>
         ) : (
           <>
-            <Grid container spacing={2}>
-              {displayedProducts.map((product) => (
-                <Grid 
-                  item 
-                  key={product.id} 
-                  xs={6} 
-                  sm={6} 
-                  md={4} 
-                  lg={3}
-                  sx={{ display: 'flex' }}
-                >
-                  <ProductCard product={product} />
-                </Grid>
-              ))}
-            </Grid>
+            {isMobile ? (
+              // Mobile-specific grid with forced 2 columns
+              <Box sx={{ 
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 1,
+                width: '100%',
+                px: 1
+              }}>
+                {displayedProducts.map((product) => (
+                  <Box 
+                    key={product.id}
+                    sx={{
+                      width: '100%',
+                      height: '100%'
+                    }}
+                  >
+                    <ProductCard product={product} />
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              // Desktop grid using MUI Grid
+              <Grid container spacing={2}>
+                {displayedProducts.map((product) => (
+                  <Grid 
+                    item 
+                    key={product.id} 
+                    xs={6} 
+                    sm={6} 
+                    md={4} 
+                    lg={3}
+                    sx={{ display: 'flex' }}
+                  >
+                    <ProductCard product={product} />
+                  </Grid>
+                ))}
+              </Grid>
+            )}
             
             {totalPages > 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: { xs: 10, sm: 4 } }}>

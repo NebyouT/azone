@@ -41,8 +41,8 @@ export const addReview = async (userId, productId, orderId, rating, comment, ima
       throw new Error('You can only review products from your own orders');
     }
     
-    if (orderData.status !== 'delivered') {
-      throw new Error('You can only review products that have been delivered');
+    if (orderData.status !== 'delivered' && orderData.status !== 'completed') {
+      throw new Error('You can only review products that have been delivered or completed');
     }
     
     // Check if user has already reviewed this product in this order

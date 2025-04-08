@@ -738,7 +738,14 @@ const ProductForm = () => {
           >
             Back
           </Button>
-          <Typography variant="h4" component="h1">
+          <Typography 
+            variant="h4" 
+            component="h1"
+            sx={{ 
+              fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' },
+              fontWeight: 600
+            }}
+          >
             {isEditMode ? 'Edit Product' : 'Add New Product'}
           </Typography>
         </Box>
@@ -755,20 +762,34 @@ const ProductForm = () => {
             onChange={handleTabChange} 
             variant="scrollable"
             scrollButtons="auto"
-            sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+            allowScrollButtonsMobile
+            sx={{ 
+              mb: 3, 
+              borderBottom: 1, 
+              borderColor: 'divider',
+              '& .MuiTab-root': {
+                fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' },
+                minHeight: { xs: '48px', md: '64px' },
+                padding: { xs: '6px 10px', sm: '6px 12px', md: '6px 16px' },
+              },
+              '& .MuiSvgIcon-root': {
+                fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' },
+                marginRight: { xs: '4px', sm: '6px', md: '8px' },
+              }
+            }}
           >
             <Tab 
-              label="Basic Information" 
+              label="Basic Info" 
               icon={<CategoryIcon />} 
               iconPosition="start"
             />
             <Tab 
-              label="Images & Variants" 
+              label="Images" 
               icon={<ImageIcon />} 
               iconPosition="start"
             />
             <Tab 
-              label="Pricing & Discount" 
+              label="Pricing" 
               icon={<AttachMoneyIcon />} 
               iconPosition="start"
             />
@@ -783,7 +804,7 @@ const ProductForm = () => {
               iconPosition="start"
             />
             <Tab 
-              label="Return & Refund" 
+              label="Returns" 
               icon={<AssignmentReturnIcon />} 
               iconPosition="start"
             />
@@ -792,14 +813,28 @@ const ProductForm = () => {
           {/* Basic Information Tab */}
           {activeTab === 0 && (
             <Box>
-              <Typography variant="h6" gutterBottom>
+              <Typography 
+                variant="h6" 
+                gutterBottom
+                sx={{ 
+                  fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                  fontWeight: 600
+                }}
+              >
                 Basic Product Information
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              <Typography 
+                variant="body2" 
+                color="text.secondary" 
+                sx={{ 
+                  mb: 2,
+                  fontSize: { xs: '0.8rem', sm: '0.875rem' }
+                }}
+              >
                 Provide the core details to make your product searchable and attractive to customers.
               </Typography>
               
-              <Grid container spacing={3}>
+              <Grid container spacing={2}>
                 <Grid item xs={12}>
                   <TextField
                     required
@@ -812,6 +847,17 @@ const ProductForm = () => {
                     onChange={handleChange}
                     error={!!formErrors.name}
                     helperText={formErrors.name}
+                    InputProps={{
+                      style: { fontSize: '0.9rem' }
+                    }}
+                    InputLabelProps={{
+                      style: { fontSize: '0.9rem' }
+                    }}
+                    FormHelperTextProps={{
+                      style: { fontSize: '0.75rem' }
+                    }}
+                    size="small"
+                    sx={{ mb: 1 }}
                   />
                 </Grid>
                 
@@ -827,6 +873,17 @@ const ProductForm = () => {
                     onChange={handleChange}
                     error={!!formErrors.shortDescription}
                     helperText={formErrors.shortDescription}
+                    InputProps={{
+                      style: { fontSize: '0.9rem' }
+                    }}
+                    InputLabelProps={{
+                      style: { fontSize: '0.9rem' }
+                    }}
+                    FormHelperTextProps={{
+                      style: { fontSize: '0.75rem' }
+                    }}
+                    size="small"
+                    sx={{ mb: 1 }}
                   />
                 </Grid>
                 
@@ -838,12 +895,22 @@ const ProductForm = () => {
                     label="Full Product Description"
                     name="description"
                     multiline
-                    rows={6}
+                    rows={4}
                     placeholder="Detailed description of your product including key features, materials, use cases, etc."
                     value={formData.description}
                     onChange={handleChange}
                     error={!!formErrors.description}
                     helperText={formErrors.description}
+                    InputProps={{
+                      style: { fontSize: '0.9rem' }
+                    }}
+                    InputLabelProps={{
+                      style: { fontSize: '0.9rem' }
+                    }}
+                    FormHelperTextProps={{
+                      style: { fontSize: '0.75rem' }
+                    }}
+                    sx={{ mb: 1 }}
                   />
                 </Grid>
                 

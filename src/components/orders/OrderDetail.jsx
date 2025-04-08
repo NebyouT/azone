@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -25,6 +25,7 @@ import {
   Card,
   CardContent,
   useTheme,
+  useMediaQuery,
   alpha,
   Stepper,
   Step,
@@ -51,7 +52,11 @@ import {
   Refresh as RefreshIcon,
   Store as StoreIcon,
   RateReview as RateReviewIcon,
-  Star as StarIcon
+  Star as StarIcon,
+  PhotoCamera as PhotoCameraIcon,
+  AddPhotoAlternate as AddPhotoIcon,
+  Delete as DeleteIcon,
+  CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { getOrderById, cancelOrder, confirmOrderDelivery, denyOrderDelivery } from '../../firebase/services';
@@ -129,6 +134,7 @@ const OrderDetail = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -148,6 +154,9 @@ const OrderDetail = () => {
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState('');
+  const [reviewPhotos, setReviewPhotos] = useState([]);
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState([]);
+  const fileInputRef = useRef(null);
   
   // Define order status steps for the stepper
   const orderSteps = ['pending', 'confirmed', 'shipped', 'delivered', 'completed'];
@@ -198,17 +207,54 @@ const OrderDetail = () => {
     }
   }, [order]);
   
+  // Force refresh of reviewable products when status changes to completed
+  useEffect(() => {
+    const isCompleted = order?.status === 'completed';
+    const isDelivered = order?.status === 'delivered';
+    
+    if ((isCompleted || isDelivered) && reviewableProducts.length === 0) {
+      // Add a small delay to ensure Firebase has updated
+      const timer = setTimeout(() => {
+        checkReviewableProducts();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [order?.status, reviewableProducts.length]);
+  
   // Function to check which products can be reviewed
   const checkReviewableProducts = async () => {
     if (!order || !currentUser) return;
     
     try {
+      console.log('Checking reviewable products for order:', id);
       const eligibleOrders = await getEligibleOrdersForReview(currentUser.uid);
+      console.log('Eligible orders for review:', eligibleOrders);
+      
       const currentOrderEligible = eligibleOrders.find(o => o.id === id);
       
       if (currentOrderEligible) {
+        console.log('Current order is eligible for review with products:', currentOrderEligible.products);
         setReviewableProducts(currentOrderEligible.products);
+      } else if (order.status === 'completed') {
+        // If order is completed but not in eligible orders, use items from current order
+        console.log('Order is completed but not in eligible list, using order items');
+        const reviewableItems = order.items.map(item => {
+          // Ensure we have a valid product ID
+          if (!item.productId) {
+            console.warn('Missing product ID for item:', item.name);
+          }
+          return {
+            id: item.productId || `product-${item.name.replace(/\s+/g, '-').toLowerCase()}`,
+            productId: item.productId || `product-${item.name.replace(/\s+/g, '-').toLowerCase()}`,
+            name: item.name,
+            imageUrl: item.image || item.imageUrl,
+            quantity: item.quantity
+          };
+        });
+        setReviewableProducts(reviewableItems);
       } else {
+        console.log('No reviewable products found for this order');
         setReviewableProducts([]);
       }
     } catch (err) {
@@ -218,32 +264,103 @@ const OrderDetail = () => {
   
   // Handle opening review dialog
   const handleOpenReviewDialog = (product) => {
+    // Only allow reviews for completed orders
+    if (order.status !== 'completed') {
+      setError('You can only review products from completed orders');
+      return;
+    }
+    
     setSelectedProduct(product);
     setReviewRating(5);
     setReviewComment('');
     setReviewError('');
+    setReviewPhotos([]);
+    setPhotoPreviewUrls([]);
     setReviewDialogOpen(true);
   };
   
+  // Handle photo selection
+  const handlePhotoSelect = (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length > 0) {
+      // Limit to 5 photos max
+      const newPhotos = [...reviewPhotos];
+      const newPreviewUrls = [...photoPreviewUrls];
+      
+      files.forEach(file => {
+        if (newPhotos.length < 5 && file.type.startsWith('image/')) {
+          newPhotos.push(file);
+          newPreviewUrls.push(URL.createObjectURL(file));
+        }
+      });
+      
+      setReviewPhotos(newPhotos);
+      setPhotoPreviewUrls(newPreviewUrls);
+    }
+  };
+  
+  // Handle removing a photo
+  const handleRemovePhoto = (index) => {
+    const newPhotos = [...reviewPhotos];
+    const newPreviewUrls = [...photoPreviewUrls];
+    
+    // Revoke the object URL to avoid memory leaks
+    URL.revokeObjectURL(newPreviewUrls[index]);
+    
+    newPhotos.splice(index, 1);
+    newPreviewUrls.splice(index, 1);
+    
+    setReviewPhotos(newPhotos);
+    setPhotoPreviewUrls(newPreviewUrls);
+  };
+  
+  // Cleanup preview URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
+
   // Handle submitting a review
   const handleSubmitReview = async () => {
     if (!selectedProduct || !currentUser) return;
+    
+    // Validate that the order is completed
+    if (order.status !== 'completed') {
+      setReviewError('You can only review products from completed orders');
+      return;
+    }
+    
+    // Ensure we have a valid product ID
+    const productId = selectedProduct.id || selectedProduct.productId;
+    if (!productId) {
+      setReviewError('Unable to identify the product. Please try again later.');
+      return;
+    }
     
     try {
       setReviewSubmitting(true);
       setReviewError('');
       
+      console.log('Submitting review for product:', productId);
+      
       await addReview(
         currentUser.uid,
-        selectedProduct.id,
+        productId,
         id,
         reviewRating,
-        reviewComment
+        reviewComment,
+        reviewPhotos // Pass the photo files to be uploaded
       );
       
       setSuccessMessage(`Thank you for reviewing ${selectedProduct.name}!`);
       setSnackbarOpen(true);
       setReviewDialogOpen(false);
+      
+      // Clear photos and preview URLs
+      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      setReviewPhotos([]);
+      setPhotoPreviewUrls([]);
       
       // Refresh reviewable products
       await checkReviewableProducts();
@@ -382,12 +499,20 @@ const OrderDetail = () => {
         </Typography>
       </Box>
       
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        gap: 2,
+        mb: 3 
+      }}>
         <Button
           component={Link}
           to="/orders"
           startIcon={<BackIcon />}
           variant="outlined"
+          fullWidth={isMobile}
+          sx={{ borderRadius: 0 }}
         >
           Back to Orders
         </Button>
@@ -396,6 +521,8 @@ const OrderDetail = () => {
           startIcon={<RefreshIcon />}
           variant="outlined"
           onClick={refreshOrder}
+          fullWidth={isMobile}
+          sx={{ borderRadius: 0 }}
         >
           Refresh
         </Button>
@@ -414,15 +541,22 @@ const OrderDetail = () => {
       )}
       
       <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'flex-start', sm: 'center' }, 
+          gap: { xs: 1, sm: 0 },
+          mb: 2 
+        }}>
+          <Typography variant="h6" sx={{ wordBreak: 'break-word' }}>
             Order #{order.id.substring(0, 8)}
           </Typography>
           <Chip 
             label={order.status.toUpperCase()} 
             color={getStatusColor(order.status)}
             icon={getStatusIcon(order.status)}
-            sx={{ fontWeight: 'medium' }}
+            sx={{ fontWeight: 'medium', mt: { xs: 1, sm: 0 } }}
           />
         </Box>
         
@@ -449,12 +583,18 @@ const OrderDetail = () => {
             <Typography variant="body2" gutterBottom>
               Please confirm if you have received your order. Once confirmed, payment will be released to the seller and you'll be able to leave reviews.
             </Typography>
-            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+            <Box sx={{ 
+              mt: 2, 
+              display: 'flex', 
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 2 
+            }}>
               <Button
                 variant="contained"
                 color="success"
                 startIcon={<ThumbUpIcon />}
                 onClick={() => setConfirmDialogOpen(true)}
+                fullWidth={isMobile}
                 sx={{ borderRadius: 0 }}
               >
                 Confirm Delivery
@@ -464,6 +604,7 @@ const OrderDetail = () => {
                 color="error"
                 startIcon={<ThumbDownIcon />}
                 onClick={() => setDenyDialogOpen(true)}
+                fullWidth={isMobile}
                 sx={{ borderRadius: 0 }}
               >
                 Not Delivered
@@ -491,15 +632,17 @@ const OrderDetail = () => {
               <Typography variant="subtitle1">Your Information</Typography>
             </Box>
             
-            <Typography variant="body2">
-              <strong>Name:</strong> {order.shippingAddress?.name}
-            </Typography>
-            <Typography variant="body2">
-              <strong>Email:</strong> {order.shippingAddress?.email}
-            </Typography>
-            <Typography variant="body2">
-              <strong>Phone:</strong> {order.shippingAddress?.phone}
-            </Typography>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
+                <strong>Name:</strong> {order.shippingAddress?.name}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
+                <strong>Email:</strong> {order.shippingAddress?.email}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
+                <strong>Phone:</strong> {order.shippingAddress?.phone}
+              </Typography>
+            </Box>
           </Grid>
           
           <Grid item xs={12} md={6}>
@@ -509,17 +652,17 @@ const OrderDetail = () => {
             </Box>
             
             {order.shippingAddress && (
-              <>
-                <Typography variant="body2">
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {order.shippingAddress.street}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
                   {order.shippingAddress.country}
                 </Typography>
-              </>
+              </Box>
             )}
           </Grid>
         </Grid>
@@ -533,12 +676,14 @@ const OrderDetail = () => {
         <List sx={{ width: '100%' }}>
           {order.items.map((item, index) => (
             <ListItem 
-              key={item.productId || index} 
+              key={item.productId || `item-${index}-${item.name}`} 
               alignItems="flex-start"
               sx={{ 
                 borderBottom: '1px solid',
                 borderColor: 'divider',
-                py: 2
+                py: 2,
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: { xs: 2, sm: 0 }
               }}
             >
               <ListItemAvatar>
@@ -549,53 +694,70 @@ const OrderDetail = () => {
                   sx={{ width: 60, height: 60, mr: 2 }}
                 />
               </ListItemAvatar>
-              <ListItemText
-                primary={
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="subtitle1">
-                      {item.name}
-                    </Typography>
-                    {item.status === 'cancelled' && (
-                      <Chip 
-                        size="small"
-                        label="CANCELLED" 
-                        color="error"
-                        icon={<CancelIcon fontSize="small" />}
-                        sx={{ fontWeight: 'medium' }}
-                      />
-                    )}
-                  </Box>
-                }
-                secondary={
-                  <Box component="span" sx={{ display: 'block' }}>
-                    <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
-                      Quantity: {item.quantity}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
-                      Price: {formatCurrency(item.price)}
-                    </Typography>
-                    {item.variant && (
-                      <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block', mt: 0.5 }}>
-                        Variant: {item.variant}
+              <Box sx={{ display: 'flex', width: '100%' }}>
+                <ListItemText
+                  primary={
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      justifyContent: 'space-between', 
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      gap: { xs: 1, sm: 0 }
+                    }}>
+                      <Typography variant="subtitle1" sx={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                        {item.name}
                       </Typography>
-                    )}
-                    {item.status === 'cancelled' && item.cancellationReason && (
-                      <Typography variant="body2" component="span" sx={{ display: 'block', mt: 0.5, color: 'error.main', fontWeight: 'medium' }}>
-                        Cancelled by seller. Reason: {item.cancellationReason}
+                      {item.status === 'cancelled' && (
+                        <Chip 
+                          size="small"
+                          label="CANCELLED" 
+                          color="error"
+                          icon={<CancelIcon fontSize="small" />}
+                          sx={{ fontWeight: 'medium', alignSelf: { xs: 'flex-start', sm: 'center' } }}
+                        />
+                      )}
+                    </Box>
+                  }
+                  secondary={
+                    <Box component="div" sx={{ display: 'block', mt: 1 }}>
+                      <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block' }}>
+                        Quantity: {item.quantity}
                       </Typography>
-                    )}
-                    {item.sellerId && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                        <StoreIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} />
-                        <Typography variant="body2" color="text.secondary" component="span">
-                          Seller ID: {item.sellerId.substring(0, 8)}
+                      <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', mt: 0.5 }}>
+                        Price: {formatCurrency(item.price)}
+                      </Typography>
+                      {item.variant && (
+                        <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', mt: 0.5, wordBreak: 'break-word' }}>
+                          Variant: {item.variant}
                         </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                }
-              />
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                      )}
+                      {item.status === 'cancelled' && item.cancellationReason && (
+                        <Typography variant="body2" component="div" sx={{ display: 'block', mt: 0.5, color: 'error.main', fontWeight: 'medium', wordBreak: 'break-word' }}>
+                          Cancelled by seller. Reason: {item.cancellationReason}
+                        </Typography>
+                      )}
+                      {item.sellerId && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                          <StoreIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary', flexShrink: 0 }} />
+                          <Typography variant="body2" color="text.secondary" component="div" sx={{ wordBreak: 'break-word' }}>
+                            Seller ID: {item.sellerId.substring(0, 8)}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  }
+                  sx={{ width: '100%' }}
+                />
+              </Box>
+              <Typography 
+                variant="subtitle1" 
+                sx={{ 
+                  fontWeight: 'bold',
+                  alignSelf: { xs: 'flex-start', sm: 'center' },
+                  width: { xs: '100%', sm: 'auto' },
+                  mt: { xs: 1, sm: 0 }
+                }}
+              >
                 {formatCurrency(item.price * item.quantity)}
               </Typography>
             </ListItem>
@@ -604,13 +766,13 @@ const OrderDetail = () => {
         
         <Box sx={{ mt: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
           <Grid container spacing={1}>
-            <Grid item xs={8}>
+            <Grid item xs={6} sm={8}>
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
                 Order Total:
               </Typography>
             </Grid>
-            <Grid item xs={4} sx={{ textAlign: 'right' }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+            <Grid item xs={6} sm={4} sx={{ textAlign: 'right' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', wordBreak: 'break-word' }}>
                 {formatCurrency(order.total || order.totalAmount || 0)}
               </Typography>
             </Grid>
@@ -618,7 +780,13 @@ const OrderDetail = () => {
         </Box>
         
         {/* Action Buttons */}
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
+        <Box sx={{ 
+          mt: 3, 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'center', 
+          gap: 2 
+        }}>
           {order.status === 'delivered' && !order.buyerConfirmed && (
             <>
               <Button
@@ -626,6 +794,7 @@ const OrderDetail = () => {
                 color="success"
                 startIcon={<ThumbUpIcon />}
                 onClick={() => setConfirmDialogOpen(true)}
+                fullWidth={isMobile}
                 sx={{ borderRadius: 0 }}
               >
                 Confirm Delivery
@@ -635,6 +804,7 @@ const OrderDetail = () => {
                 color="error"
                 startIcon={<ThumbDownIcon />}
                 onClick={() => setDenyDialogOpen(true)}
+                fullWidth={isMobile}
                 sx={{ borderRadius: 0 }}
               >
                 Not Delivered
@@ -648,6 +818,7 @@ const OrderDetail = () => {
               color="error"
               startIcon={<CancelIcon />}
               onClick={() => setCancelDialogOpen(true)}
+              fullWidth={isMobile}
               sx={{ borderRadius: 0 }}
             >
               Cancel Order
@@ -666,7 +837,7 @@ const OrderDetail = () => {
           <List>
             {[...order.statusHistory].reverse().map((update, index) => (
               <ListItem 
-                key={index}
+                key={`status-${update.status}-${(update.timestamp && update.timestamp.seconds) ? update.timestamp.seconds : index}`}
                 sx={{ 
                   borderBottom: index < order.statusHistory.length - 1 ? '1px solid' : 'none',
                   borderColor: 'divider',
@@ -732,7 +903,7 @@ const OrderDetail = () => {
             <List>
               {transactions.map((transaction, index) => (
                 <ListItem 
-                  key={index}
+                  key={`transaction-${transaction.id || (transaction.timestamp && transaction.timestamp.seconds) ? (transaction.timestamp && transaction.timestamp.seconds) || transaction.id : index}`}
                   sx={{ 
                     borderBottom: index < transactions.length - 1 ? '1px solid' : 'none',
                     borderColor: 'divider',
@@ -759,7 +930,7 @@ const OrderDetail = () => {
       </Paper>
       
       {/* Review Section for Completed Orders */}
-      {order && (order.status === 'completed' || (order.canReview && reviewableProducts.length > 0)) && (
+      {order && order.status === 'completed' && (
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <RateReviewIcon sx={{ mr: 1, color: 'primary.main' }} />
@@ -772,40 +943,68 @@ const OrderDetail = () => {
             Share your experience with these products to help other shoppers make informed decisions.
           </Typography>
           
-          <List>
-            {reviewableProducts.map((product) => (
-              <ListItem 
-                key={product.id}
-                sx={{ 
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  py: 2
-                }}
-              >
-                <ListItemAvatar>
-                  <Avatar 
-                    alt={product.name} 
-                    src={product.imageUrl} 
-                    variant="rounded"
-                    sx={{ width: 60, height: 60, mr: 2 }}
-                  />
-                </ListItemAvatar>
-                <ListItemText
-                  primary={product.name}
-                  secondary={`Quantity: ${product.quantity}`}
-                />
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<StarIcon />}
-                  onClick={() => handleOpenReviewDialog(product)}
-                  sx={{ borderRadius: 0 }}
+          {reviewableProducts.length > 0 ? (
+            <List>
+              {reviewableProducts.map((product, index) => {
+                // Ensure product has an ID
+                const productWithId = {
+                  ...product,
+                  id: product.id || product.productId || `product-${product.name.replace(/\s+/g, '-').toLowerCase()}-${index}`
+                };
+                return (
+                <ListItem 
+                  key={productWithId.id || `reviewable-${index}-${product.name}`}
+                  sx={{ 
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    py: 2,
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    alignItems: { xs: 'flex-start', sm: 'center' }
+                  }}
                 >
-                  Write Review
-                </Button>
-              </ListItem>
-            ))}
-          </List>
+                  <Box sx={{ display: 'flex', width: '100%', mb: { xs: 2, sm: 0 } }}>
+                    <ListItemAvatar>
+                      <Avatar 
+                        alt={product.name} 
+                        src={product.imageUrl} 
+                        variant="rounded"
+                        sx={{ width: 60, height: 60, mr: 2 }}
+                      />
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Typography variant="subtitle1" sx={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                          {product.name}
+                        </Typography>
+                      }
+                      secondary={
+                        <Typography variant="body2" color="text.secondary" sx={{ display: 'block' }}>
+                          Quantity: {product.quantity}
+                        </Typography>
+                      }
+                    />
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<StarIcon />}
+                    onClick={() => handleOpenReviewDialog(productWithId)}
+                    sx={{ 
+                      borderRadius: 0,
+                      alignSelf: { xs: 'flex-start', sm: 'center' },
+                      width: { xs: '100%', sm: 'auto' }
+                    }}
+                  >
+                    Write Review
+                  </Button>
+                </ListItem>
+              )})}
+            </List>
+          ) : (
+            <Alert severity="info" sx={{ borderRadius: 0 }}>
+              No products available for review at this time. Only completed orders can be reviewed.
+            </Alert>
+          )}
         </Paper>
       )}
       
@@ -852,6 +1051,82 @@ const OrderDetail = () => {
               placeholder="Share your experience with this product..."
               variant="outlined"
             />
+            
+            {/* Photo Upload Section */}
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Add Photos (Optional)
+              </Typography>
+              
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePhotoSelect}
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+              />
+              
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {photoPreviewUrls.map((url, index) => (
+                  <Box 
+                    key={`photo-${index}`} 
+                    sx={{ 
+                      position: 'relative',
+                      width: 100, 
+                      height: 100,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <img 
+                      src={url} 
+                      alt={`Review photo ${index + 1}`} 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                    />
+                    <IconButton
+                      size="small"
+                      sx={{ 
+                        position: 'absolute', 
+                        top: 0, 
+                        right: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        color: 'white',
+                        '&:hover': {
+                          backgroundColor: 'rgba(0,0,0,0.7)'
+                        },
+                        p: 0.5
+                      }}
+                      onClick={() => handleRemovePhoto(index)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+                
+                {photoPreviewUrls.length < 5 && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddPhotoIcon />}
+                    onClick={() => fileInputRef.current.click()}
+                    sx={{ 
+                      height: 100, 
+                      width: 100,
+                      borderStyle: 'dashed',
+                      borderRadius: 1
+                    }}
+                  >
+                    Add
+                  </Button>
+                )}
+              </Box>
+              
+              <Typography variant="caption" color="text.secondary">
+                You can upload up to 5 photos. Each photo must be less than 5MB.
+              </Typography>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -866,6 +1141,7 @@ const OrderDetail = () => {
             variant="contained" 
             color="primary"
             disabled={reviewSubmitting || !reviewRating}
+            startIcon={reviewSubmitting ? null : <CloudUploadIcon />}
             sx={{ borderRadius: 0 }}
           >
             {reviewSubmitting ? 'Submitting...' : 'Submit Review'}

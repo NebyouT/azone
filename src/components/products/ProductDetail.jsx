@@ -322,7 +322,13 @@ const ProductDetail = () => {
       <Grid container spacing={{ xs: 2, md: 4 }}>
         {/* Product Image */}
         <Grid item xs={12} md={6}>
-          <ProductImageGallery images={product.images || [product.imageUrl]} name={product.name} />
+          <ProductImageGallery 
+            images={[
+              product.imageUrl, 
+              ...(Array.isArray(product.additionalImages) ? product.additionalImages : [])
+            ].filter(Boolean)} 
+            name={product.name} 
+          />
         </Grid>
 
         {/* Product Info */}
@@ -424,11 +430,15 @@ const ProductDetail = () => {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
                   <CheckCircleIcon fontSize="small" sx={{ mr: 0.5 }} />
-                  {product.stock > 10 
-                    ? <TranslationWrapper translationKey="inStock">In Stock</TranslationWrapper> 
-                    : product.stock > 0 
-                      ? <><TranslationWrapper translationKey="onlyLeft">Only</TranslationWrapper> {product.stock} <TranslationWrapper translationKey="items">items</TranslationWrapper> left</> 
-                      : <TranslationWrapper translationKey="outOfStock">Out of Stock</TranslationWrapper>}
+                  {product.inStock ? (
+                    product.quantity > 10 
+                      ? <TranslationWrapper translationKey="inStock">In Stock</TranslationWrapper> 
+                      : product.quantity > 0 
+                        ? <><TranslationWrapper translationKey="onlyLeft">Only</TranslationWrapper> {product.quantity} <TranslationWrapper translationKey="items">items</TranslationWrapper> left</> 
+                        : <TranslationWrapper translationKey="outOfStock">Out of Stock</TranslationWrapper>
+                  ) : (
+                    <TranslationWrapper translationKey="outOfStock">Out of Stock</TranslationWrapper>
+                  )}
                 </Typography>
               </Box>
             </Box>
@@ -440,12 +450,66 @@ const ProductDetail = () => {
               </Typography>
             </Box>
             
+            {/* Product Tags */}
+            {Array.isArray(product.tags) && product.tags.length > 0 && (
+              <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {product.tags.map((tag, index) => (
+                  <Chip 
+                    key={`tag-${index}`} 
+                    label={tag} 
+                    size="small" 
+                    variant="outlined"
+                    sx={{ borderRadius: 1 }}
+                  />
+                ))}
+              </Box>
+            )}
+            
             {/* Variants Selection */}
-            {product.variants && product.variants.length > 0 && (
+            {product.hasVariants && product.variants && product.variants.length > 0 && (
               <ProductVariantSelector 
                 variants={product.variants} 
                 onVariantChange={handleVariantChange}
               />
+            )}
+            
+            {/* Color Options */}
+            {Array.isArray(product.colorOptions) && product.colorOptions.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                  <TranslationWrapper>colors</TranslationWrapper>
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {product.colorOptions.map((color, index) => (
+                    <Chip 
+                      key={`color-${index}`} 
+                      label={color} 
+                      size="small"
+                      sx={{ borderRadius: 1 }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+            
+            {/* Size Options */}
+            {Array.isArray(product.sizeOptions) && product.sizeOptions.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                  <TranslationWrapper>sizes</TranslationWrapper>
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {product.sizeOptions.map((size, index) => (
+                    <Chip 
+                      key={`size-${index}`} 
+                      label={size} 
+                      size="small"
+                      variant="outlined"
+                      sx={{ borderRadius: 1 }}
+                    />
+                  ))}
+                </Box>
+              </Box>
             )}
             
             {/* Shipping Info */}
@@ -456,9 +520,36 @@ const ProductDetail = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <LocalShippingIcon fontSize="small" sx={{ mr: 1, color: theme.palette.primary.main }} />
                 <Typography variant="body2">
-                  <TranslationWrapper>freeShipping</TranslationWrapper> • <TranslationWrapper>estimatedDelivery</TranslationWrapper>: 3-7 <TranslationWrapper>days</TranslationWrapper>
+                  {product.shippingCostType === 'free' ? (
+                    <TranslationWrapper>freeShipping</TranslationWrapper>
+                  ) : (
+                    <>
+                      <TranslationWrapper>shippingCost</TranslationWrapper>: {formatCurrency(product.shippingCost || 0)}
+                    </>
+                  )}
+                  {product.estimatedDeliveryDays && (
+                    <> • <TranslationWrapper>estimatedDelivery</TranslationWrapper>: {product.estimatedDeliveryDays} <TranslationWrapper>days</TranslationWrapper></>
+                  )}
                 </Typography>
               </Box>
+              
+              {/* Shipping Regions */}
+              {Array.isArray(product.shippingRegions) && product.shippingRegions.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    <TranslationWrapper>shipsTo</TranslationWrapper>: {product.shippingRegions.join(', ')}
+                  </Typography>
+                </Box>
+              )}
+              
+              {/* Return Policy */}
+              {product.returnPolicy && (
+                <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    <TranslationWrapper>returnPolicy</TranslationWrapper>: {product.returnPolicy}
+                  </Typography>
+                </Box>
+              )}
             </Box>
             
             {/* Quantity & Add to Cart */}
@@ -514,7 +605,7 @@ const ProductDetail = () => {
                   <AddIcon fontSize="small" />
                 </IconButton>
                 <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
-                  {product.stock} <TranslationWrapper>available</TranslationWrapper>
+                  {product.quantity} <TranslationWrapper>available</TranslationWrapper>
                 </Typography>
               </Box>
             </Box>
@@ -527,7 +618,7 @@ const ProductDetail = () => {
                 size="large"
                 fullWidth
                 onClick={handleBuyNow}
-                disabled={product.stock <= 0}
+                disabled={!product.inStock || product.quantity <= 0}
                 sx={{ 
                   py: 1.5,
                   fontWeight: 'bold',
@@ -543,7 +634,7 @@ const ProductDetail = () => {
                 size="large"
                 fullWidth
                 onClick={handleAddToCart}
-                disabled={product.stock <= 0}
+                disabled={!product.inStock || product.quantity <= 0}
                 sx={{ 
                   py: 1.5,
                   borderRadius: 1,
@@ -729,9 +820,25 @@ const ProductDetail = () => {
                   {product.description}
                 </Typography>
                 
+                {/* Product Features */}
+                {Array.isArray(product.features) && product.features.length > 0 && (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      <TranslationWrapper>keyFeatures</TranslationWrapper>
+                    </Typography>
+                    <ul>
+                      {product.features.map((feature, index) => (
+                        <li key={`feature-${index}`}>
+                          <Typography variant="body1">{feature}</Typography>
+                        </li>
+                      ))}
+                    </ul>
+                  </Box>
+                )}
+                
                 {/* Product Images in Description */}
                 <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {product.images?.map((image, index) => (
+                  {Array.isArray(product.additionalImages) && product.additionalImages.map((image, index) => (
                     <img 
                       key={index}
                       src={image} 
@@ -753,16 +860,20 @@ const ProductDetail = () => {
                   <TranslationWrapper>productSpecifications</TranslationWrapper>
                 </Typography>
                 <List>
-                  {Object.entries(product.specifications || {
-                    Brand: product.brand || 'Azone',
-                    Model: product.model || 'Standard',
-                    Material: product.material || 'Premium',
-                    Weight: product.weight ? `${product.weight} kg` : '0.5 kg',
-                    Dimensions: product.dimensions || '30 x 20 x 10 cm',
-                    Warranty: product.warranty || '12 months'
-                  }).map(([key, value]) => (
+                  {/* Display all available product specifications */}
+                  {[
+                    { key: 'Brand', value: product.brand },
+                    { key: 'Category', value: product.category },
+                    { key: 'Subcategory', value: product.subcategory },
+                    { key: 'Materials', value: product.materials },
+                    { key: 'Country of Origin', value: product.countryOfOrigin },
+                    { key: 'Weight', value: product.weight },
+                    { key: 'Dimensions', value: product.dimensions },
+                    { key: 'Warranty', value: product.warranty },
+                    ...(Array.isArray(product.specifications) ? product.specifications.map(spec => ({ key: 'Specification', value: spec })) : [])
+                  ].filter(item => item.value && item.value.trim() !== '').map((item, index) => (
                     <ListItem 
-                      key={key}
+                      key={`spec-${index}`}
                       sx={{ 
                         py: 1,
                         px: 0,
@@ -772,12 +883,12 @@ const ProductDetail = () => {
                       <Grid container>
                         <Grid item xs={4} sm={3}>
                           <Typography variant="body2" color="text.secondary">
-                            {key}
+                            {item.key}
                           </Typography>
                         </Grid>
                         <Grid item xs={8} sm={9}>
                           <Typography variant="body2">
-                            {value}
+                            {item.value}
                           </Typography>
                         </Grid>
                       </Grid>

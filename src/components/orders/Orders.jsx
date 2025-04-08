@@ -25,7 +25,14 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  Snackbar
+  Snackbar,
+  useMediaQuery,
+  useTheme,
+  Card,
+  CardContent,
+  CardActions,
+  Grid,
+  Stack
 } from '@mui/material';
 import {
   ShoppingBag as OrderIcon,
@@ -172,6 +179,10 @@ const Orders = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  
+  // Add theme and responsive breakpoints
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   const fetchActiveOrders = async () => {
     if (!currentUser) return;
@@ -327,7 +338,7 @@ const Orders = () => {
   };
   
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, sm: 3, md: 4 } }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
         <OrderIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
         <Typography variant="h4" component="h1">
@@ -399,7 +410,8 @@ const Orders = () => {
                   Browse Products
                 </Button>
               </Paper>
-            ) : (
+            ) : !isMobile ? (
+              // Desktop/Web Version - Table Layout
               <TableContainer component={Paper} elevation={2}>
                 <Table>
                   <TableHead>
@@ -463,6 +475,70 @@ const Orders = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            ) : (
+              // Mobile Version - Card Layout
+              <Grid container spacing={2} sx={{ width: '100%', mx: 0 }}>
+                {activeOrders.map((order) => (
+                  <Grid item xs={12} key={order.id} sx={{ width: '100%' }}>
+                    <Card elevation={2} sx={{ width: '100%' }}>
+                      <CardContent sx={{ pb: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography color="primary" sx={{ fontWeight: 'medium' }}>
+                            #{order.id.substring(0, 8)}
+                          </Typography>
+                          <Chip
+                            icon={getStatusIcon(calculateOrderStatus(order))}
+                            label={calculateOrderStatus(order).charAt(0).toUpperCase() + calculateOrderStatus(order).slice(1)}
+                            color={getStatusColor(calculateOrderStatus(order))}
+                            size="small"
+                          />
+                        </Box>
+                        
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Total:
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium">
+                            {formatCurrency(order.total || 0)}
+                          </Typography>
+                        </Stack>
+                        
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            Items:
+                          </Typography>
+                          <Typography variant="body2">
+                            {order.items?.length || 0}
+                          </Typography>
+                        </Stack>
+                      </CardContent>
+                      
+                      <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
+                        <Button
+                          component={Link}
+                          to={`/orders/${order.id}`}
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          fullWidth
+                        >
+                          View Order
+                        </Button>
+                        
+                        {calculateOrderStatus(order) === 'cancelled' && (
+                          <IconButton 
+                            size="small" 
+                            color="default"
+                            onClick={() => handleHideOrder(order.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
             )}
           </>
         )}
@@ -489,7 +565,8 @@ const Orders = () => {
                   You don't have any hidden orders.
                 </Typography>
               </Paper>
-            ) : (
+            ) : !isMobile ? (
+              // Desktop/Web Version - Table Layout
               <TableContainer component={Paper} elevation={2}>
                 <Table>
                   <TableHead>
@@ -540,6 +617,61 @@ const Orders = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            ) : (
+              // Mobile Version - Card Layout
+              <Grid container spacing={2} sx={{ width: '100%', mx: 0 }}>
+                {hiddenOrders.map((order) => (
+                  <Grid item xs={12} key={order.id} sx={{ width: '100%' }}>
+                    <Card elevation={2} sx={{ opacity: 0.7, width: '100%' }}>
+                      <CardContent sx={{ pb: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography color="text.secondary">
+                            #{order.id.substring(0, 8)}
+                          </Typography>
+                          <Chip
+                            icon={getStatusIcon(calculateOrderStatus(order))}
+                            label={calculateOrderStatus(order).charAt(0).toUpperCase() + calculateOrderStatus(order).slice(1)}
+                            color={getStatusColor(calculateOrderStatus(order))}
+                            size="small"
+                            sx={{ opacity: 0.8 }}
+                          />
+                        </Box>
+                        
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Total:
+                          </Typography>
+                          <Typography variant="body2">
+                            {formatCurrency(order.total || 0)}
+                          </Typography>
+                        </Stack>
+                        
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            Hidden on:
+                          </Typography>
+                          <Typography variant="body2">
+                            {formatDate(order.hiddenAt).split(',')[0]}
+                          </Typography>
+                        </Stack>
+                      </CardContent>
+                      
+                      <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
+                        <Button
+                          startIcon={<RestoreIcon />}
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          fullWidth
+                          onClick={() => handleRestoreOrder(order.id)}
+                        >
+                          Restore Order
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
             )}
           </>
         )}

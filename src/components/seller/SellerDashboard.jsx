@@ -376,23 +376,28 @@ const SellerDashboard = () => {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Dashboard Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" component="h1">
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'flex-start', sm: 'center' }, 
+        mb: { xs: 2, md: 4 },
+        gap: { xs: 1, sm: 0 }
+      }}>
+        <Typography variant="h5" component="h1" sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
           Seller Dashboard
         </Typography>
-        <Box>
-          <Button 
-            variant="outlined" 
-            startIcon={<NotificationsIcon />}
-            sx={{ mr: 1, borderRadius: 0 }}
-          >
-            Notifications
-          </Button>
+        <Box sx={{ display: 'flex', width: { xs: '100%', sm: 'auto' } }}>
           <Button 
             variant="contained" 
             startIcon={<AddIcon />}
             onClick={() => navigate('/seller/products/add')}
-            sx={{ borderRadius: 0 }}
+            sx={{ 
+              borderRadius: 0, 
+              ml: 'auto',
+              flex: { xs: 1, sm: 'none' },
+              fontSize: { xs: '0.75rem', md: '0.875rem' }
+            }}
           >
             Add Product
           </Button>
@@ -403,16 +408,40 @@ const SellerDashboard = () => {
         <Tabs 
           value={activeTab} 
           onChange={(e, newValue) => setActiveTab(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{ 
             borderBottom: 1, 
             borderColor: 'divider',
-            '& .MuiTab-root': { borderRadius: 0 }
+            '& .MuiTab-root': { borderRadius: 0 },
+            '& .MuiTab-labelIcon': {
+              minHeight: { xs: '48px', md: '64px' },
+              padding: { xs: '6px 12px', md: '6px 16px' },
+            }
           }}
         >
-          <Tab icon={<ShoppingBagIcon />} label="Products" />
-          <Tab icon={<ShippingIcon />} label="Orders" />
-          <Tab icon={<MessageIcon />} label="Messages" />
-          <Tab icon={<SettingsIcon />} label="Shop Settings" />
+          <Tab 
+            icon={<ShoppingBagIcon fontSize="small" />} 
+            label="Products" 
+            sx={{
+              fontSize: { xs: '0.75rem', md: '0.875rem' }
+            }}
+          />
+          <Tab 
+            icon={<ShippingIcon fontSize="small" />} 
+            label="Orders" 
+            sx={{
+              fontSize: { xs: '0.75rem', md: '0.875rem' }
+            }}
+          />
+          <Tab 
+            icon={<SettingsIcon fontSize="small" />} 
+            label="Settings" 
+            sx={{
+              fontSize: { xs: '0.75rem', md: '0.875rem' }
+            }}
+          />
         </Tabs>
         </Box>
 
@@ -511,7 +540,110 @@ const SellerDashboard = () => {
             </Paper>
           ) : (
             <>
-              <TableContainer component={Paper} sx={{ borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
+              <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+                {/* Mobile Product Cards */}
+                {products.slice(productPage * productsPerPage, productPage * productsPerPage + productsPerPage).map((product) => (
+                  <Paper 
+                    key={product.id} 
+                    sx={{ 
+                      p: 2, 
+                      mb: 2, 
+                      borderRadius: 0, 
+                      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', mb: 1 }}>
+                      <Box 
+                        sx={{ 
+                          width: 50, 
+                          height: 50, 
+                          flexShrink: 0, 
+                          mr: 2, 
+                          borderRadius: 0,
+                          overflow: 'hidden',
+                          border: `1px solid ${alpha(theme.palette.divider, 0.2)}`
+                        }}
+                      >
+                        <img 
+                          src={product.imageUrl || 'https://via.placeholder.com/50?text=No+Image'} 
+                          alt={product.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ fontSize: '0.9rem' }}>
+                          {product.name}
+                        </Typography>
+                        <Chip 
+                          label={product.category || 'Uncategorized'} 
+                          size="small" 
+                          sx={{ borderRadius: 0, height: 20, fontSize: '0.65rem', mt: 0.5 }}
+                        />
+                      </Box>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Price</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 'medium', fontSize: '0.8rem' }}>
+                          ${product.price.toFixed(2)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Stock</Typography>
+                        <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'center' }}>
+                          {product.inventory || 0}
+                        </Typography>
+                      </Box>
+                      <Chip 
+                        label={product.status || 'Active'} 
+                        color={product.status === 'Draft' ? 'default' : 'success'}
+                        size="small"
+                        sx={{ borderRadius: 0, fontSize: '0.7rem' }}
+                      />
+                    </Box>
+                    
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'flex-end', 
+                      mt: 1, 
+                      pt: 1, 
+                      borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`
+                    }}>
+                      <Button 
+                        size="small" 
+                        variant="outlined" 
+                        startIcon={<VisibilityIcon fontSize="small" />}
+                        sx={{ mr: 1, fontSize: '0.7rem', borderRadius: 0 }}
+                      >
+                        View
+                      </Button>
+                      <Button 
+                        size="small" 
+                        variant="outlined" 
+                        color="primary"
+                        startIcon={<EditIcon fontSize="small" />}
+                        onClick={() => navigate(`/seller/products/${product.id}/edit`)}
+                        sx={{ mr: 1, fontSize: '0.7rem', borderRadius: 0 }}
+                      >
+                        Edit
+                      </Button>
+                      <Button 
+                        size="small" 
+                        variant="outlined" 
+                        color="error"
+                        startIcon={<DeleteIcon fontSize="small" />}
+                        onClick={() => handleDeleteClick(product)}
+                        sx={{ fontSize: '0.7rem', borderRadius: 0 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  </Paper>
+                ))}
+              </Box>
+
+              <TableContainer component={Paper} sx={{ borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}`, display: { xs: 'none', md: 'block' } }}>
                 <Table>
                   <TableHead>
                     <TableRow sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
@@ -857,7 +989,78 @@ const SellerDashboard = () => {
             </Paper>
           ) : (
             <>
-              <TableContainer component={Paper} sx={{ borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
+                <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+                  {/* Mobile Order Cards */}
+                  {orders.slice(orderPage * ordersPerPage, orderPage * ordersPerPage + ordersPerPage).map((order) => (
+                    <Paper 
+                      key={order.id} 
+                      sx={{ 
+                        p: 2, 
+                        mb: 2, 
+                        borderRadius: 0, 
+                        border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                        position: 'relative'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                          #{order.id.substring(0, 8)}
+                        </Typography>
+                        <Chip
+                          label={order.status.toUpperCase()}
+                          color={getStatusColor(order.status)}
+                          size="small"
+                          sx={{ borderRadius: 0, fontSize: '0.7rem' }}
+                        />
+                      </Box>
+                      
+                      <Divider sx={{ my: 1 }} />
+                      
+                      <Grid container spacing={1} sx={{ mb: 1 }}>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">Date</Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{formatDate(order.createdAt)}</Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">Total</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 'medium', fontSize: '0.8rem' }}>
+                            {formatCurrency(order.totalAmount || 0)}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                      
+                      <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'flex-end', 
+                        mt: 1, 
+                        pt: 1, 
+                        borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`
+                      }}>
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          startIcon={<VisibilityIcon fontSize="small" />}
+                          onClick={() => navigate(`/seller/orders/${order.id}`)}
+                          sx={{ mr: 1, fontSize: '0.7rem', borderRadius: 0 }}
+                        >
+                          View
+                        </Button>
+                        <Button 
+                          size="small" 
+                          variant="contained" 
+                          startIcon={<EditIcon fontSize="small" />}
+                          onClick={() => handleOpenStatusDialog(order, order.status)}
+                          disabled={order.status === 'completed' || order.status === 'cancelled'}
+                          sx={{ fontSize: '0.7rem', borderRadius: 0 }}
+                        >
+                          Update
+                        </Button>
+                      </Box>
+                    </Paper>
+                  ))}
+                </Box>
+
+                <TableContainer component={Paper} sx={{ borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}`, display: { xs: 'none', md: 'block' } }}>
                 <Table>
                   <TableHead>
                     <TableRow sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
@@ -948,39 +1151,10 @@ const SellerDashboard = () => {
           )}
         </TabPanel>
 
-        {/* Messages Tab */}
-        <TabPanel value={activeTab} index={2}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h6">
-              Customer Messages
-            </Typography>
-            <Box>
-              <Badge 
-                badgeContent={0} 
-                color="error" 
-                sx={{ mr: 2 }}
-              >
-                <Button 
-                  variant="outlined" 
-                  startIcon={<MessageIcon />}
-                  sx={{ borderRadius: 0 }}
-                >
-                  Unread Messages
-                </Button>
-              </Badge>
-            </Box>
-          </Box>
-          
-          {/* Messages List */}
-          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
-            <Typography variant="body1">
-              You don't have any messages yet.
-            </Typography>
-          </Paper>
-        </TabPanel>
+        {/* Messages Tab Removed */}
         
         {/* Shop Settings Tab */}
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={2}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h6">
               Shop Settings

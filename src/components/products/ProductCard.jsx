@@ -10,7 +10,9 @@ import {
   IconButton,
   Rating,
   Box,
-  Chip
+  Chip,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   ShoppingCart as ShoppingCartIcon,
@@ -25,6 +27,8 @@ const ProductCard = ({ product }) => {
   const { addToCart } = useCart();
   const navigate = useNavigate();
   const [isFavorite, setIsFavorite] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
@@ -54,11 +58,23 @@ const ProductCard = ({ product }) => {
           boxShadow: 6,
         },
         cursor: 'pointer',
-        borderRadius: 0
+        borderRadius: 0,
+        ...(isMobile && {
+          minHeight: '100%',
+          maxHeight: '100%',
+          overflow: 'hidden'
+        })
       }}
       onClick={handleCardClick}
     >
-      <Box sx={{ position: 'relative', paddingTop: '100%', overflow: 'hidden' }}>
+      <Box sx={{ 
+        position: 'relative', 
+        paddingTop: '100%', 
+        overflow: 'hidden',
+        ...(isMobile && {
+          paddingTop: '100%', // Force square aspect ratio on mobile
+        })
+      }}>
         <CardMedia
           component="img"
           image={getProductImageUrl(product)}
@@ -106,10 +122,17 @@ const ProductCard = ({ product }) => {
           />
         )}
       </Box>
-      <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', height: 150, p: 2 }}>
+      <CardContent sx={{ 
+        flexGrow: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        height: isMobile ? 'auto' : 150, 
+        p: isMobile ? 1 : 2,
+        overflow: 'hidden'
+      }}>
         <Typography 
           gutterBottom 
-          variant="h6" 
+          variant={isMobile ? 'subtitle2' : 'h6'} 
           component="div" 
           sx={{
             overflow: 'hidden',
@@ -118,13 +141,14 @@ const ProductCard = ({ product }) => {
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             lineHeight: 1.2,
-            height: '2.4em',
-            mb: 1
+            height: isMobile ? '2.4em' : '2.4em',
+            mb: isMobile ? 0.5 : 1,
+            fontSize: isMobile ? '0.8rem' : undefined
           }}
         >
           {product.name}
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: isMobile ? 0.5 : 1 }}>
           <Rating 
             value={product.rating || 0} 
             precision={0.5} 
@@ -145,7 +169,7 @@ const ProductCard = ({ product }) => {
         >
           {product.category}
         </Typography>
-        <Typography 
+        {!isMobile && <Typography 
           variant="body2" 
           color="text.secondary" 
           sx={{
@@ -160,13 +184,19 @@ const ProductCard = ({ product }) => {
           }}
         >
           {product.description}
-        </Typography>
+        </Typography>}
       </CardContent>
-      <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2, pt: 0 }}>
+      <CardActions sx={{ 
+        justifyContent: 'space-between', 
+        px: isMobile ? 1 : 2, 
+        pb: isMobile ? 1 : 2, 
+        pt: 0,
+        minHeight: isMobile ? '40px' : 'auto'
+      }}>
         <Box>
           {product.discount > 0 ? (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold', mr: 1 }}>
+              <Typography variant={isMobile ? 'body1' : 'h6'} color="primary" sx={{ fontWeight: 'bold', mr: 1, fontSize: isMobile ? '0.9rem' : undefined }}>
                 ${((product.price * (100 - product.discount)) / 100).toFixed(2)}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
@@ -174,7 +204,7 @@ const ProductCard = ({ product }) => {
               </Typography>
             </Box>
           ) : (
-            <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
+            <Typography variant={isMobile ? 'body1' : 'h6'} color="primary" sx={{ fontWeight: 'bold', fontSize: isMobile ? '0.9rem' : undefined }}>
               ${product.price.toFixed(2)}
             </Typography>
           )}
@@ -182,11 +212,18 @@ const ProductCard = ({ product }) => {
         <Button
           variant="contained"
           color="primary"
-          startIcon={<ShoppingCartIcon />}
+          startIcon={isMobile ? null : <ShoppingCartIcon />}
           size="small"
           onClick={handleAddToCart}
+          sx={{ 
+            ...(isMobile && {
+              minWidth: 'auto',
+              padding: '4px 8px',
+              fontSize: '0.7rem'
+            })
+          }}
         >
-          Add
+          {isMobile ? <ShoppingCartIcon fontSize="small" /> : 'Add'}
         </Button>
       </CardActions>
     </Card>
