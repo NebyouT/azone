@@ -1,942 +1,646 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Container,
-  Grid,
-  Paper,
-  Typography,
   Box,
+  Grid,
+  Typography,
   Avatar,
   Button,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  CircularProgress,
-  Alert,
   Tabs,
   Tab,
-  TextField,
+  Divider,
+  Paper,
+  CircularProgress,
+  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogContentText,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Tooltip,
-  LinearProgress,
-  Card,
-  CardContent,
-  CardActions,
-  Chip,
-  Badge,
-  Fade,
-  Zoom,
-  useTheme,
-  alpha,
+  TextField,
+  Alert,
   Snackbar,
-  IconButton,
-  InputAdornment
+  useMediaQuery
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
-  Person as PersonIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon,
-  ShoppingBag as ShoppingBagIcon,
-  Store as StoreIcon,
   Edit as EditIcon,
-  AccountBalanceWallet as WalletIcon,
-  Save as SaveIcon,
-  Cancel as CancelIcon,
-  CheckCircle as CheckCircleIcon,
-  Info as InfoIcon,
-  Verified as VerifiedIcon,
-  LocalShipping as ShippingIcon,
+  Settings as SettingsIcon,
+  GridView as GridViewIcon,
+  List as ListIcon,
+  Bookmark as BookmarkIcon,
+  ShoppingBag as ShoppingBagIcon,
   Star as StarIcon,
-  StarBorder as StarBorderIcon,
-  History as HistoryIcon,
-  VerifiedUser as VerifiedUserIcon,
   PhotoCamera as PhotoCameraIcon,
-  Send as SendIcon
+  Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
-  getUserOrders, 
   updateUserProfile, 
-  validateEthiopianPhoneNumber, 
-  getUserStatistics, 
-  isEmailVerified, 
-  resendVerificationEmail,
-  uploadProfileImage,
+  uploadProfileImage, 
+  logoutUser, 
+  getUserOrders,
+  getSellerProducts
 } from '../../firebase/services';
-import { auth, db, storage } from '../../firebase/config';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { sendEmailVerification } from 'firebase/auth';
-import WalletSummary from '../wallet/WalletSummary';
-import PendingReviews from '../reviews/PendingReviews';
+
+// Custom TabPanel component
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`profile-tabpanel-${index}`}
+      aria-labelledby={`profile-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ py: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 const Profile = () => {
-  const { currentUser } = useAuth();
-  const [userData, setUserData] = useState(null);
-  const [orders, setOrders] = useState([]);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
+  const { currentUser, userDetails, isSeller } = useAuth();
+  
+  // State
   const [loading, setLoading] = useState(true);
-  const [orderLoading, setOrderLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [profileData, setProfileData] = useState(null);
   const [tabValue, setTabValue] = useState(0);
-  const [editMode, setEditMode] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     displayName: '',
     phoneNumber: '',
-    role: ''
+    bio: ''
   });
-  const [phoneError, setPhoneError] = useState('');
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [userStats, setUserStats] = useState(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
-  const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const [upgradeError, setUpgradeError] = useState('');
-  const [upgradeSuccess, setUpgradeSuccess] = useState(false);
-  const theme = useTheme();
-  
-  // Profile image states
-  const [profileImage, setProfileImage] = useState(null);
-  const [profileImageURL, setProfileImageURL] = useState('');
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const fileInputRef = useRef(null);
-  
-  // Snackbar state
+  const [imageUploadLoading, setImageUploadLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
-    severity: 'info'
+    severity: 'success'
   });
+  const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [productLoading, setProductLoading] = useState(false);
   
+  // Fetch user data
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        // User data is already available from the auth context
-        setUserData(currentUser);
-        setFormData({
-          displayName: currentUser.displayName || '',
-          phoneNumber: currentUser.phoneNumber || '',
-          role: currentUser.role || 'buyer'
-        });
-        
-        // Set profile image URL if available
-        if (currentUser.photoURL) {
-          setProfileImageURL(currentUser.photoURL);
-        }
-        
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-        setError('Failed to load user data. Please try again later.');
-        setLoading(false);
-      }
-    };
-    
+    if (currentUser && userDetails) {
+      setProfileData({
+        uid: currentUser.uid,
+        displayName: currentUser.displayName || 'User',
+        email: currentUser.email,
+        photoURL: currentUser.photoURL || 'https://via.placeholder.com/150',
+        phoneNumber: userDetails.phoneNumber || '',
+        role: userDetails.role || 'buyer',
+        bio: userDetails.bio || '',
+        joinDate: userDetails.createdAt ? new Date(userDetails.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown',
+      });
+      
+      setFormData({
+        displayName: currentUser.displayName || '',
+        phoneNumber: userDetails.phoneNumber || '',
+        bio: userDetails.bio || ''
+      });
+      
+      setLoading(false);
+    }
+  }, [currentUser, userDetails]);
+  
+  // Fetch orders
+  useEffect(() => {
     const fetchOrders = async () => {
-      try {
-        if (currentUser) {
+      if (currentUser) {
+        try {
+          setOrderLoading(true);
           const userOrders = await getUserOrders(currentUser.uid);
           setOrders(userOrders);
+        } catch (error) {
+          console.error('Error fetching orders:', error);
+          setSnackbar({
+            open: true,
+            message: 'Failed to load orders',
+            severity: 'error'
+          });
+        } finally {
+          setOrderLoading(false);
         }
-        setOrderLoading(false);
-      } catch (error) {
-        console.error('Error fetching orders:', error);
-        setOrderLoading(false);
       }
     };
     
-    const fetchUserStats = async () => {
-      try {
-        if (currentUser) {
-          const stats = await getUserStatistics(currentUser.uid);
-          setUserStats(stats);
-        }
-        setStatsLoading(false);
-      } catch (error) {
-        console.error('Error fetching user statistics:', error);
-        setStatsLoading(false);
-      }
-    };
-    
-    if (currentUser) {
-      fetchUserData();
+    if (tabValue === 1) {
       fetchOrders();
-      fetchUserStats();
-    } else {
-      setLoading(false);
-      setOrderLoading(false);
-      setStatsLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, tabValue]);
   
+  // Fetch products for sellers
+  useEffect(() => {
+    const fetchProducts = async () => {
+      if (currentUser && isSeller && tabValue === 2) {
+        try {
+          setProductLoading(true);
+          const sellerProducts = await getSellerProducts(currentUser.uid);
+          setProducts(sellerProducts);
+        } catch (error) {
+          console.error('Error fetching products:', error);
+          setSnackbar({
+            open: true,
+            message: 'Failed to load products',
+            severity: 'error'
+          });
+        } finally {
+          setProductLoading(false);
+        }
+      }
+    };
+    
+    if (isSeller && tabValue === 2) {
+      fetchProducts();
+    }
+  }, [currentUser, isSeller, tabValue]);
+  
+  // Handle tab change
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
   
-  const handleEditClick = () => {
-    setEditMode(true);
+  // Handle edit dialog
+  const handleOpenEditDialog = () => {
+    setEditDialogOpen(true);
   };
   
-  const handleCancelEdit = () => {
-    // Reset form data to current user data
-    setFormData({
-      displayName: userData.displayName || '',
-      phoneNumber: userData.phoneNumber || '',
-      role: userData.role || 'buyer'
-    });
-    setPhoneError('');
-    setEditMode(false);
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
   };
   
-  const handleInputChange = (e) => {
+  // Handle form changes
+  const handleFormChange = (e) => {
     const { name, value } = e.target;
-    
-    if (name === 'phoneNumber') {
-      // Validate phone number as user types
-      if (value && !validateEthiopianPhoneNumber(value)) {
-        setPhoneError('Please enter a valid Ethiopian phone number (e.g., 0911234567)');
-      } else {
-        setPhoneError('');
-      }
-    }
-    
     setFormData({
       ...formData,
       [name]: value
     });
   };
   
-  const handleSaveProfile = async () => {
+  // Handle profile update
+  const handleUpdateProfile = async () => {
     try {
-      // Validate phone number
-      if (formData.phoneNumber && !validateEthiopianPhoneNumber(formData.phoneNumber)) {
-        setPhoneError('Please enter a valid Ethiopian phone number (e.g., 0911234567)');
-        return;
-      }
-      
-      setSaveLoading(true);
-      
-      // Update user profile
+      setLoading(true);
       await updateUserProfile(
-        userData.uid,
+        currentUser.uid,
         formData.displayName,
         formData.phoneNumber,
-        formData.role
+        userDetails.role,
+        currentUser.photoURL,
+        formData.bio
       );
       
-      // Update local user data
-      setUserData({
-        ...userData,
-        displayName: formData.displayName,
-        phoneNumber: formData.phoneNumber,
-        role: formData.role
-      });
-      
-      // Exit edit mode
-      setEditMode(false);
-      
-      // Show success message
       setSnackbar({
         open: true,
         message: 'Profile updated successfully',
         severity: 'success'
       });
+      
+      handleCloseEditDialog();
     } catch (error) {
       console.error('Error updating profile:', error);
       setSnackbar({
         open: true,
-        message: `Failed to update profile: ${error.message}`,
-        severity: 'error'
-      });
-    } finally {
-      setSaveLoading(false);
-    }
-  };
-  
-  // Handle profile image upload
-  const handleImageClick = () => {
-    fileInputRef.current.click();
-  };
-  
-  const handleImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      // Check file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setSnackbar({
-          open: true,
-          message: 'Image size should be less than 5MB',
-          severity: 'error'
-        });
-        return;
-      }
-      
-      // Check file type
-      if (!file.type.match('image.*')) {
-        setSnackbar({
-          open: true,
-          message: 'Please select an image file',
-          severity: 'error'
-        });
-        return;
-      }
-      
-      setProfileImage(file);
-      
-      // Show preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setProfileImageURL(e.target.result);
-      };
-      reader.readAsDataURL(file);
-      
-      // Upload image
-      handleUploadImage(file);
-    }
-  };
-  
-  const handleUploadImage = async (file) => {
-    try {
-      setUploadLoading(true);
-      
-      // Upload image to Cloudinary via our service
-      const downloadURL = await uploadProfileImage(file, userData.uid);
-      
-      // Update local state
-      setProfileImageURL(downloadURL);
-      
-      // Update user data
-      setUserData({
-        ...userData,
-        photoURL: downloadURL
-      });
-      
-      setSnackbar({
-        open: true,
-        message: 'Profile image updated successfully',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error uploading profile image:', error);
-      setSnackbar({
-        open: true,
-        message: `Failed to upload profile image: ${error.message}`,
-        severity: 'error'
-      });
-    } finally {
-      setUploadLoading(false);
-      setUploadProgress(0);
-    }
-  };
-  
-  // Handle snackbar close
-  const handleSnackbarClose = (event, reason) => {
-    if (reason === 'clickaway') {
-      return;
-    }
-    setSnackbar({
-      ...snackbar,
-      open: false
-    });
-  };
-  
-  // Handle email verification
-  const handleResendVerification = async () => {
-    try {
-      setLoading(true);
-      
-      // Use the Firebase auth function to send verification email
-      await sendEmailVerification(auth.currentUser);
-      
-      setSnackbar({
-        open: true,
-        message: 'Verification email sent. Please check your inbox.',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error sending verification email:', error);
-      setSnackbar({
-        open: true,
-        message: `Failed to send verification email: ${error.message}`,
+        message: 'Failed to update profile',
         severity: 'error'
       });
     } finally {
       setLoading(false);
     }
   };
-
-  // Calculate user rating based on completed orders and cancellations
-  const calculateUserRating = () => {
-    if (!userStats) return 0;
+  
+  // Handle profile image upload
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
     
-    const { completedOrders, cancelledOrders } = userStats;
-    const totalOrders = completedOrders + cancelledOrders;
-    
-    if (totalOrders === 0) return 5; // Default rating for new users
-    
-    // Simple rating calculation: 5 stars - (cancellation percentage * 5)
-    const cancellationRate = cancelledOrders / totalOrders;
-    const rating = 5 - (cancellationRate * 5);
-    
-    // Ensure rating is between 1 and 5
-    return Math.max(1, Math.min(5, rating));
+    try {
+      setImageUploadLoading(true);
+      await uploadProfileImage(file, currentUser.uid);
+      
+      setSnackbar({
+        open: true,
+        message: 'Profile image updated successfully',
+        severity: 'success'
+      });
+      
+      // Force refresh to see new image
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to upload image',
+        severity: 'error'
+      });
+    } finally {
+      setImageUploadLoading(false);
+    }
   };
   
-  const renderStarRating = (rating) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
-    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
-    
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-        {[...Array(fullStars)].map((_, i) => (
-          <StarIcon key={`full-${i}`} color="primary" />
-        ))}
-        {hasHalfStar && <StarIcon key="half" color="primary" sx={{ opacity: 0.5 }} />}
-        {[...Array(emptyStars)].map((_, i) => (
-          <StarBorderIcon key={`empty-${i}`} color="primary" />
-        ))}
-        <Typography variant="body2" sx={{ ml: 1 }}>
-          ({rating.toFixed(1)})
-        </Typography>
-      </Box>
-    );
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      navigate('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to logout',
+        severity: 'error'
+      });
+    }
+  };
+  
+  // Handle snackbar close
+  const handleSnackbarClose = () => {
+    setSnackbar({
+      ...snackbar,
+      open: false
+    });
   };
   
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-          <CircularProgress />
-        </Box>
-      </Container>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress />
+      </Box>
     );
   }
   
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-      
-      <Grid container spacing={3}>
-        {/* Profile Summary Card */}
-        <Grid item xs={12} md={4}>
-          <Zoom in={true} style={{ transitionDelay: '100ms' }}>
-            <Card 
-              elevation={3}
-              sx={{ 
-                mb: 4,
-                borderRadius: 2,
-                overflow: 'visible',
-                position: 'relative'
-              }}
-            >
-              <CardContent sx={{ pt: 8, pb: 2 }}>
-                <Box 
+    <Container maxWidth="md" sx={{ py: 4 }}>
+      {/* Profile Header */}
+      <Paper elevation={0} sx={{ p: 3, mb: 3 }}>
+        <Grid container spacing={3} alignItems="center">
+          {/* Profile Image */}
+          <Grid item xs={12} sm={4} sx={{ textAlign: 'center' }}>
+            <Box sx={{ position: 'relative', display: 'inline-block' }}>
+              <Avatar 
+                src={profileData.photoURL} 
+                alt={profileData.displayName}
+                sx={{ 
+                  width: isMobile ? 120 : 150, 
+                  height: isMobile ? 120 : 150,
+                  mx: 'auto'
+                }}
+              />
+              <input
+                accept="image/*"
+                style={{ display: 'none' }}
+                id="profile-image-upload"
+                type="file"
+                onChange={handleImageUpload}
+              />
+              <label htmlFor="profile-image-upload">
+                <IconButton 
+                  component="span"
                   sx={{ 
-                    position: 'absolute',
-                    top: -40,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center'
+                    position: 'absolute', 
+                    bottom: 0, 
+                    right: 0,
+                    backgroundColor: theme.palette.primary.main,
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: theme.palette.primary.dark,
+                    }
                   }}
+                  disabled={imageUploadLoading}
                 >
-                  <Badge
-                    overlap="circular"
-                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                    badgeContent={
-                      <IconButton 
-                        color="primary"
-                        aria-label="upload picture"
-                        component="span"
-                        onClick={handleImageClick}
-                        disabled={uploadLoading}
+                  {imageUploadLoading ? <CircularProgress size={24} /> : <PhotoCameraIcon />}
+                </IconButton>
+              </label>
+            </Box>
+          </Grid>
+          
+          {/* Profile Info */}
+          <Grid item xs={12} sm={8}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', mr: 2 }}>
+                {profileData.displayName}
+              </Typography>
+              
+              <Button 
+                variant="outlined" 
+                startIcon={<EditIcon />}
+                onClick={handleOpenEditDialog}
+                size="small"
+                sx={{ mr: 1 }}
+              >
+                Edit Profile
+              </Button>
+              
+              <IconButton onClick={handleLogout}>
+                <LogoutIcon />
+              </IconButton>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                <strong>Email:</strong> {profileData.email}
+              </Typography>
+              {profileData.phoneNumber && (
+                <Typography variant="body1" sx={{ mb: 1 }}>
+                  <strong>Phone:</strong> {profileData.phoneNumber}
+                </Typography>
+              )}
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                <strong>Role:</strong> {profileData.role.charAt(0).toUpperCase() + profileData.role.slice(1)}
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                <strong>Member since:</strong> {profileData.joinDate}
+              </Typography>
+            </Box>
+            
+            {profileData.bio && (
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                {profileData.bio}
+              </Typography>
+            )}
+          </Grid>
+        </Grid>
+      </Paper>
+      
+      {/* Profile Tabs */}
+      <Paper elevation={0} sx={{ mb: 3 }}>
+        <Tabs 
+          value={tabValue} 
+          onChange={handleTabChange}
+          variant={isMobile ? "fullWidth" : "standard"}
+          centered={!isMobile}
+          sx={{
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 'medium',
+              fontSize: '0.9rem',
+            }
+          }}
+        >
+          <Tab icon={<GridViewIcon />} label="Activity" />
+          <Tab icon={<ShoppingBagIcon />} label="Orders" />
+          {isSeller && <Tab icon={<StarIcon />} label="Products" />}
+          <Tab icon={<BookmarkIcon />} label="Saved" />
+        </Tabs>
+      </Paper>
+      
+      {/* Tab Panels */}
+      <TabPanel value={tabValue} index={0}>
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            Activity Feed
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Your recent activity will appear here
+          </Typography>
+        </Box>
+      </TabPanel>
+      
+      <TabPanel value={tabValue} index={1}>
+        {orderLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : orders.length > 0 ? (
+          <Grid container spacing={2}>
+            {orders.map((order) => (
+              <Grid item xs={12} key={order.id}>
+                <Paper 
+                  elevation={0} 
+                  sx={{ 
+                    p: 2, 
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 0, 0, 0.03)'
+                    }
+                  }}
+                  onClick={() => navigate(`/orders/${order.id}`)}
+                >
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} sm={8}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                        Order #{order.id.substring(0, 8)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {new Date(order.createdAt.seconds * 1000).toLocaleDateString()}
+                      </Typography>
+                      <Typography variant="body2">
+                        {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4} sx={{ textAlign: 'right' }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        ${(order.totalAmount || 0).toFixed(2)}
+                      </Typography>
+                      <Typography 
+                        variant="body2" 
                         sx={{ 
-                          bgcolor: 'background.paper',
-                          boxShadow: 1,
-                          '&:hover': {
-                            bgcolor: alpha(theme.palette.primary.main, 0.1)
-                          }
+                          display: 'inline-block',
+                          px: 1,
+                          py: 0.5,
+                          borderRadius: 1,
+                          backgroundColor: 
+                            order.status === 'completed' ? 'success.light' :
+                            order.status === 'cancelled' ? 'error.light' :
+                            'warning.light',
+                          color: 
+                            order.status === 'completed' ? 'success.dark' :
+                            order.status === 'cancelled' ? 'error.dark' :
+                            'warning.dark',
                         }}
                       >
-                        <PhotoCameraIcon />
-                      </IconButton>
+                        {order.status.toUpperCase()}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              No Orders Yet
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Your order history will appear here
+            </Typography>
+            <Button 
+              variant="contained" 
+              sx={{ mt: 2 }}
+              onClick={() => navigate('/products')}
+            >
+              Start Shopping
+            </Button>
+          </Box>
+        )}
+      </TabPanel>
+      
+      <TabPanel value={tabValue} index={isSeller ? 2 : -1}>
+        {productLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : products.length > 0 ? (
+          <Grid container spacing={2}>
+            {products.map((product) => (
+              <Grid item xs={12} sm={6} md={4} key={product.id}>
+                <Paper 
+                  elevation={0} 
+                  sx={{ 
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 0, 0, 0.03)'
                     }
-                  >
-                    <Avatar 
-                      src={profileImageURL || (userData?.photoURL || '')}
-                      alt={userData?.displayName || 'User'}
-                      sx={{ 
-                        width: 80, 
-                        height: 80,
-                        border: `2px solid ${theme.palette.primary.main}`,
-                        boxShadow: 2
+                  }}
+                  onClick={() => navigate(`/products/${product.id}`)}
+                >
+                  <Box sx={{ position: 'relative', pt: '100%' }}>
+                    <Box
+                      component="img"
+                      src={product.imageUrl}
+                      alt={product.name}
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
                       }}
                     />
-                  </Badge>
-                  <input
-                    accept="image/*"
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImageChange}
-                    style={{ display: 'none' }}
-                  />
-                  {uploadLoading && (
-                    <Box sx={{ width: '80%', mt: 1 }}>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={uploadProgress} 
-                        sx={{ height: 6, borderRadius: 3 }}
-                      />
-                    </Box>
-                  )}
-                </Box>
-                
-                <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
-                  {userData.displayName || 'User'}
-                </Typography>
-                
-                <Chip 
-                  label={userData.role === 'seller' ? 'Seller' : 'Buyer'} 
-                  color={userData.role === 'seller' ? 'secondary' : 'primary'} 
-                  size="small"
-                  icon={userData.role === 'seller' ? <StoreIcon /> : <ShoppingBagIcon />}
-                  sx={{ mb: 1 }}
-                />
-                
-                {!userData.emailVerified && (
-                  <Alert 
-                    severity="warning" 
-                    sx={{ 
-                      mt: 2, 
-                      width: '90%',
-                      '& .MuiAlert-icon': {
-                        alignItems: 'center'
-                      }
-                    }}
-                  >
-                    <Box>
-                      Email not verified
-                      <Button 
-                        size="small" 
-                        onClick={handleResendVerification}
-                        sx={{ ml: 1 }}
-                      >
-                        Verify Now
-                      </Button>
-                    </Box>
-                  </Alert>
-                )}
-                
-                {!editMode ? (
-                  <Button
-                    variant="outlined"
-                    startIcon={<EditIcon />}
-                    onClick={handleEditClick}
-                    sx={{ mt: 2 }}
-                  >
-                    Edit Profile
-                  </Button>
-                ) : (
-                  <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      startIcon={<CancelIcon />}
-                      onClick={handleCancelEdit}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="contained"
-                      startIcon={<SaveIcon />}
-                      onClick={handleSaveProfile}
-                      disabled={saveLoading}
-                    >
-                      {saveLoading ? 'Saving...' : 'Save'}
-                    </Button>
                   </Box>
-                )}
-              </CardContent>
-              
-              <Divider />
-              
-              <CardContent>
-                {!editMode ? (
-                  <List dense>
-                    <ListItem>
-                      <ListItemIcon>
-                        <EmailIcon color="primary" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Email"
-                        secondary={userData.email}
-                      />
-                    </ListItem>
-                    
-                    <ListItem>
-                      <ListItemIcon>
-                        <PhoneIcon color="primary" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Phone Number"
-                        secondary={userData.phoneNumber || 'Not provided'}
-                      />
-                    </ListItem>
-                    
-                    {!statsLoading && userStats && (
-                      <>
-                        <ListItem>
-                          <ListItemIcon>
-                            <CheckCircleIcon color="success" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary="Completed Orders"
-                            secondary={userStats.completedOrders}
-                          />
-                        </ListItem>
-                        
-                        <ListItem>
-                          <ListItemIcon>
-                            <StarIcon color="primary" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary="Rating"
-                            secondary={renderStarRating(calculateUserRating())}
-                          />
-                        </ListItem>
-                      </>
-                    )}
-                  </List>
-                ) : (
-                  <Box component="form" onSubmit={handleSaveProfile} sx={{ mt: 1 }}>
-                    <TextField
-                      margin="normal"
-                      fullWidth
-                      id="displayName"
-                      label="Display Name"
-                      name="displayName"
-                      value={formData.displayName}
-                      onChange={handleInputChange}
-                      autoFocus
-                    />
-                    
-                    <TextField
-                      margin="normal"
-                      fullWidth
-                      id="phoneNumber"
-                      label="Phone Number"
-                      name="phoneNumber"
-                      value={formData.phoneNumber}
-                      onChange={handleInputChange}
-                      error={!!phoneError}
-                      helperText={phoneError || "Ethiopian phone number format: +251xxxxxxxxx"}
-                    />
-                    
-                    <FormControl fullWidth margin="normal">
-                      <InputLabel id="role-label">Account Type</InputLabel>
-                      <Select
-                        labelId="role-label"
-                        id="role"
-                        name="role"
-                        value={formData.role}
-                        onChange={handleInputChange}
-                        label="Account Type"
-                      >
-                        <MenuItem value="buyer">Buyer</MenuItem>
-                        <MenuItem value="seller">Seller</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
-              </CardContent>
-              
-              <CardActions sx={{ justifyContent: 'center', pb: 3 }}>
-                <Button
-                  component={RouterLink}
-                  to="/wallet"
-                  variant="contained"
-                  startIcon={<WalletIcon />}
-                  color="primary"
-                  sx={{ borderRadius: 4 }}
-                >
-                  Manage Wallet
-                </Button>
-              </CardActions>
-            </Card>
-          </Zoom>
-        </Grid>
-        
-        {/* Main Content */}
-        <Grid item xs={12} md={8}>
-          <Fade in={true} style={{ transitionDelay: '200ms' }}>
-            <Card elevation={3} sx={{ borderRadius: 2 }}>
-              <Box sx={{ width: '100%', mt: 4 }}>
-                <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                  <Tabs 
-                    value={tabValue} 
-                    onChange={handleTabChange} 
-                    variant="scrollable"
-                    scrollButtons="auto"
-                    aria-label="profile tabs"
-                  >
-                    <Tab icon={<PersonIcon />} iconPosition="start" label="Profile" />
-                    <Tab icon={<ShoppingBagIcon />} iconPosition="start" label="Orders" />
-                    <Tab icon={<WalletIcon />} iconPosition="start" label="Wallet" />
-                    <Tab icon={<StarIcon />} iconPosition="start" label="Reviews" />
-                  </Tabs>
-                </Box>
-                
-                {/* Profile Tab */}
-                <TabPanel value={tabValue} index={0}>
-                  <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="h6" component="h2" gutterBottom>
-                        Edit Profile
-                      </Typography>
-                      {!editMode ? (
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          startIcon={<EditIcon />}
-                          onClick={handleEditClick}
-                          sx={{ borderRadius: 0 }}
-                        >
-                          Edit
-                        </Button>
-                      ) : (
-                        <Box>
-                          <Button
-                            variant="outlined"
-                            color="inherit"
-                            startIcon={<CancelIcon />}
-                            onClick={handleCancelEdit}
-                            sx={{ mr: 1, borderRadius: 0 }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            startIcon={<SaveIcon />}
-                            onClick={handleSaveProfile}
-                            disabled={saveLoading}
-                            sx={{ borderRadius: 0 }}
-                          >
-                            {saveLoading ? 'Saving...' : 'Save'}
-                          </Button>
-                        </Box>
-                      )}
-                    </Box>
-                    
-                    <Divider sx={{ mb: 3 }} />
-                    
-                    <Typography variant="subtitle1" component="h3" fontWeight="bold" gutterBottom>
-                      Profile Information
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="subtitle1" noWrap>
+                      {product.name}
                     </Typography>
-                    
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Full Name"
-                          name="displayName"
-                          value={formData.displayName}
-                          onChange={handleInputChange}
-                          disabled={!editMode}
-                          variant={editMode ? "outlined" : "filled"}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <PersonIcon color="action" />
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Email"
-                          value={userData?.email || ''}
-                          disabled
-                          variant="filled"
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <EmailIcon color="action" />
-                              </InputAdornment>
-                            ),
-                            endAdornment: userData?.emailVerified ? (
-                              <InputAdornment position="end">
-                                <Tooltip title="Email verified">
-                                  <VerifiedIcon color="success" />
-                                </Tooltip>
-                              </InputAdornment>
-                            ) : (
-                              <InputAdornment position="end">
-                                <Button
-                                  variant="outlined"
-                                  size="small"
-                                  color="primary"
-                                  onClick={handleResendVerification}
-                                  sx={{ borderRadius: 0 }}
-                                >
-                                  Verify
-                                </Button>
-                              </InputAdornment>
-                            )
-                          }}
-                        />
-                      </Grid>
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Phone Number (Ethiopian format)"
-                          name="phoneNumber"
-                          value={formData.phoneNumber}
-                          onChange={handleInputChange}
-                          disabled={!editMode}
-                          variant={editMode ? "outlined" : "filled"}
-                          error={!!phoneError}
-                          helperText={phoneError || "Format: 0911234567 or +251911234567"}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <PhoneIcon color="action" />
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth disabled={!editMode} variant={editMode ? "outlined" : "filled"}>
-                          <InputLabel id="role-label">Account Type</InputLabel>
-                          <Select
-                            labelId="role-label"
-                            id="role"
-                            name="role"
-                            value={formData.role}
-                            onChange={handleInputChange}
-                            label="Account Type"
-                          >
-                            <MenuItem value="buyer">Buyer</MenuItem>
-                            <MenuItem value="seller">Seller</MenuItem>
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Member Since"
-                          value={userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'N/A'}
-                          disabled
-                          variant="filled"
-                        />
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                </TabPanel>
-                
-                {/* Orders Tab */}
-                <TabPanel value={tabValue} index={1}>
-                  {orderLoading ? (
-                    <Box sx={{ p: 3, textAlign: 'center' }}>
-                      <CircularProgress />
-                    </Box>
-                  ) : orders.length > 0 ? (
-                    <List>
-                      {orders.map((order) => (
-                        <ListItem
-                          key={order.id}
-                          button
-                          component={RouterLink}
-                          to={`/orders/${order.id}`}
-                          divider
-                          sx={{ 
-                            transition: 'all 0.2s',
-                            '&:hover': {
-                              backgroundColor: theme.palette.action.hover,
-                              transform: 'translateX(5px)'
-                            }
-                          }}
-                        >
-                          <ListItemIcon>
-                            <ShippingIcon color={getStatusColor(order.status)} />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                                Order #{order.orderNumber || order.id.substring(0, 8)}
-                              </Typography>
-                            }
-                            secondary={
-                              <Box>
-                                <Typography variant="body2" color="text.secondary">
-                                  {order.createdAt ? new Date(order.createdAt.toDate()).toLocaleDateString() : 'N/A'}
-                                </Typography>
-                                <Chip 
-                                  label={order.status} 
-                                  size="small" 
-                                  color={getStatusColor(order.status)} 
-                                  sx={{ mt: 0.5 }}
-                                />
-                              </Box>
-                            }
-                          />
-                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                            {order.totalAmount !== undefined ? `$${order.totalAmount.toFixed(2)}` : 'N/A'}
-                          </Typography>
-                        </ListItem>
-                      ))}
-                    </List>
-                  ) : (
-                    <Box sx={{ p: 3, textAlign: 'center' }}>
-                      <ShoppingBagIcon sx={{ fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
-                      <Typography variant="h6" color="text.secondary">
-                        No orders yet
-                      </Typography>
-                      <Button
-                        component={RouterLink}
-                        to="/products"
-                        variant="contained"
-                        sx={{ mt: 2 }}
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      ${(product.price || 0).toFixed(2)}
+                    </Typography>
+                    <Box 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        mt: 1 
+                      }}
+                    >
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          display: 'inline-block',
+                          px: 1,
+                          py: 0.5,
+                          borderRadius: 1,
+                          backgroundColor: (product.stock || 0) > 0 ? 'success.light' : 'error.light',
+                          color: (product.stock || 0) > 0 ? 'success.dark' : 'error.dark',
+                        }}
                       >
-                        Start Shopping
-                      </Button>
+                        {(product.stock || 0) > 0 ? 'IN STOCK' : 'OUT OF STOCK'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {product.stock || 0} left
+                      </Typography>
                     </Box>
-                  )}
-                </TabPanel>
-                
-                {/* Wallet Tab */}
-                <TabPanel value={tabValue} index={2}>
-                  <WalletSummary />
-                </TabPanel>
-                
-                {/* Reviews Tab */}
-                <TabPanel value={tabValue} index={3}>
-                  <PendingReviews />
-                </TabPanel>
-              </Box>
-            </Card>
-          </Fade>
-        </Grid>
-      </Grid>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              No Products Yet
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Your product listings will appear here
+            </Typography>
+            <Button 
+              variant="contained" 
+              sx={{ mt: 2 }}
+              onClick={() => navigate('/seller/products/add')}
+            >
+              Add Product
+            </Button>
+          </Box>
+        )}
+      </TabPanel>
+      
+      <TabPanel value={tabValue} index={isSeller ? 3 : 2}>
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            Saved Items
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Your saved items will appear here
+          </Typography>
+        </Box>
+      </TabPanel>
+      
+      {/* Edit Profile Dialog */}
+      <Dialog 
+        open={editDialogOpen} 
+        onClose={handleCloseEditDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Edit Profile</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ mt: 1 }}>
+            <TextField
+              margin="normal"
+              fullWidth
+              label="Display Name"
+              name="displayName"
+              value={formData.displayName}
+              onChange={handleFormChange}
+            />
+            <TextField
+              margin="normal"
+              fullWidth
+              label="Phone Number"
+              name="phoneNumber"
+              value={formData.phoneNumber}
+              onChange={handleFormChange}
+            />
+            <TextField
+              margin="normal"
+              fullWidth
+              label="Bio"
+              name="bio"
+              value={formData.bio}
+              onChange={handleFormChange}
+              multiline
+              rows={4}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditDialog}>Cancel</Button>
+          <Button 
+            onClick={handleUpdateProfile} 
+            variant="contained"
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Snackbar for notifications */}
       <Snackbar
@@ -945,50 +649,15 @@ const Profile = () => {
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+        <Alert 
+          onClose={handleSnackbarClose} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>
     </Container>
-  );
-};
-
-// Helper function to determine chip color based on order status
-const getStatusColor = (status) => {
-  switch (status.toLowerCase()) {
-    case 'pending':
-      return 'default';
-    case 'processing':
-      return 'info';
-    case 'shipped':
-      return 'primary';
-    case 'delivered':
-      return 'success';
-    case 'cancelled':
-      return 'error';
-    default:
-      return 'default';
-  }
-};
-
-// TabPanel component
-const TabPanel = (props) => {
-  const { children, value, index, ...other } = props;
-  
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`tabpanel-${index}`}
-      aria-labelledby={`tab-${index}`}
-      {...other}
-    >
-      {value === index && (
-        <Box>
-          {children}
-        </Box>
-      )}
-    </div>
   );
 };
 

@@ -425,7 +425,7 @@ const Navbar = () => {
             textDecoration: 'none',
           }}
         >
-          Azone
+          Diremart
         </Typography>
         <IconButton onClick={handleDrawerToggle}>
           <CloseIcon />
@@ -650,7 +650,7 @@ const Navbar = () => {
   return (
     <>
       {/* Top Bar - Similar to AliExpress */}
-      <TopBar>
+      <TopBar sx={{ marginTop: { xs: '56px', sm: '64px' } }}>
         <Container maxWidth="xl">
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: { xs: 1, sm: 2 } }}>
             {/* Left side links */}
@@ -738,8 +738,8 @@ const Navbar = () => {
           borderRadius: 0,
           boxShadow: 'none',
           borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-          backgroundColor: theme.palette.mode === 'dark' ? '#1A1A1A' : '#FF4747', // AliExpress red color
-          position: { xs: 'fixed', md: 'sticky' }, // Fixed position for mobile, sticky for desktop
+          backgroundColor: theme.palette.mode === 'dark' ? '#D16620' : '#ED782A', // New brand color
+          position: 'fixed', // Fixed position for all screen sizes
           top: 0,
           zIndex: 1100,
         }}
@@ -771,7 +771,7 @@ const Navbar = () => {
                 textDecoration: 'none',
               }}
             >
-              Azone
+              Diremart
             </Typography>
 
             {/* Mobile Logo */}
@@ -788,7 +788,7 @@ const Navbar = () => {
                 textDecoration: 'none',
               }}
             >
-              Azone
+              Diremart
             </Typography>
 
             {/* Categories Button (Desktop) */}
@@ -887,6 +887,23 @@ const Navbar = () => {
                 }}
               >
                 {t('products')}
+              </Button>
+
+              <Button
+                component={RouterLink}
+                to="/support"
+                sx={{
+                  my: 2,
+                  color: 'white',
+                  display: 'block',
+                  mx: 1,
+                  '&:hover': {
+                    backgroundColor: alpha('#fff', 0.1),
+                  },
+                  borderRadius: 0,
+                }}
+              >
+                Support
               </Button>
             </Box>
 

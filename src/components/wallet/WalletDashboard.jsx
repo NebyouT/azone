@@ -95,6 +95,7 @@ const WalletDashboard = () => {
     withdrawFunds,
     processingPayment,
     updateWalletData,
+    withdrawalRequests
   } = useWallet();
   const { t } = useLanguage();
   const { currentUser } = useAuth();
@@ -112,6 +113,12 @@ const WalletDashboard = () => {
   const [dateFilter, setDateFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [openFilters, setOpenFilters] = useState(false);
+  const [withdrawalMethod, setWithdrawalMethod] = useState('');
+  const [bankDetails, setBankDetails] = useState({
+    accountName: '',
+    accountNumber: ''
+  });
+  const isMobile = false; // This should be replaced with a proper hook or state
 
   // Handle tab change
   const handleTabChange = (event, newValue) => {
@@ -212,6 +219,8 @@ const WalletDashboard = () => {
     }
   };
 
+  // State for withdrawal form is already declared above
+
   // Handle withdraw
   const handleWithdraw = async () => {
     if (!amount || parseFloat(amount) <= 0) {
@@ -224,13 +233,47 @@ const WalletDashboard = () => {
       return;
     }
 
+    if (!withdrawalMethod) {
+      setLocalError('Please select a withdrawal method');
+      return;
+    }
+
+    if (!bankDetails.accountName) {
+      setLocalError('Please enter account name');
+      return;
+    }
+
+    if (!bankDetails.accountNumber) {
+      setLocalError('Please enter account number');
+      return;
+    }
+
     setProcessing(true);
-    const result = await withdrawFunds(parseFloat(amount));
+    const result = await withdrawFunds(
+      parseFloat(amount), 
+      withdrawalMethod, 
+      bankDetails
+    );
     setProcessing(false);
 
     if (result) {
       handleCloseWithdraw();
+      // Reset form
+      setWithdrawalMethod('');
+      setBankDetails({
+        accountName: '',
+        accountNumber: ''
+      });
     }
+  };
+
+  // Handle bank details change
+  const handleBankDetailsChange = (e) => {
+    const { name, value } = e.target;
+    setBankDetails(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   // Format currency
@@ -439,235 +482,161 @@ const WalletDashboard = () => {
         </Grid>
       </Paper>
 
-      {/* Tabs */}
-      <Paper
-        elevation={0}
-        sx={{
-          ...glassmorphism(0.8, 10, theme.palette.mode === 'dark'),
-          border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-          overflow: 'hidden',
-          borderRadius: 0,
-        }}
-      >
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs
-            value={tabValue}
-            onChange={handleTabChange}
-            aria-label="wallet tabs"
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            <Tab icon={<HistoryIcon />} iconPosition="start" label="Transactions" />
-            <Tab icon={<BarChartIcon />} iconPosition="start" label="Analytics" />
-            <Tab icon={<CreditCardIcon />} iconPosition="start" label="Payment Methods" />
-            <Tab icon={<SettingsIcon />} iconPosition="start" label="Settings" />
-          </Tabs>
+      {/* Overview Title */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          <WalletIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+          {t('overview')}
+        </Typography>
+      </Box>
+
+      {/* Overview Content */}
+        <Box sx={{ mb: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item grid={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                placeholder="Search transactions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 0 }
+                }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+              />
+            </Grid>
+            <Grid item grid={{ xs: 12, sm: 6 }}>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel id="date-filter-label">Date</InputLabel>
+                  <Select
+                    labelId="date-filter-label"
+                    value={dateFilter}
+                    label="Date"
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    sx={{ borderRadius: 0 }}
+                  >
+                    <MenuItem value="all">All Time</MenuItem>
+                    <MenuItem value="today">Today</MenuItem>
+                    <MenuItem value="week">This Week</MenuItem>
+                    <MenuItem value="month">This Month</MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel id="type-filter-label">Type</InputLabel>
+                  <Select
+                    labelId="type-filter-label"
+                    value={typeFilter}
+                    label="Type"
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    sx={{ borderRadius: 0 }}
+                  >
+                    <MenuItem value="all">All Types</MenuItem>
+                    <MenuItem value="deposit">Deposits</MenuItem>
+                    <MenuItem value="withdrawal">Withdrawals</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Grid>
+          </Grid>
         </Box>
 
-        {/* Transactions Tab */}
-        <TabPanel value={tabValue} index={0}>
-          <Box sx={{ mb: 3 }}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item grid={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  placeholder="Search transactions..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon />
-                      </InputAdornment>
-                    ),
-                    sx: { borderRadius: 0 }
-                  }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                />
-              </Grid>
-              <Grid item grid={{ xs: 12, sm: 6 }}>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel id="date-filter-label">Date</InputLabel>
-                    <Select
-                      labelId="date-filter-label"
-                      value={dateFilter}
-                      label="Date"
-                      onChange={(e) => setDateFilter(e.target.value)}
-                      sx={{ borderRadius: 0 }}
-                    >
-                      <MenuItem value="all">All Time</MenuItem>
-                      <MenuItem value="today">Today</MenuItem>
-                      <MenuItem value="week">This Week</MenuItem>
-                      <MenuItem value="month">This Month</MenuItem>
-                    </Select>
-                  </FormControl>
-                  
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel id="type-filter-label">Type</InputLabel>
-                    <Select
-                      labelId="type-filter-label"
-                      value={typeFilter}
-                      label="Type"
-                      onChange={(e) => setTypeFilter(e.target.value)}
-                      sx={{ borderRadius: 0 }}
-                    >
-                      <MenuItem value="all">All Types</MenuItem>
-                      <MenuItem value="deposit">Deposits</MenuItem>
-                      <MenuItem value="withdrawal">Withdrawals</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-              </Grid>
-            </Grid>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+            <CircularProgress />
           </Box>
+        ) : filteredTransactions.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body1" color="text.secondary">
+              No transactions found
+            </Typography>
+          </Box>
+        ) : (
+          <List sx={{ width: '100%', bgcolor: 'background.paper', p: 0 }}>
+            {filteredTransactions.map((transaction) => (
+              <ListItem
+                key={transaction.id}
+                alignItems="flex-start"
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                  '&:last-child': {
+                    borderBottom: 'none',
+                  },
+                }}
+              >
+                <Box sx={{ display: 'flex', width: '100%', alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      mr: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 40,
+                      height: 40,
+                      backgroundColor: alpha(
+                        getTransactionColor(transaction.type),
+                        0.1
+                      ),
+                      borderRadius: 0,
+                    }}
+                  >
+                    {getTransactionIcon(transaction.type)}
+                  </Box>
 
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
-              <CircularProgress />
-            </Box>
-          ) : filteredTransactions.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography variant="body1" color="text.secondary">
-                No transactions found
-              </Typography>
-            </Box>
-          ) : (
-            <List sx={{ width: '100%', bgcolor: 'background.paper', p: 0 }}>
-              {filteredTransactions.map((transaction) => (
-                <ListItem
-                  key={transaction.id}
-                  alignItems="flex-start"
-                  sx={{
-                    px: 2,
-                    py: 1.5,
-                    borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-                    '&:last-child': {
-                      borderBottom: 'none',
-                    },
-                  }}
-                >
-                  <Box sx={{ display: 'flex', width: '100%', alignItems: 'center' }}>
-                    <Box
-                      sx={{
-                        mr: 2,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: 40,
-                        height: 40,
-                        backgroundColor: alpha(
-                          getTransactionColor(transaction.type),
-                          0.1
-                        ),
-                        borderRadius: 0,
-                      }}
-                    >
-                      {getTransactionIcon(transaction.type)}
-                    </Box>
-
-                    <Box sx={{ flexGrow: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="subtitle1">
-                          {transaction.type === 'deposit'
-                            ? t('depositedFunds')
-                            : t('withdrewFunds')}
-                        </Typography>
-                        <Typography
-                          variant="subtitle1"
-                          sx={{
-                            color: getTransactionColor(transaction.type),
-                            fontWeight: 'bold',
-                          }}
-                        >
-                          {transaction.type === 'deposit' ? '+' : '-'}
-                          {formatCurrency(transaction.amount)}
-                        </Typography>
-                      </Box>
-
-                      <Box
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="subtitle1">
+                        {transaction.type === 'deposit'
+                          ? t('depositedFunds')
+                          : t('withdrewFunds')}
+                      </Typography>
+                      <Typography
+                        variant="subtitle1"
                         sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
+                          color: getTransactionColor(transaction.type),
+                          fontWeight: 'bold',
                         }}
                       >
-                        <Typography variant="body2" color="text.secondary">
-                          {transaction.description || (transaction.method === 'chapa' ? 'Via Chapa Payment' : 'Manual transaction')}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                          color="text.secondary"
-                        >
-                          <AccessTimeIcon fontSize="inherit" />
-                          {transaction.timestamp
-                            ? format(transaction.timestamp, 'MMM dd, yyyy HH:mm')
-                            : 'Unknown date'}
-                        </Typography>
-                      </Box>
+                        {transaction.type === 'deposit' ? '+' : '-'}
+                        {formatCurrency(transaction.amount)}
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Typography variant="body2" color="text.secondary">
+                        {transaction.description || (transaction.method === 'chapa' ? 'Via Chapa Payment' : 'Manual transaction')}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                        color="text.secondary"
+                      >
+                        <AccessTimeIcon fontSize="inherit" />
+                        {transaction.timestamp
+                          ? format(transaction.timestamp, 'MMM dd, yyyy HH:mm')
+                          : 'Unknown date'}
+                      </Typography>
                     </Box>
                   </Box>
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </TabPanel>
-
-        {/* Analytics Tab */}
-        <TabPanel value={tabValue} index={1}>
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <TimelineIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6">Transaction Analytics</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Visualize your spending patterns and transaction history
-            </Typography>
-            <Button 
-              variant="outlined" 
-              sx={{ mt: 3, borderRadius: 0 }}
-              startIcon={<BarChartIcon />}
-            >
-              Generate Report
-            </Button>
-          </Box>
-        </TabPanel>
-
-        {/* Payment Methods Tab */}
-        <TabPanel value={tabValue} index={2}>
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <CreditCardIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6">Payment Methods</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Manage your payment methods and preferences
-            </Typography>
-            <Button 
-              variant="outlined" 
-              sx={{ mt: 3, borderRadius: 0 }}
-              startIcon={<AddIcon />}
-            >
-              Add Payment Method
-            </Button>
-          </Box>
-        </TabPanel>
-
-        {/* Settings Tab */}
-        <TabPanel value={tabValue} index={3}>
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <SettingsIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6">Wallet Settings</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Configure your wallet preferences and security settings
-            </Typography>
-            <Button 
-              variant="outlined" 
-              sx={{ mt: 3, borderRadius: 0 }}
-              startIcon={<NotificationsIcon />}
-            >
-              Notification Preferences
-            </Button>
-          </Box>
-        </TabPanel>
-      </Paper>
+                </Box>
+              </ListItem>
+            ))}
+          </List>
+        )}
 
       {/* Deposit Dialog */}
       <Dialog open={openDeposit} onClose={handleCloseDeposit}>
@@ -714,31 +683,94 @@ const WalletDashboard = () => {
       </Dialog>
 
       {/* Withdraw Dialog */}
-      <Dialog open={openWithdraw} onClose={handleCloseWithdraw}>
+      <Dialog 
+        open={openWithdraw} 
+        onClose={handleCloseWithdraw}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>{t('withdraw')}</DialogTitle>
         <DialogContent>
-          <DialogContentText>
+          <DialogContentText sx={{ mb: 2 }}>
             {t('enterAmountToWithdraw')}
           </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label={t('amount')}
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={amount}
-            onChange={handleAmountChange}
-            error={!!localError}
-            helperText={localError}
-            InputProps={{
-              startAdornment: <Box component="span" sx={{ mr: 1 }}>ETB</Box>,
-              sx: { borderRadius: 0 }
-            }}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-          />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {t('availableBalance')}: {formatCurrency(balance)}
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                margin="dense"
+                label={t('amount')}
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={amount}
+                onChange={handleAmountChange}
+                error={!!localError}
+                InputProps={{
+                  startAdornment: <Box component="span" sx={{ mr: 1 }}>ETB</Box>,
+                  sx: { borderRadius: 0 }
+                }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+                {t('availableBalance')}: {formatCurrency(balance)}
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+                <InputLabel id="withdrawal-method-label">Withdrawal Method</InputLabel>
+                <Select
+                  labelId="withdrawal-method-label"
+                  value={withdrawalMethod}
+                  onChange={(e) => setWithdrawalMethod(e.target.value)}
+                  label="Withdrawal Method"
+                  sx={{ borderRadius: 0 }}
+                >
+                  <MenuItem value="">Select a method</MenuItem>
+                  <MenuItem value="telebirr">TeleBirr</MenuItem>
+                  <MenuItem value="cbe">Commercial Bank of Ethiopia (CBE)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                margin="dense"
+                label="Account Name"
+                name="accountName"
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={bankDetails.accountName}
+                onChange={handleBankDetailsChange}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 }, mb: 2 }}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                margin="dense"
+                label={withdrawalMethod === 'telebirr' ? 'TeleBirr Number' : 'Account Number'}
+                name="accountNumber"
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={bankDetails.accountNumber}
+                onChange={handleBankDetailsChange}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+              />
+            </Grid>
+          </Grid>
+          
+          {localError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {localError}
+            </Alert>
+          )}
+          
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Note: Withdrawal requests are subject to approval. Once approved, funds will be transferred to your account.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -749,7 +781,7 @@ const WalletDashboard = () => {
             disabled={processing || !amount || parseFloat(amount) > balance}
             sx={{ borderRadius: 0 }}
           >
-            {processing ? <CircularProgress size={24} /> : t('withdraw')}
+            {processing ? <CircularProgress size={24} /> : 'Submit Request'}
           </Button>
         </DialogActions>
       </Dialog>

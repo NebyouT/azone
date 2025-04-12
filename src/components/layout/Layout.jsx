@@ -20,11 +20,11 @@ const Layout = () => {
         maxWidth: '100%',
         background: theme.palette.background.default,
         backgroundImage: `
-          radial-gradient(at 40% 20%, rgba(${isDark ? '0, 188, 212' : '0, 188, 212'}, 0.1) 0px, transparent 50%),
-          radial-gradient(at 80% 0%, rgba(${isDark ? '255, 152, 0' : '255, 152, 0'}, 0.1) 0px, transparent 50%),
-          radial-gradient(at 0% 50%, rgba(${isDark ? '33, 150, 243' : '33, 150, 243'}, 0.1) 0px, transparent 50%),
-          radial-gradient(at 80% 50%, rgba(${isDark ? '0, 188, 212' : '0, 188, 212'}, 0.1) 0px, transparent 50%),
-          radial-gradient(at 0% 100%, rgba(${isDark ? '255, 87, 34' : '255, 87, 34'}, 0.1) 0px, transparent 50%)
+          radial-gradient(at 40% 20%, rgba(${isDark ? '237, 120, 42' : '237, 120, 42'}, 0.05) 0px, transparent 50%),
+          radial-gradient(at 80% 0%, rgba(${isDark ? '245, 155, 86' : '245, 155, 86'}, 0.05) 0px, transparent 50%),
+          radial-gradient(at 0% 50%, rgba(${isDark ? '209, 102, 32' : '209, 102, 32'}, 0.05) 0px, transparent 50%),
+          radial-gradient(at 80% 50%, rgba(${isDark ? '237, 120, 42' : '237, 120, 42'}, 0.05) 0px, transparent 50%),
+          radial-gradient(at 0% 100%, rgba(${isDark ? '245, 155, 86' : '245, 155, 86'}, 0.05) 0px, transparent 50%)
         `,
         backgroundSize: 'cover',
         backgroundAttachment: 'fixed',
@@ -51,7 +51,8 @@ const Layout = () => {
           },
           paddingTop: {
             xs: '80px', 
-            md: '32px'  
+            sm: '100px',
+            md: '100px'  
           },
           paddingBottom: isMobile ? '80px' : undefined, 
           position: 'relative',
@@ -63,7 +64,7 @@ const Layout = () => {
             left: 0,
             right: 0,
             height: '100px',
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.02), transparent)',
+            background: 'linear-gradient(to bottom, rgba(237,120,42,0.03), transparent)',
             pointerEvents: 'none',
             zIndex: -1,
           },

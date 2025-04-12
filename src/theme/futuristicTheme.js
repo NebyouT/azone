@@ -2,11 +2,11 @@ import { createTheme } from '@mui/material/styles';
 
 // Define gradient colors
 const gradients = {
-  primary: 'linear-gradient(135deg, #00BCD4 0%, #2196F3 100%)',
-  secondary: 'linear-gradient(135deg, #FF9800 0%, #FF5722 100%)',
+  primary: 'linear-gradient(135deg, #ED782A 0%, #F59B56 100%)',
+  secondary: 'linear-gradient(135deg, #F59B56 0%, #ED782A 100%)',
   dark: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
-  light: 'linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)',
-  accent: 'linear-gradient(135deg, #FF9800 0%, #F44336 100%)',
+  light: 'linear-gradient(135deg, #FFFFFF 0%, #F8F8F8 100%)',
+  accent: 'linear-gradient(135deg, #ED782A 0%, #D16620 100%)',
   glass: 'rgba(255, 255, 255, 0.1)',
   glassDark: 'rgba(0, 0, 0, 0.1)',
 };
@@ -16,19 +16,19 @@ const lightTheme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#00BCD4',
-      light: '#4DD0E1',
-      dark: '#0097A7',
+      main: '#ED782A',
+      light: '#F59B56',
+      dark: '#D16620',
       contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#FF9800',
-      light: '#FFB74D',
-      dark: '#F57C00',
-      contrastText: '#FFFFFF',
+      main: '#FFFFFF',
+      light: '#FFFFFF',
+      dark: '#F0F0F0',
+      contrastText: '#ED782A',
     },
     background: {
-      default: '#F8FAFC',
+      default: '#FFFFFF',
       paper: '#FFFFFF',
       gradient: gradients.light,
     },
@@ -112,7 +112,7 @@ const lightTheme = createTheme({
     },
   },
   shape: {
-    borderRadius: 12,
+    borderRadius: 0,
   },
   shadows: [
     'none',
@@ -145,14 +145,15 @@ const lightTheme = createTheme({
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
+          borderRadius: 0,
           textTransform: 'none',
           fontWeight: 600,
-          boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.05)',
+          boxShadow: 'none',
           transition: 'all 0.2s ease-in-out',
           '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.1)',
+            transform: 'none',
+            boxShadow: 'none',
+            opacity: 0.9,
           },
         },
         contained: {
@@ -171,13 +172,13 @@ const lightTheme = createTheme({
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 16,
-          boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.05)',
-          transition: 'all 0.3s ease-in-out',
+          borderRadius: 0,
+          boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.05)',
+          transition: 'all 0.2s ease-in-out',
           overflow: 'hidden',
           '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: '0px 16px 32px rgba(0, 0, 0, 0.1)',
+            transform: 'none',
+            boxShadow: '0px 2px 5px rgba(0, 0, 0, 0.1)',
           },
         },
       },
@@ -185,23 +186,23 @@ const lightTheme = createTheme({
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: 16,
+          borderRadius: 0,
         },
       },
     },
     MuiAppBar: {
       styleOverrides: {
         root: {
-          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
+          boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.1)',
           backdropFilter: 'blur(8px)',
-          background: 'rgba(255, 255, 255, 0.8)',
+          background: '#ED782A',
         },
       },
     },
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
+          borderRadius: 0,
           fontWeight: 500,
         },
       },
@@ -210,7 +211,7 @@ const lightTheme = createTheme({
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            borderRadius: 8,
+            borderRadius: 0,
           },
         },
       },
@@ -305,9 +306,9 @@ const darkTheme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.2)',
           backdropFilter: 'blur(8px)',
-          background: 'rgba(15, 23, 42, 0.8)',
+          background: '#D16620',
         },
       },
     },
@@ -317,11 +318,11 @@ const darkTheme = createTheme({
 // Helper functions for glassmorphism and other effects
 export const glassmorphism = (opacity = 0.1, blur = 8, isDark = false) => ({
   background: isDark
-    ? `rgba(15, 23, 42, ${opacity})`
-    : `rgba(255, 255, 255, ${opacity})`,
+    ? `rgba(209, 102, 32, ${opacity})`
+    : `rgba(237, 120, 42, ${opacity})`,
   backdropFilter: `blur(${blur}px)`,
   WebkitBackdropFilter: `blur(${blur}px)`,
-  borderRadius: 16,
+  borderRadius: 0,
 });
 
 export const gradientText = (gradient) => ({
@@ -333,10 +334,11 @@ export const gradientText = (gradient) => ({
 });
 
 export const cardHoverEffect = {
-  transition: 'all 0.3s ease-in-out',
+  transition: 'all 0.2s ease-in-out',
   '&:hover': {
-    transform: 'translateY(-8px)',
-    boxShadow: '0px 16px 32px rgba(0, 0, 0, 0.1)',
+    transform: 'none',
+    boxShadow: '0px 2px 5px rgba(0, 0, 0, 0.1)',
+    opacity: 0.95,
   },
 };
 

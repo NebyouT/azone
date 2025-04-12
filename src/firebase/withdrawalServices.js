@@ -23,15 +23,14 @@ export const WITHDRAWAL_STATUS = {
 // Withdrawal method constants
 export const WITHDRAWAL_METHODS = {
   CBE: 'cbe',
-  TELEBIRR: 'telebirr',
-  BANK_TRANSFER: 'bank_transfer'
+  TELEBIRR: 'telebirr'
 };
 
 /**
  * Create a withdrawal request
  * @param {string} userId - User ID
  * @param {number} amount - Amount to withdraw
- * @param {string} method - Withdrawal method (cbe, telebirr, bank_transfer)
+ * @param {string} method - Withdrawal method (cbe, telebirr)
  * @param {object} bankDetails - Bank details for the withdrawal
  * @returns {Promise<object>} - Created withdrawal request
  */
@@ -48,16 +47,22 @@ export const createWithdrawalRequest = async (userId, amount, method, bankDetail
     }
     
     // Validate bank details based on method
-    if (method === WITHDRAWAL_METHODS.CBE && !bankDetails.accountNumber) {
-      throw new Error('CBE account number is required');
+    if (method === WITHDRAWAL_METHODS.CBE) {
+      if (!bankDetails.accountNumber) {
+        throw new Error('CBE account number is required');
+      }
+      if (!bankDetails.accountName) {
+        throw new Error('Account name is required');
+      }
     }
     
-    if (method === WITHDRAWAL_METHODS.TELEBIRR && !bankDetails.phoneNumber) {
-      throw new Error('Telebirr phone number is required');
-    }
-    
-    if (!bankDetails.fullName) {
-      throw new Error('Account holder full name is required');
+    if (method === WITHDRAWAL_METHODS.TELEBIRR) {
+      if (!bankDetails.accountNumber) {
+        throw new Error('Telebirr account number is required');
+      }
+      if (!bankDetails.accountName) {
+        throw new Error('Account name is required');
+      }
     }
     
     // Encrypt sensitive data
@@ -68,12 +73,12 @@ export const createWithdrawalRequest = async (userId, amount, method, bankDetail
     if (method === WITHDRAWAL_METHODS.CBE) {
       encryptedDetails = {
         accountNumber: encrypt(bankDetails.accountNumber),
-        fullName: encrypt(bankDetails.fullName)
+        accountName: encrypt(bankDetails.accountName)
       };
     } else if (method === WITHDRAWAL_METHODS.TELEBIRR) {
       encryptedDetails = {
-        phoneNumber: encrypt(bankDetails.phoneNumber),
-        fullName: encrypt(bankDetails.fullName)
+        accountNumber: encrypt(bankDetails.accountNumber),
+        accountName: encrypt(bankDetails.accountName)
       };
     }
     
@@ -84,14 +89,14 @@ export const createWithdrawalRequest = async (userId, amount, method, bankDetail
       encryptedAmount,
       method,
       bankDetails: {
-        ...bankDetails,
-        // Store both encrypted and unencrypted for transition period
+        ...bankDetails
       },
       encryptedDetails,
       status: WITHDRAWAL_STATUS.PENDING,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      notes: 'Withdrawal request created by user'
+      notes: 'Withdrawal request created by user',
+      processed: false
     };
     
     // Add to Firestore

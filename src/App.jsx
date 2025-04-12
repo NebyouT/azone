@@ -5,6 +5,7 @@ import ThemeProvider from './theme/ThemeProvider';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { WalletProvider } from './contexts/WalletContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { ChatProvider } from './contexts/ChatContext';
 
 // Layout
 import Layout from './components/layout/Layout';
@@ -31,6 +32,10 @@ import SellerDashboard from './components/seller/SellerDashboard';
 import ProductForm from './components/seller/ProductForm';
 import SellerOrderDetail from './components/seller/SellerOrderDetail';
 import SellerProfile from './components/seller/SellerProfile';
+
+// Support Components
+import SupportPage from './components/support/SupportPage';
+import ChatWidget from './components/common/ChatWidget';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole }) => {
@@ -59,7 +64,8 @@ const App = () => {
           <CartProvider>
             <WalletProvider>
               <NotificationProvider>
-                <Router>
+                <ChatProvider>
+                  <Router>
                   <Routes>
                     <Route path="/" element={<Layout />}>
                       <Route index element={<HomePage />} />
@@ -120,6 +126,10 @@ const App = () => {
                         } 
                       />
                       <Route 
+                        path="support" 
+                        element={<SupportPage />} 
+                      />
+                      <Route 
                         path="seller/dashboard" 
                         element={
                           <ProtectedRoute requiredRole="seller">
@@ -166,7 +176,9 @@ const App = () => {
                       />
                     </Route>
                   </Routes>
+                  <ChatWidget />
                 </Router>
+                </ChatProvider>
               </NotificationProvider>
             </WalletProvider>
           </CartProvider>

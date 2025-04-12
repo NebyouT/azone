@@ -43,7 +43,7 @@ const Footer = () => {
 
     return (
       <Paper
-        elevation={3}
+        elevation={2}
         sx={{
           position: 'fixed',
           bottom: 0,
@@ -51,8 +51,8 @@ const Footer = () => {
           right: 0,
           zIndex: 1000,
           borderRadius: 0,
-          ...glassmorphism(0.9, 10, isDark),
-          borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+          backgroundColor: isDark ? '#D16620' : '#ED782A',
+          borderTop: `1px solid ${alpha('#FFFFFF', 0.1)}`,
         }}
       >
         <Box
@@ -69,7 +69,7 @@ const Footer = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              color: isActive('/') ? theme.palette.primary.main : theme.palette.text.secondary,
+              color: isActive('/') ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
               textDecoration: 'none',
               fontSize: '0.7rem',
               width: '20%',
@@ -88,7 +88,7 @@ const Footer = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              color: isActive('/products') ? theme.palette.primary.main : theme.palette.text.secondary,
+              color: isActive('/products') ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
               textDecoration: 'none',
               fontSize: '0.7rem',
               width: '20%',
@@ -107,7 +107,7 @@ const Footer = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              color: isActive('/search') ? theme.palette.primary.main : theme.palette.text.secondary,
+              color: isActive('/search') ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
               textDecoration: 'none',
               fontSize: '0.7rem',
               width: '20%',
@@ -144,7 +144,7 @@ const Footer = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              color: isActive('/cart') ? theme.palette.primary.main : theme.palette.text.secondary,
+              color: isActive('/cart') ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
               textDecoration: 'none',
               fontSize: '0.7rem',
               width: '20%',
@@ -187,7 +187,7 @@ const Footer = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              color: isActive('/profile') ? theme.palette.primary.main : theme.palette.text.secondary,
+              color: isActive('/profile') ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
               textDecoration: 'none',
               fontSize: '0.7rem',
               width: '20%',
@@ -216,8 +216,8 @@ const Footer = () => {
         color: 'text.primary',
         py: { xs: 4, md: 6 },
         mt: 'auto',
-        ...glassmorphism(0.8, 10, isDark),
-        borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+        background: isDark ? '#D16620' : '#ED782A',
+        borderTop: `1px solid ${alpha('#FFFFFF', 0.1)}`,
         borderRadius: 0,
         '&::before': {
           content: '""',
@@ -247,7 +247,7 @@ const Footer = () => {
                 mb: 2
               }}
             >
-              <TranslationWrapper translationKey="azone">Azone</TranslationWrapper>
+              <TranslationWrapper translationKey="diremart">Diremart</TranslationWrapper>
             </Typography>
             <Typography variant="body2" sx={{ mb: 3, opacity: 0.8 }}>
               <TranslationWrapper translationKey="description">Your one-stop shop for all your shopping needs. Quality products at affordable prices with fast delivery.</TranslationWrapper>
@@ -374,7 +374,7 @@ const Footer = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <EmailIcon fontSize="small" sx={{ mr: 1, color: theme.palette.primary.main }} />
                 <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                  support@azone.com
+                  support@diremart.com
                 </Typography>
               </Box>
             </Box>
@@ -399,7 +399,8 @@ const Footer = () => {
                 variant="contained" 
                 sx={{ 
                   borderRadius: 0,
-                  background: theme.palette.gradients.primary,
+                  background: '#FFFFFF',
+                  color: '#ED782A',
                   minWidth: 'auto'
                 }}
               >
@@ -420,7 +421,7 @@ const Footer = () => {
           opacity: 0.7 
         }}>
           <Typography variant="body2" sx={{ mb: { xs: 2, md: 0 } }}>
-            {currentYear} <TranslationWrapper translationKey="azone">Azone</TranslationWrapper>. <TranslationWrapper translationKey="copyright">All rights reserved.</TranslationWrapper>
+            {currentYear} <TranslationWrapper translationKey="diremart">Diremart</TranslationWrapper>. <TranslationWrapper translationKey="copyright">All rights reserved.</TranslationWrapper>
           </Typography>
           <Box sx={{ display: 'flex', gap: 3 }}>
             <Link color="inherit" underline="hover" component={RouterLink} to="/terms">

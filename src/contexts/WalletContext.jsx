@@ -6,6 +6,11 @@ import {
   withdrawFunds as withdrawFromWallet, 
   getTransactions as fetchTransactions 
 } from '../firebase/walletServices';
+import { 
+  createWithdrawalRequest,
+  getWithdrawalRequests,
+  WITHDRAWAL_METHODS
+} from '../firebase/withdrawalServices';
 import { initializeDeposit, handlePaymentVerification } from '../chapa/services';
 import CHAPA_CONFIG from '../chapa/config';
 
@@ -18,6 +23,7 @@ export const WalletProvider = ({ children }) => {
   
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
+  const [withdrawalRequests, setWithdrawalRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState('');
@@ -116,13 +122,16 @@ export const WalletProvider = ({ children }) => {
   }, [currentUser]);
   
   const fetchWalletData = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError(null);
     
     try {
-      // Get wallet balance
+      // Get wallet data
       const walletData = await getWallet(currentUser.uid);
       
       // Ensure we have a valid wallet with an ID
@@ -146,6 +155,10 @@ export const WalletProvider = ({ children }) => {
       });
       
       setTransactions(sortedTransactions);
+      
+      // Get withdrawal requests
+      const withdrawalData = await getWithdrawalRequests(currentUser.uid);
+      setWithdrawalRequests(withdrawalData);
     } catch (err) {
       console.error('Error fetching wallet data:', err);
       setError('Failed to load wallet data. Please try again.');
@@ -204,7 +217,7 @@ export const WalletProvider = ({ children }) => {
     }
   };
   
-  const withdrawFunds = async (amount) => {
+  const withdrawFunds = async (amount, method, bankDetails) => {
     if (!currentUser) {
       setError('You must be logged in to withdraw funds');
       return false;
@@ -215,18 +228,31 @@ export const WalletProvider = ({ children }) => {
       return false;
     }
     
+    if (!method || !Object.values(WITHDRAWAL_METHODS).includes(method)) {
+      setError('Please select a valid withdrawal method');
+      return false;
+    }
+    
+    if (!bankDetails || !bankDetails.accountName || !bankDetails.accountNumber) {
+      setError('Please provide all required bank details');
+      return false;
+    }
+    
     setLoading(true);
     setError(null);
     
     try {
-      // Withdraw funds from wallet
+      // First, reduce the wallet balance
       await withdrawFromWallet(currentUser.uid, amount);
+      
+      // Then create a withdrawal request
+      await createWithdrawalRequest(currentUser.uid, amount, method, bankDetails);
       
       // Refresh wallet data
       await fetchWalletData();
       
       // Show success message
-      setSuccess(`Successfully withdrew $${amount} from your wallet`);
+      setSuccess(`Withdrawal request for ${amount} ETB has been submitted and is pending approval`);
       
       // Clear success message after 5 seconds
       setTimeout(() => {
@@ -243,6 +269,11 @@ export const WalletProvider = ({ children }) => {
     }
   };
   
+  // Get withdrawal methods
+  const getWithdrawalMethods = () => {
+    return WITHDRAWAL_METHODS;
+  };
+  
   const resetCheckoutUrl = () => {
     setCheckoutUrl(null);
   };
@@ -252,6 +283,7 @@ export const WalletProvider = ({ children }) => {
       value={{
         balance,
         transactions,
+        withdrawalRequests,
         loading,
         error,
         success,
@@ -261,7 +293,8 @@ export const WalletProvider = ({ children }) => {
         withdrawFunds,
         updateWalletData,
         resetCheckoutUrl,
-        refreshWallet: fetchWalletData
+        refreshWallet: fetchWalletData,
+        getWithdrawalMethods
       }}
     >
       {children}
