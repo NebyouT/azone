@@ -496,6 +496,8 @@ export const holdPaymentInEscrow = async (buyerId, amount, orderId) => {
  */
 export const releasePaymentFromEscrow = async (sellerId, orderId, productAmount, deliveryAmount) => {
   try {
+    console.log(`[IMMEDIATE PAYMENT] Starting immediate payment transfer to seller ${sellerId} for order ${orderId}`);
+    
     // Find the escrow record for this order
     const escrowQuery = query(
       collection(db, 'escrow'),
@@ -506,7 +508,9 @@ export const releasePaymentFromEscrow = async (sellerId, orderId, productAmount,
     const escrowSnap = await getDocs(escrowQuery);
     
     if (escrowSnap.empty) {
-      throw new Error('No escrow payment found for this order');
+      console.warn(`[IMMEDIATE PAYMENT] No escrow record found for order ${orderId}. Creating direct payment.`);
+      // If no escrow record exists, we'll still make the payment directly
+      return await createDirectPaymentToSeller(sellerId, orderId, productAmount, deliveryAmount);
     }
     
     const escrowDoc = escrowSnap.docs[0];
@@ -514,15 +518,164 @@ export const releasePaymentFromEscrow = async (sellerId, orderId, productAmount,
     const escrowRef = doc(db, 'escrow', escrowDoc.id);
     
     // Calculate the amount to release to seller (product + delivery, no tax)
-    const releaseAmount = productAmount + deliveryAmount;
+    let releaseAmount = productAmount + deliveryAmount;
+    console.log(`[IMMEDIATE PAYMENT] Releasing ${releaseAmount} ETB to seller ${sellerId}`);
     
     // Ensure we're not releasing more than what's in escrow
     const totalEscrowAmount = escrowData.amount;
     if (releaseAmount > totalEscrowAmount) {
-      throw new Error('Release amount exceeds escrow amount');
+      console.warn(`[IMMEDIATE PAYMENT] Release amount ${releaseAmount} exceeds escrow amount ${totalEscrowAmount}. Adjusting to escrow amount.`);
+      // Instead of throwing an error, adjust to the available amount
+      releaseAmount = totalEscrowAmount;
     }
     
-    // Get seller wallet data
+    // Get seller wallet data - PRIORITY: IMMEDIATE TRANSFER
+    const sellerWalletRef = doc(db, 'wallets', sellerId);
+    const sellerWalletSnap = await getDoc(sellerWalletRef);
+    
+    // Calculate seller balance
+    let sellerCurrentBalance = 0;
+    if (sellerWalletSnap.exists()) {
+      const sellerWalletData = sellerWalletSnap.data();
+      if (sellerWalletData.encryptedBalance) {
+        sellerCurrentBalance = parseFloat(decrypt(sellerWalletData.encryptedBalance));
+      } else {
+        sellerCurrentBalance = sellerWalletData.balance || 0;
+      }
+    }
+    console.log(`[IMMEDIATE PAYMENT] Current seller balance: ${sellerCurrentBalance} ETB`);
+    
+    // Calculate new seller balance
+    const sellerNewBalance = sellerCurrentBalance + releaseAmount;
+    const sellerEncryptedBalance = encrypt(sellerNewBalance.toString());
+    
+    // Prepare transaction data
+    const encryptedAmount = encrypt(releaseAmount.toString());
+    
+    // Perform all writes in a batch for ATOMIC operation
+    const batch = writeBatch(db);
+    
+    // Update escrow status - IMMEDIATELY mark as released
+    batch.update(escrowRef, {
+      status: 'released',
+      releasedAmount: releaseAmount,
+      releasedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      immediateRelease: true // Flag to indicate this was an immediate release
+    });
+    
+    // Update or create seller wallet - IMMEDIATE FUNDS TRANSFER
+    if (sellerWalletSnap.exists()) {
+      batch.update(sellerWalletRef, {
+        encryptedBalance: sellerEncryptedBalance,
+        balance: sellerNewBalance,
+        updatedAt: serverTimestamp(),
+        lastPaymentReceived: serverTimestamp()
+      });
+    } else {
+      batch.set(sellerWalletRef, {
+        userId: sellerId,
+        encryptedBalance: sellerEncryptedBalance,
+        balance: sellerNewBalance,
+        currency: 'ETB',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastPaymentReceived: serverTimestamp(),
+        isActive: true
+      });
+    }
+    
+    // Create seller transaction record with DETAILED information
+    const orderNumber = orderId.substring(0, 8).toUpperCase();
+    const sellerTransactionData = {
+      userId: sellerId,
+      relatedUserId: escrowData.buyerId,
+      type: TRANSACTION_TYPES.ESCROW_RELEASE,
+      encryptedAmount,
+      amount: releaseAmount,
+      currency: 'ETB',
+      orderId,
+      orderNumber,
+      status: TRANSACTION_STATUS.COMPLETED,
+      description: `Payment received for order #${orderNumber} (${productAmount} ETB product + ${deliveryAmount} ETB delivery)`,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      immediate: true // Flag this as an immediate payment
+    };
+    
+    const sellerTransactionRef = doc(collection(db, 'transactions'));
+    batch.set(sellerTransactionRef, sellerTransactionData);
+    
+    // Create a HIGH-PRIORITY notification for the seller
+    const sellerNotificationRef = doc(collection(db, 'users', sellerId, 'notifications'));
+    batch.set(sellerNotificationRef, {
+      type: 'payment_received',
+      priority: 'high',
+      orderId: orderId,
+      orderNumber,
+      amount: releaseAmount,
+      message: `🔔 Payment of ${releaseAmount} ETB has been immediately transferred to your wallet for order #${orderNumber}. Funds are available now!`,
+      read: false,
+      createdAt: serverTimestamp()
+    });
+    
+    // Commit all the writes - IMMEDIATE EXECUTION
+    console.log(`[IMMEDIATE PAYMENT] Committing transaction batch for immediate payment to seller ${sellerId}`);
+    await batch.commit();
+    console.log(`[IMMEDIATE PAYMENT] Successfully transferred ${releaseAmount} ETB to seller ${sellerId}`);
+    
+    // Verify the transfer happened
+    const verifyWalletSnap = await getDoc(sellerWalletRef);
+    if (verifyWalletSnap.exists()) {
+      const verifyData = verifyWalletSnap.data();
+      console.log(`[IMMEDIATE PAYMENT] Verified new seller balance: ${verifyData.balance} ETB`);
+    }
+    
+    return {
+      sellerTransaction: {
+        id: sellerTransactionRef.id,
+        ...sellerTransactionData,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      releaseAmount,
+      immediateTransfer: true
+    };
+  } catch (error) {
+    console.error(`[IMMEDIATE PAYMENT] Error in immediate payment transfer:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Create a direct payment to seller when no escrow record exists
+ * @param {string} sellerId - The seller's user ID
+ * @param {string} orderId - The order ID
+ * @param {number} productAmount - The product price amount
+ * @param {number} deliveryAmount - The delivery cost amount
+ * @returns {Promise<object>} - The transaction object
+ */
+const createDirectPaymentToSeller = async (sellerId, orderId, productAmount, deliveryAmount) => {
+  try {
+    console.log(`[DIRECT PAYMENT] Creating direct payment to seller ${sellerId} for order ${orderId}`);
+    const releaseAmount = productAmount + deliveryAmount;
+    
+    // Get buyer ID from order
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    
+    if (!orderSnap.exists()) {
+      throw new Error(`Order ${orderId} not found for direct payment`);
+    }
+    
+    const orderData = orderSnap.data();
+    const buyerId = orderData.userId;
+    
+    if (!buyerId) {
+      throw new Error('Buyer ID not found in order data');
+    }
+    
+    // Get seller wallet
     const sellerWalletRef = doc(db, 'wallets', sellerId);
     const sellerWalletSnap = await getDoc(sellerWalletRef);
     
@@ -543,24 +696,18 @@ export const releasePaymentFromEscrow = async (sellerId, orderId, productAmount,
     
     // Prepare transaction data
     const encryptedAmount = encrypt(releaseAmount.toString());
+    const orderNumber = orderId.substring(0, 8).toUpperCase();
     
-    // Perform all writes in a batch
+    // Create batch
     const batch = writeBatch(db);
-    
-    // Update escrow status
-    batch.update(escrowRef, {
-      status: 'released',
-      releasedAmount: releaseAmount,
-      releasedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
     
     // Update or create seller wallet
     if (sellerWalletSnap.exists()) {
       batch.update(sellerWalletRef, {
         encryptedBalance: sellerEncryptedBalance,
         balance: sellerNewBalance,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        lastPaymentReceived: serverTimestamp()
       });
     } else {
       batch.set(sellerWalletRef, {
@@ -570,40 +717,60 @@ export const releasePaymentFromEscrow = async (sellerId, orderId, productAmount,
         currency: 'ETB',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        lastPaymentReceived: serverTimestamp(),
         isActive: true
       });
     }
     
-    // Create seller transaction record
+    // Create transaction record
     const sellerTransactionData = {
       userId: sellerId,
-      relatedUserId: escrowData.buyerId,
-      type: TRANSACTION_TYPES.ESCROW_RELEASE,
+      relatedUserId: buyerId,
+      type: TRANSACTION_TYPES.DIRECT_PAYMENT,
       encryptedAmount,
       amount: releaseAmount,
       currency: 'ETB',
       orderId,
+      orderNumber,
       status: TRANSACTION_STATUS.COMPLETED,
-      description: `Payment received for order #${orderId} (product + delivery only)`,
+      description: `Direct payment received for order #${orderNumber} (${productAmount} ETB product + ${deliveryAmount} ETB delivery)`,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
+      immediate: true
     };
     
     const sellerTransactionRef = doc(collection(db, 'transactions'));
     batch.set(sellerTransactionRef, sellerTransactionData);
     
-    // Commit all the writes
+    // Create high priority notification
+    const sellerNotificationRef = doc(collection(db, 'users', sellerId, 'notifications'));
+    batch.set(sellerNotificationRef, {
+      type: 'payment_received',
+      priority: 'high',
+      orderId: orderId,
+      orderNumber,
+      amount: releaseAmount,
+      message: `🔔 Payment of ${releaseAmount} ETB has been immediately transferred to your wallet for order #${orderNumber}. Funds are available now!`,
+      read: false,
+      createdAt: serverTimestamp()
+    });
+    
+    // Commit batch
     await batch.commit();
+    console.log(`[DIRECT PAYMENT] Successfully transferred ${releaseAmount} ETB directly to seller ${sellerId}`);
     
     return {
       sellerTransaction: {
         id: sellerTransactionRef.id,
         ...sellerTransactionData,
-        amount: releaseAmount
-      }
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      releaseAmount,
+      directPayment: true
     };
   } catch (error) {
-    console.error('Error releasing payment from escrow:', error);
+    console.error(`[DIRECT PAYMENT] Error in direct payment:`, error);
     throw error;
   }
 };

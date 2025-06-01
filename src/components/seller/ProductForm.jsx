@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { uploadImage } from '../../cloudinary/services';
 import {
   Container,
   Typography,
@@ -511,6 +512,56 @@ const ProductForm = () => {
     }
   };
   
+  const handleVariantImageChange = (index, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setFormErrors(prev => {
+        const updatedErrors = { ...prev };
+        if (!updatedErrors.variants) updatedErrors.variants = [];
+        if (!updatedErrors.variants[index]) updatedErrors.variants[index] = {};
+        updatedErrors.variants[index].imageUrl = 'Please upload a valid image file (JPEG, PNG, or WebP)';
+        return updatedErrors;
+      });
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setFormErrors(prev => {
+        const updatedErrors = { ...prev };
+        if (!updatedErrors.variants) updatedErrors.variants = [];
+        if (!updatedErrors.variants[index]) updatedErrors.variants[index] = {};
+        updatedErrors.variants[index].imageUrl = 'Image size should be less than 5MB';
+        return updatedErrors;
+      });
+      return;
+    }
+    
+    // Clear any previous errors
+    if (formErrors.variants && formErrors.variants[index] && formErrors.variants[index].imageUrl) {
+      const updatedErrors = { ...formErrors };
+      updatedErrors.variants[index].imageUrl = '';
+      setFormErrors(updatedErrors);
+    }
+    
+    // Create preview and update variant
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const updatedVariants = [...variants];
+      updatedVariants[index] = { 
+        ...updatedVariants[index], 
+        imageUrl: reader.result,
+        imageFile: file // Store the actual file for later upload
+      };
+      setVariants(updatedVariants);
+    };
+    reader.readAsDataURL(file);
+  };
+  
   const validateForm = () => {
     const errors = {};
     
@@ -612,35 +663,39 @@ const ProductForm = () => {
       }
     }
     
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
   };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     
-    if (!validateForm()) {
+    // Validate all fields
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      
       // Find the tab with errors and switch to it
-      if (formErrors.name || formErrors.description || formErrors.shortDescription || 
-          formErrors.category || formErrors.subcategory) {
+      if (errors.name || errors.description || errors.shortDescription || 
+          errors.category || errors.subcategory) {
         setActiveTab(0); // Basic Information tab
-      } else if (formErrors.image || formErrors.additionalImages || formErrors.variants) {
+      } else if (errors.image || errors.additionalImages || errors.variants) {
         setActiveTab(1); // Images & Variants tab
-      } else if (formErrors.price || formErrors.discount || formErrors.discountEndDate) {
+      } else if (errors.price || errors.discount || errors.discountEndDate) {
         setActiveTab(2); // Pricing & Discount tab
-      } else if (formErrors.quantity || formErrors.lowStockThreshold) {
+      } else if (errors.quantity || errors.lowStockThreshold) {
         setActiveTab(3); // Inventory tab
-      } else if (formErrors.shippingCost || formErrors.estimatedDeliveryDays) {
+      } else if (errors.shippingCost || errors.estimatedDeliveryDays) {
         setActiveTab(4); // Shipping tab
-      } else if (formErrors.returnPolicy) {
+      } else if (errors.returnPolicy) {
         setActiveTab(5); // Return & Refund tab
       }
       return;
     }
     
+    setLoading(true);
+    setError('');
+    
     try {
-      setLoading(true);
       
       // Prepare product data
       const productData = {
@@ -697,6 +752,40 @@ const ProductForm = () => {
         additionalImages: additionalImages,
         imageUrl: imagePreview // Keep existing image URL if no new image is uploaded
       };
+      
+      // First upload all variant images to Cloudinary if they exist
+      if (formData.hasVariants && variants.length > 0) {
+        const variantsWithUploadedImages = await Promise.all(
+          variants.map(async (variant) => {
+            // If the variant has an imageFile (newly uploaded), upload it to Cloudinary
+            if (variant.imageFile) {
+              try {
+                // Upload the file to Cloudinary using the service
+                const imageUrl = await uploadImage(variant.imageFile, 'variants');
+                
+                // Create a new variant object without the file and preview properties
+                const { imageFile, imagePreview, ...variantWithoutFileData } = variant;
+                return { 
+                  ...variantWithoutFileData,
+                  imageUrl // Use the Cloudinary URL
+                };
+              } catch (uploadError) {
+                console.error('Error uploading variant image:', uploadError);
+                // If upload fails, create a new variant object without the file and preview properties
+                const { imageFile, imagePreview, ...variantWithoutFileData } = variant;
+                return variantWithoutFileData;
+              }
+            }
+            // For variants without new image files, make sure to remove any file objects
+            // to prevent Firebase errors with undefined values
+            const { imageFile, imagePreview, ...variantWithoutFileData } = variant;
+            return variantWithoutFileData;
+          })
+        );
+
+        // Update the product data with the uploaded variant images
+        productData.variants = variantsWithUploadedImages;
+      }
       
       if (isEditMode) {
         // Update existing product
@@ -1216,7 +1305,7 @@ const ProductForm = () => {
                                 label="Price"
                                 type="number"
                                 InputProps={{
-                                  startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                  startAdornment: <InputAdornment position="start">ETB</InputAdornment>,
                                 }}
                                 value={variant.price}
                                 onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
@@ -1233,6 +1322,65 @@ const ProductForm = () => {
                                 value={variant.quantity}
                                 onChange={(e) => handleVariantChange(index, 'quantity', e.target.value)}
                               />
+                            </Grid>
+                            
+                            <Grid item xs={12}>
+                              <Typography variant="subtitle2" gutterBottom>
+                                Variant Image
+                              </Typography>
+                              
+                              <Box sx={{ 
+                                display: 'flex', 
+                                alignItems: 'center',
+                                gap: 2,
+                                mb: 2
+                              }}>
+                                {variant.imageUrl ? (
+                                  <Box
+                                    sx={{
+                                      width: 80,
+                                      height: 80,
+                                      border: theme => `1px solid ${theme.palette.divider}`,
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    <img
+                                      src={variant.imageUrl}
+                                      alt={`Variant ${index + 1} preview`}
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                  </Box>
+                                ) : (
+                                  <Box
+                                    sx={{
+                                      width: 80,
+                                      height: 80,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      border: theme => `1px dashed ${theme.palette.divider}`,
+                                      bgcolor: 'background.default',
+                                    }}
+                                  >
+                                    <ImageIcon color="disabled" />
+                                  </Box>
+                                )}
+                                
+                                <Button
+                                  variant="outlined"
+                                  component="label"
+                                  startIcon={<UploadIcon />}
+                                  size="small"
+                                >
+                                  {variant.imageUrl ? 'Change Image' : 'Upload Image'}
+                                  <input
+                                    type="file"
+                                    hidden
+                                    accept="image/*"
+                                    onChange={(e) => handleVariantImageChange(index, e)}
+                                  />
+                                </Button>
+                              </Box>
                             </Grid>
                           </Grid>
                         </Paper>
@@ -1273,7 +1421,7 @@ const ProductForm = () => {
                     name="price"
                     type="number"
                     InputProps={{
-                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                      startAdornment: <InputAdornment position="start">ETB</InputAdornment>,
                     }}
                     value={formData.price}
                     onChange={handleChange}
@@ -1454,7 +1602,7 @@ const ProductForm = () => {
                       name="shippingCost"
                       type="number"
                       InputProps={{
-                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                        startAdornment: <InputAdornment position="start">ETB</InputAdornment>,
                       }}
                       value={formData.shippingCost}
                       onChange={handleChange}

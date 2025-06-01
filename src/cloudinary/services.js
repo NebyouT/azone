@@ -9,6 +9,11 @@ import { cloudinaryConfig } from './config';
  */
 export const uploadImage = async (imageFile, folder = 'products') => {
   try {
+    if (!imageFile || !(imageFile instanceof File || imageFile instanceof Blob)) {
+      console.error('Invalid file object provided to uploadImage:', imageFile);
+      throw new Error('Invalid file provided for upload');
+    }
+
     // Create a FormData object to send the file
     const formData = new FormData();
     formData.append('file', imageFile);
@@ -16,6 +21,7 @@ export const uploadImage = async (imageFile, folder = 'products') => {
     formData.append('folder', folder);
 
     // Make the upload request to Cloudinary's upload API
+    // Let axios handle the Content-Type header automatically for FormData
     const response = await axios.post(
       `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloud_name}/image/upload`,
       formData
@@ -25,6 +31,9 @@ export const uploadImage = async (imageFile, folder = 'products') => {
     return response.data.secure_url;
   } catch (error) {
     console.error('Error uploading image to Cloudinary:', error);
+    if (error.response && error.response.data) {
+      console.error('Cloudinary error details:', error.response.data);
+    }
     throw new Error('Failed to upload image. Please try again.');
   }
 };

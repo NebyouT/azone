@@ -311,7 +311,7 @@ const ProductCard = ({ product }) => {
               color="primary.main"
               sx={{ fontWeight: 'bold', mr: 1, fontSize: isMobile ? '0.9rem' : 'inherit' }}
             >
-              ${discountedPrice.toFixed(2)}
+              ETB {discountedPrice.toFixed(2)}
             </Typography>
             
             {product.discount > 0 && (
@@ -321,7 +321,7 @@ const ProductCard = ({ product }) => {
                 color="text.secondary"
                 sx={{ textDecoration: 'line-through' }}
               >
-                ${product.price.toFixed(2)}
+                ETB {product.price.toFixed(2)}
               </Typography>
             )}
           </Box>

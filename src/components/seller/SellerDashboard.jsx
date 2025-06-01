@@ -173,8 +173,10 @@ const SellerDashboard = () => {
         const sellerProducts = await getSellerProducts(currentUser.uid);
         setProducts(sellerProducts);
         
-        // Fetch seller's orders
+        // Fetch all seller orders
+        console.log(`Fetching all orders for seller: ${currentUser.uid}`);
         const sellerOrders = await getSellerOrders(currentUser.uid);
+        console.log(`Found ${sellerOrders.length} orders for this seller`, sellerOrders);
         setOrders(sellerOrders);
         
         // Fetch shop settings
@@ -697,11 +699,11 @@ const SellerDashboard = () => {
                         <TableCell align="center">
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                              ${product.price.toFixed(2)}
+                              {formatCurrency(product.price)}
                             </Typography>
                             {product.discountPrice && (
                               <Typography variant="caption" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
-                                ${product.originalPrice?.toFixed(2)}
+                                {formatCurrency(product.originalPrice)}
                               </Typography>
                             )}
                           </Box>
@@ -719,20 +721,28 @@ const SellerDashboard = () => {
                           </Typography>
                         </TableCell>
                         <TableCell align="center">
-                          <Chip 
-                            label={product.inStock ? 'Active' : 'Inactive'} 
-                            color={product.inStock ? 'success' : 'error'} 
-                            size="small"
-                            sx={{ borderRadius: 0 }}
-                          />
+                          <Box>
+                            <Chip 
+                              label={product.inStock ? 'Active' : 'Inactive'} 
+                              color={product.inStock ? 'success' : 'error'} 
+                              size="small"
+                              sx={{ borderRadius: 0, mb: !product.inStock && product.inactiveReason ? 1 : 0 }}
+                            />
+                            {!product.inStock && product.inactiveReason && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                Reason: {product.inactiveReason}
+                              </Typography>
+                            )}
+                          </Box>
                         </TableCell>
                         <TableCell align="center">
                           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                             <IconButton 
                               size="small" 
                               color="primary"
-                              onClick={() => navigate(`/seller/products/${product.id}/edit`)}
+                              onClick={() => navigate(`/seller/products/${product.id}/quick-edit`)}
                               sx={{ borderRadius: 0 }}
+                              title="Quick Edit"
                             >
                               <EditIcon fontSize="small" />
                             </IconButton>
@@ -747,7 +757,9 @@ const SellerDashboard = () => {
                             <IconButton 
                               size="small" 
                               color="default"
+                              onClick={() => window.open(`/products/${product.id}`, '_blank')}
                               sx={{ borderRadius: 0 }}
+                              title="View Product"
                             >
                               <VisibilityIcon fontSize="small" />
                             </IconButton>
@@ -1061,78 +1073,80 @@ const SellerDashboard = () => {
                 </Box>
 
                 <TableContainer component={Paper} sx={{ borderRadius: 0, border: `1px solid ${alpha(theme.palette.divider, 0.1)}`, display: { xs: 'none', md: 'block' } }}>
-                <Table>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Order ID</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Date</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Customer</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Items</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Total</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {orders.slice(orderPage * ordersPerPage, orderPage * ordersPerPage + ordersPerPage).map((order) => (
-                      <TableRow key={order.id} hover>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                            #{order.id.substring(0, 8)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {formatDate(order.createdAt)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {order.buyerName || 'Customer'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {order.items?.length || 0} {order.items?.length === 1 ? 'item' : 'items'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                            {formatCurrency(order.totalAmount || 0)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={order.status.toUpperCase()}
-                            color={getStatusColor(order.status)}
-                            size="small"
-                            sx={{ borderRadius: 0 }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex' }}>
-                            <IconButton 
-                              size="small" 
-                              color="primary"
-                              onClick={() => navigate(`/seller/orders/${order.id}`)}
-                            >
-                              <VisibilityIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton 
-                              size="small" 
-                              color="secondary"
-                              onClick={() => handleOpenStatusDialog(order, order.status)}
-                              disabled={order.status === 'completed' || order.status === 'cancelled'}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                        </TableCell>
+                  <Table>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Order ID</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Customer</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Items</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Total</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {orders.slice(orderPage * ordersPerPage, orderPage * ordersPerPage + ordersPerPage).map((order) => (
+                        <TableRow key={order.id} hover>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                              #{order.id.substring(0, 8)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {formatDate(order.createdAt)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {order.shippingAddress?.fullName || 'Customer'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {order.items?.length || 0} {order.items?.length === 1 ? 'item' : 'items'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                              {formatCurrency(order.total || 0)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={order.status?.toUpperCase()}
+                              color={getStatusColor(order.status)}
+                              size="small"
+                              sx={{ borderRadius: 0 }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex' }}>
+                              <IconButton 
+                                size="small" 
+                                color="primary"
+                                onClick={() => navigate(`/seller/orders/${order.id}`)}
+                                sx={{ borderRadius: 0 }}
+                              >
+                                <VisibilityIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton 
+                                size="small" 
+                                color="secondary"
+                                onClick={() => handleOpenStatusDialog(order, order.status)}
+                                disabled={order.status === 'completed' || order.status === 'cancelled'}
+                                sx={{ borderRadius: 0 }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               
               <TablePagination
                 component="div"

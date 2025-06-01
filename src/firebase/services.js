@@ -1524,6 +1524,61 @@ export const updateSellerOrderStatus = async (orderDocId, status, cancellationRe
     
     await updateDoc(orderRef, sellerOrderUpdate);
     
+    // Process refund to buyer if the order is being cancelled by seller
+    if (status === 'cancelled') {
+      try {
+        console.log(`==================== SELLER ORDER CANCELLATION REFUND PROCESS ====================`);
+        console.log(`[ORDER CANCEL] Seller ${currentUser.uid} is cancelling order ${orderDocId}`);
+        console.log(`[ORDER CANCEL] Buyer ID: ${orderData.buyerId}`);
+        
+        // Get the total amount to refund including any tax
+        let refundAmount = orderData.total || 0;
+        refundAmount = refundAmount + (refundAmount * 0.15);
+        console.log(`[ORDER CANCEL] Total refund amount (including tax): ${refundAmount} ETB`);
+        
+        if (refundAmount > 0 && orderData.buyerId) {
+          console.log(`[ORDER CANCEL] Starting refund process to buyer wallet...`);
+          
+          // Get buyer's current wallet balance before refund
+          const buyerWalletRef = doc(db, 'wallets', orderData.buyerId);
+          const buyerWalletBefore = await getDoc(buyerWalletRef);
+          const balanceBefore = buyerWalletBefore.exists() ? (buyerWalletBefore.data().balance || 0) : 0;
+          console.log(`[ORDER CANCEL] Buyer wallet balance BEFORE refund: ${balanceBefore} ETB`);
+          
+          // Process the refund to buyer's wallet
+          await directRefundToBuyer(orderData.buyerId, refundAmount, orderDocId);
+          
+          // Verify the refund by checking buyer's wallet balance after refund
+          const buyerWalletAfter = await getDoc(buyerWalletRef);
+          const balanceAfter = buyerWalletAfter.exists() ? (buyerWalletAfter.data().balance || 0) : 0;
+          console.log(`[ORDER CANCEL] Buyer wallet balance AFTER refund: ${balanceAfter} ETB`);
+          console.log(`[ORDER CANCEL] Balance difference: ${balanceAfter - balanceBefore} ETB (should equal ${refundAmount} ETB)`);
+          
+          if (balanceAfter - balanceBefore === refundAmount) {
+            console.log(`[ORDER CANCEL] ✅ REFUND SUCCESSFUL: Funds deposited to buyer wallet successfully`);
+          } else {
+            console.log(`[ORDER CANCEL] ⚠️ REFUND VERIFICATION ISSUE: Expected +${refundAmount} ETB, but balance changed by ${balanceAfter - balanceBefore} ETB`);
+          }
+          
+          // Add refund information to the order
+          await updateDoc(orderRef, {
+            refunded: true,
+            refundAmount,
+            refundDate: serverTimestamp(),
+            refundedBy: currentUser.uid
+          });
+          console.log(`[ORDER CANCEL] Order ${orderDocId} marked as refunded in database`);
+        } else {
+          console.error(`[ORDER CANCEL] ❌ Could not process refund: Invalid amount (${refundAmount}) or missing buyer ID`);
+        }
+        console.log(`==================== END OF REFUND PROCESS ====================`);
+      } catch (refundError) {
+        console.error(`[ORDER CANCEL] ❌ ERROR processing refund for cancelled order:`, refundError);
+        // Continue with order cancellation even if refund fails
+        // We will need to handle this case manually
+      }
+    }
+    
     // If there's a main order, update the status of the seller's items in it
     if (orderData.mainOrderId) {
       try {
@@ -2467,72 +2522,38 @@ const directRefundToBuyer = async (buyerId, amount, orderId) => {
     // Format order number for display
     const orderNumber = orderId.substring(0, 8).toUpperCase();
     
-    console.log(`[REFUND-BUYER-CANCEL] STEP 1: Getting buyer wallet for ${buyerId}`);
-    // Get buyer wallet directly
-    const buyerWalletRef = doc(db, 'wallets', buyerId);
-    const buyerWalletSnap = await getDoc(buyerWalletRef);
+    // Import the addFunds function from walletServices
+    const { addFunds, TRANSACTION_TYPES } = await import('./walletServices.js');
     
-    // If buyer wallet doesn't exist, create it
-    let buyerWallet = { balance: 0 };
-    let currentBalance = 0;
+    console.log(`[REFUND-BUYER-CANCEL] STEP 1: Using addFunds to add refund to buyer wallet`);
     
-    if (buyerWalletSnap.exists()) {
-      buyerWallet = buyerWalletSnap.data();
-      currentBalance = buyerWallet.balance || 0;
-      console.log(`[REFUND-BUYER-CANCEL] STEP 2: Found existing wallet with balance: ${currentBalance} ETB`);
-    } else {
-      console.log(`[REFUND-BUYER-CANCEL] STEP 2: No wallet found for buyer. Creating new wallet.`);
-    }
+    // Use the same addFunds function that Chapa payments use
+    // This ensures the refund appears in the UI like other deposits
+    const result = await addFunds(
+      buyerId, 
+      amount, 
+      'refund', 
+      `Refund for cancelled order #${orderNumber}`
+    );
     
-    // Calculate new balance
-    const newBalance = currentBalance + amount;
-    console.log(`[REFUND-BUYER-CANCEL] STEP 3: Calculating new balance: ${currentBalance} + ${amount} = ${newBalance} ETB`);
+    console.log(`[REFUND-BUYER-CANCEL] STEP 2: Successfully added ${amount} ETB refund to wallet`);
+    console.log(`[REFUND-BUYER-CANCEL] New wallet balance: ${result.balance} ETB`);
     
-    // Update wallet with new balance
-    console.log(`[REFUND-BUYER-CANCEL] STEP 4: Updating buyer wallet to ${newBalance} ETB`);
-    if (buyerWalletSnap.exists()) {
-      await updateDoc(buyerWalletRef, {
-        balance: newBalance,
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      await setDoc(buyerWalletRef, {
-        balance: amount,
-        userId: buyerId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
-    
-    // Create transaction record
-    console.log(`[REFUND-BUYER-CANCEL] STEP 5: Creating refund transaction record`);
-    const refundTransactionRef = doc(collection(db, 'transactions'));
-    await setDoc(refundTransactionRef, {
+    // Also create a separate order-specific refund record
+    console.log(`[REFUND-BUYER-CANCEL] STEP 3: Creating order refund record`);
+    const refundRecordRef = doc(collection(db, 'orderRefunds'));
+    await setDoc(refundRecordRef, {
       userId: buyerId,
       amount: amount,
-      type: 'credit',
-      category: 'refund',
-      description: `Refund for cancelled order #${orderNumber} (buyer cancelled)`,
-      status: 'completed',
       orderId: orderId,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      reason: 'seller_cancelled',
+      transactionId: result.lastTransaction?.id || null,
+      createdAt: serverTimestamp()
     });
-    
-    console.log(`[REFUND-BUYER-CANCEL] STEP 6: Verifying wallet update`);
-    // Verify the wallet was updated
-    const verifyWalletSnap = await getDoc(buyerWalletRef);
-    if (verifyWalletSnap.exists()) {
-      const verifyWallet = verifyWalletSnap.data();
-      console.log(`[REFUND-BUYER-CANCEL] Verified wallet balance after refund: ${verifyWallet.balance} ETB`);
-      if (verifyWallet.balance !== newBalance) {
-        console.warn(`[REFUND-BUYER-CANCEL] WARNING: Balance verification failed. Expected ${newBalance} but got ${verifyWallet.balance}`);
-      }
-    }
     
     console.log(`[REFUND-BUYER-CANCEL] Direct refund processed successfully: ${amount} ETB to buyer ${buyerId} for order ${orderId}`);
     
-    return true;
+    return result;
   } catch (error) {
     console.error(`[REFUND-BUYER-CANCEL] Error processing direct refund for order ${orderId}:`, error);
     throw new Error(`Failed to process refund: ${error.message}`);

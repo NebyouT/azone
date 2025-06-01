@@ -485,18 +485,7 @@ const SavedAddresses = ({
               />
             </Grid>
             
-            <Grid item xs={12}>
-              <TextField
-                required
-                fullWidth
-                label="Street Address"
-                name="address"
-                value={addressForm.address}
-                onChange={handleAddressFormChange}
-                error={formError && !addressForm.address}
-                helperText={formError && !addressForm.address ? 'Street address is required' : ''}
-              />
-            </Grid>
+            
             
             <Grid item xs={12}>
               <Typography variant="subtitle2" gutterBottom>

@@ -54,7 +54,8 @@ import {
   Info as InfoIcon,
   ArrowForward as ArrowForwardIcon,
   ZoomIn as ZoomInIcon,
-  Store as StoreIcon
+  Store as StoreIcon,
+  Check as CheckIcon
 } from '@mui/icons-material';
 import { useCart } from '../../contexts/CartContext';
 import { getProductById, getRelatedProducts, getShopSettings } from '../../firebase/services';
@@ -1223,133 +1224,158 @@ const ProductImageGallery = ({ images, name }) => {
   );
 };
 
-// Product Color and Size Selector component
+// Product Variant Selector component - AliExpress Style
 const ProductVariantSelector = ({ variants, onVariantChange }) => {
   const theme = useTheme();
-  const [selectedColor, setSelectedColor] = useState('');
-  const [selectedSize, setSelectedSize] = useState('');
-  
-  const colors = [...new Set(variants?.map(v => v.color) || [])];
-  const sizes = [...new Set(variants?.filter(v => !selectedColor || v.color === selectedColor).map(v => v.size) || [])];
+  const [selectedVariant, setSelectedVariant] = useState(null);
   
   useEffect(() => {
-    if (colors.length > 0 && !selectedColor) {
-      setSelectedColor(colors[0]);
+    // Initialize with first variant
+    if (variants && variants.length > 0 && !selectedVariant) {
+      setSelectedVariant(variants[0]);
+      onVariantChange(variants[0]);
     }
-  }, [colors]);
+  }, [variants, onVariantChange, selectedVariant]);
   
-  useEffect(() => {
-    if (sizes.length > 0 && !selectedSize) {
-      setSelectedSize(sizes[0]);
-    }
-  }, [sizes, selectedColor]);
+  const handleVariantChange = (variant) => {
+    setSelectedVariant(variant);
+    onVariantChange(variant);
+  };
   
-  useEffect(() => {
-    if (selectedColor && selectedSize) {
-      const variant = variants?.find(v => v.color === selectedColor && v.size === selectedSize);
-      if (variant) {
-        onVariantChange(variant);
-      }
-    }
-  }, [selectedColor, selectedSize, variants, onVariantChange]);
-  
+  if (!variants || variants.length === 0) {
+    return null;
+  }
+
   return (
     <Box sx={{ mb: 3 }}>
-      {colors.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
-            <TranslationWrapper>Color</TranslationWrapper>:
-            {selectedColor && (
-              <Typography component="span" color="text.secondary" sx={{ ml: 1, fontWeight: 'normal' }}>
-                {selectedColor}
-              </Typography>
-            )}
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {colors.map((color) => (
-              <Box
-                key={color}
-                onClick={() => setSelectedColor(color)}
-                sx={{
-                  border: `2px solid ${selectedColor === color ? theme.palette.primary.main : 'transparent'}`,
-                  borderRadius: 1,
-                  overflow: 'hidden',
-                  cursor: 'pointer',
+      <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+        <TranslationWrapper>Variants</TranslationWrapper>
+      </Typography>
+      
+      {/* AliExpress style variant grid with images */}
+      <Grid container spacing={1}>
+        {variants.map((variant, index) => (
+          <Grid item xs={4} sm={3} md={2} key={`variant-${index}`}>
+            <Box 
+              onClick={() => handleVariantChange(variant)}
+              sx={{
+                border: `2px solid ${selectedVariant === variant ? theme.palette.primary.main : theme.palette.divider}`,
+                borderRadius: 0, // Flat design
+                cursor: 'pointer',
+                position: 'relative',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                transition: 'all 0.3s',
+                '&:hover': {
+                  borderColor: theme.palette.primary.main,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                }
+              }}
+            >
+              {/* Variant Image */}
+              <Box 
+                sx={{ 
+                  width: '100%',
+                  height: 80,
                   position: 'relative',
-                  width: 60,
-                  height: 60,
-                  '&:hover': {
-                    borderColor: alpha(theme.palette.primary.main, 0.5),
-                  },
+                  bgcolor: 'background.paper',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
-                <Box
-                  sx={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: color ? color.toLowerCase() : '#cccccc',
-                    color: color ? theme.palette.getContrastText(color.toLowerCase()) : '#000000',
-                    p: 1,
-                  }}
-                >
-                  {color}
-                </Box>
-                {selectedColor === color && (
-                  <CheckCircleIcon
-                    sx={{
-                      position: 'absolute',
-                      bottom: 2,
-                      right: 2,
-                      color: theme.palette.primary.main,
-                      bgcolor: 'background.paper',
-                      borderRadius: '50%',
-                      fontSize: 16,
+                {variant.imageUrl ? (
+                  <img 
+                    src={variant.imageUrl} 
+                    alt={variant.name || variant.options} 
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
                     }}
                   />
+                ) : (
+                  <Box 
+                    sx={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.1)
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary" align="center">
+                      No Image
+                    </Typography>
+                  </Box>
                 )}
               </Box>
-            ))}
-          </Box>
-        </Box>
-      )}
-      
-      {sizes.length > 0 && (
-        <Box>
-          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
-            <TranslationWrapper>Size</TranslationWrapper>:
-            {selectedSize && (
-              <Typography component="span" color="text.secondary" sx={{ ml: 1, fontWeight: 'normal' }}>
-                {selectedSize}
-              </Typography>
-            )}
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {sizes.map((size) => (
-              <Box
-                key={size}
-                onClick={() => setSelectedSize(size)}
-                sx={{
-                  border: `2px solid ${selectedSize === size ? theme.palette.primary.main : theme.palette.divider}`,
-                  borderRadius: 1,
-                  padding: '6px 16px',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  minWidth: 50,
-                  textAlign: 'center',
-                  bgcolor: selectedSize === size ? alpha(theme.palette.primary.main, 0.1) : 'transparent',
-                  '&:hover': {
-                    borderColor: alpha(theme.palette.primary.main, 0.5),
-                    bgcolor: alpha(theme.palette.primary.main, 0.05),
-                  },
-                }}
-              >
-                <Typography variant="body2">{size}</Typography>
+              
+              {/* Variant Name/Option */}
+              <Box sx={{ p: 1, flexGrow: 1 }}>
+                <Typography 
+                  variant="caption" 
+                  component="div" 
+                  align="center"
+                  sx={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontWeight: selectedVariant === variant ? 'bold' : 'normal'
+                  }}
+                >
+                  {variant.name || variant.options}
+                </Typography>
+                
+                {/* Price */}
+                {variant.price && (
+                  <Typography 
+                    variant="caption" 
+                    component="div" 
+                    align="center"
+                    color="error.main"
+                    fontWeight="bold"
+                    sx={{ mt: 0.5 }}
+                  >
+                    ETB {variant.price}
+                  </Typography>
+                )}
               </Box>
-            ))}
-          </Box>
+              
+              {/* Selected Indicator */}
+              {selectedVariant === variant && (
+                <Box 
+                  sx={{ 
+                    position: 'absolute', 
+                    bottom: 0, 
+                    right: 0,
+                    bgcolor: theme.palette.primary.main,
+                    width: 20,
+                    height: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <CheckIcon sx={{ color: '#fff', fontSize: 16 }} />
+                </Box>
+              )}
+            </Box>
+          </Grid>
+        ))}
+      </Grid>
+      
+      {/* Selected Variant Info */}
+      {selectedVariant && (
+        <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
+          <Typography variant="body2">
+            <strong>Selected:</strong> {selectedVariant.name || selectedVariant.options}
+            {selectedVariant.price && ` - ETB ${selectedVariant.price}`}
+            {selectedVariant.quantity && ` (${selectedVariant.quantity} available)`}
+          </Typography>
         </Box>
       )}
     </Box>

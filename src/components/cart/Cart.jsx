@@ -130,19 +130,19 @@ const Cart = () => {
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography>Subtotal:</Typography>
-                <Typography>${cart.total.toFixed(2)}</Typography>
+                <Typography>ETB {cart.total.toFixed(2)}</Typography>
               </Box>
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography>Shipping:</Typography>
                 <Typography>
-                  {cart.total >= 50 ? 'Free' : '$4.99'}
+                  {cart.total >= 50 ? 'Free' : 'ETB 4.99'}
                 </Typography>
               </Box>
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography>Tax:</Typography>
-                <Typography>${(cart.total * 0.1).toFixed(2)}</Typography>
+                <Typography>ETB {(cart.total * 0.1).toFixed(2)}</Typography>
               </Box>
               
               <Divider sx={{ my: 2 }} />
@@ -150,7 +150,7 @@ const Cart = () => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
                 <Typography variant="h6">Total:</Typography>
                 <Typography variant="h6">
-                  ${(cart.total + (cart.total < 50 ? 4.99 : 0) + (cart.total * 0.1)).toFixed(2)}
+                  ETB {(cart.total + (cart.total < 50 ? 4.99 : 0) + (cart.total * 0.1)).toFixed(2)}
                 </Typography>
               </Box>
               

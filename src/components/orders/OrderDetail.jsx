@@ -59,7 +59,14 @@ import {
   CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { getOrderById, cancelOrder, confirmOrderDelivery, denyOrderDelivery } from '../../firebase/services';
+import { 
+  getOrderById, 
+  cancelOrder,
+  updateOrderStatus,
+  confirmOrderDelivery,
+  denyOrderDelivery,
+  getBuyerInfoForOrder
+} from '../../firebase/services';
 import { getTransactionHistory } from '../../firebase/walletServices';
 import { addReview, getEligibleOrdersForReview } from '../../firebase/reviewServices';
 
@@ -145,6 +152,8 @@ const OrderDetail = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [buyerInfo, setBuyerInfo] = useState(null);
+  const [buyerInfoLoading, setBuyerInfoLoading] = useState(false);
   
   // Review state
   const [reviewableProducts, setReviewableProducts] = useState([]);
@@ -199,6 +208,30 @@ const OrderDetail = () => {
   useEffect(() => {
     fetchOrderDetails();
   }, [id, currentUser]);
+  
+  // Fetch buyer information when order details are loaded
+  useEffect(() => {
+    if (order && order.id) {
+      fetchBuyerInfo();
+    }
+  }, [order?.id]);
+  
+  // Function to fetch buyer information from database
+  const fetchBuyerInfo = async () => {
+    if (!order || !order.id) return;
+    
+    try {
+      setBuyerInfoLoading(true);
+      const info = await getBuyerInfoForOrder(order.id);
+      setBuyerInfo(info);
+    } catch (err) {
+      console.error('Error fetching buyer information:', err);
+      // Don't set error state here to avoid showing error alert to user
+      // Just log error and continue with available info
+    } finally {
+      setBuyerInfoLoading(false);
+    }
+  };
   
   // Check for reviewable products when order is loaded
   useEffect(() => {
@@ -475,6 +508,61 @@ const OrderDetail = () => {
   // Refresh order data
   const refreshOrder = () => {
     fetchOrderDetails();
+    fetchBuyerInfo();
+    setSuccessMessage('Order details refreshed');
+    setSnackbarOpen(true);
+  };
+  
+  // Get the best available buyer information (database or order)
+  const getBestBuyerInfo = () => {
+    // Safety check for when order is not yet loaded
+    if (!order) {
+      return {
+        name: 'Loading...',
+        email: 'Loading...',
+        phone: 'Loading...',
+        street: 'Loading...',
+        city: 'Loading...',
+        district: 'Loading...',
+        additionalInfo: 'Loading...'
+      };
+    }
+    
+    // Format the address based on Ethiopian format
+    const formatEthiopianAddress = (address) => {
+      if (!address) return {};
+      
+      return {
+        name: address.fullName || address.name,
+        phone: address.phoneNumber || address.phone,
+        email: address.email || (currentUser ? currentUser.email : 'Not available'),
+        street: address.address,
+        city: address.city,
+        district: address.subCity,
+        additionalInfo: [
+          address.kebele && `Kebele: ${address.kebele}`,
+          address.woreda && `Woreda: ${address.woreda}`,
+          address.deliveryInstructions
+        ].filter(Boolean).join(', ')
+      };
+    };
+    
+    // If we have buyer info from the database, use that
+    if (buyerInfo) {
+      const dbAddress = buyerInfo.shippingAddress && 
+                        typeof buyerInfo.shippingAddress === 'object' ? 
+                        buyerInfo.shippingAddress : {};
+      
+      return {
+        name: buyerInfo.name,
+        email: buyerInfo.email,
+        phone: buyerInfo.phone,
+        ...formatEthiopianAddress({...order.shippingAddress, ...dbAddress})
+      };
+    }
+    
+    // Otherwise fall back to order shipping address
+    return formatEthiopianAddress(order.shippingAddress || {});
   };
   
   // Get the current step index for the stepper
@@ -658,17 +746,20 @@ const OrderDetail = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
               <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
               <Typography variant="subtitle1">Your Information</Typography>
+              {buyerInfoLoading && (
+                <CircularProgress size={16} sx={{ ml: 1 }} />
+              )}
             </Box>
             
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                <strong>Name:</strong> {order.shippingAddress?.name}
+                <strong>Name:</strong> {getBestBuyerInfo().name}
               </Typography>
               <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                <strong>Email:</strong> {order.shippingAddress?.email}
+                <strong>Email:</strong> {getBestBuyerInfo().email}
               </Typography>
               <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                <strong>Phone:</strong> {order.shippingAddress?.phone}
+                <strong>Phone:</strong> {getBestBuyerInfo().phone}
               </Typography>
             </Box>
           </Grid>
@@ -679,19 +770,28 @@ const OrderDetail = () => {
               <Typography variant="subtitle1">Shipping Address</Typography>
             </Box>
             
-            {order.shippingAddress && (
-              <Box sx={{ mb: 2 }}>
+            <Box sx={{ mb: 2 }}>
+              {getBestBuyerInfo().street && (
                 <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {order.shippingAddress.street}
+                  <strong>Address:</strong> {getBestBuyerInfo().street}
                 </Typography>
+              )}
+              {getBestBuyerInfo().city && (
                 <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
+                  <strong>City:</strong> {getBestBuyerInfo().city}
                 </Typography>
+              )}
+              {getBestBuyerInfo().district && (
                 <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {order.shippingAddress.country}
+                  <strong>Sub-City/District:</strong> {getBestBuyerInfo().district}
                 </Typography>
-              </Box>
-            )}
+              )}
+              {getBestBuyerInfo().additionalInfo && (
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
+                  <strong>Additional Info:</strong> {getBestBuyerInfo().additionalInfo}
+                </Typography>
+              )}
+            </Box>
           </Grid>
         </Grid>
       </Paper>

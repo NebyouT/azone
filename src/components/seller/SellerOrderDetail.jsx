@@ -71,24 +71,24 @@ const formatDate = (timestamp) => {
   }).format(date);
 };
 
-// Get status color
+// Get status color based on order status
 const getStatusColor = (status) => {
-  switch (status) {
+  switch (status.toLowerCase()) {
     case 'completed':
       return 'success';
     case 'confirmed':
-    case 'processing':
-      return 'info';
     case 'shipped':
       return 'primary';
     case 'delivered':
-      return 'secondary';
+      return 'info';
     case 'cancelled':
       return 'error';
     default:
       return 'default';
   }
 };
+
+
 
 // Get next status based on current status
 const getNextStatus = (currentStatus) => {
@@ -151,26 +151,32 @@ const SellerOrderDetail = () => {
   const orderSteps = ['pending', 'confirmed', 'shipped', 'delivered', 'completed'];
   
   const fetchOrderDetails = async () => {
-    if (!currentUser || !id) return;
+    if (!currentUser) return;
     
     try {
       setLoading(true);
+      
+      // Use the order ID from the URL parameter
+      console.log(`Fetching order details for ID: ${id}`);
       const orderData = await getSellerOrderById(id);
       
-      // Check if this seller owns this order
+      // Check if this order belongs to the current seller
       if (orderData.sellerId !== currentUser.uid) {
-        setError('You do not have permission to view this order');
+        console.error('Permission denied: This order does not belong to the current seller');
+        setError('You do not have permission to view this order.');
         setLoading(false);
         return;
       }
       
       setOrder(orderData);
+      console.log("Loaded order:", orderData);
       
       // Fetch buyer information
       try {
         setBuyerInfoLoading(true);
         const info = await getBuyerInfoForOrder(id);
         setBuyerInfo(info);
+        console.log("Loaded buyer info:", info);
       } catch (buyerError) {
         console.error('Error fetching buyer info:', buyerError);
         // Don't set an error, just set buyerInfo to null
@@ -188,14 +194,19 @@ const SellerOrderDetail = () => {
   
   useEffect(() => {
     fetchOrderDetails();
-  }, [id, currentUser]);
+    // Include id in dependencies to refetch when the URL parameter changes
+  }, [currentUser, id]);
   
-  // Retry fetching buyer info if not available initially
+  // Console log the data we have for debugging
   useEffect(() => {
-    if (order && (!buyerInfo || Object.keys(buyerInfo).length === 0) && !buyerInfoLoading) {
-      fetchBuyerInfo();
+    if (order) {
+      console.log("Current order data:", order);
+      console.log("Shipping address:", order.shippingAddress);
     }
-  }, [order, buyerInfo, buyerInfoLoading]);
+    if (buyerInfo) {
+      console.log("Current buyer info:", buyerInfo);
+    }
+  }, [order, buyerInfo]);
   
   useEffect(() => {
     // Update selectedStatus when order changes and is not null
@@ -281,6 +292,33 @@ const SellerOrderDetail = () => {
            (order && order.shippingAddress && typeof order.shippingAddress === 'object');
   }, [buyerInfo, order]);
   
+  // Format Ethiopian address for display
+  const formatEthiopianAddress = (address) => {
+    if (!address) return {};
+    
+    return {
+      name: address.fullName || address.name,
+      email: address.email,
+      phone: address.phoneNumber || address.phone,
+      address: address.address,
+      city: address.city,
+      subCity: address.subCity,
+      kebele: address.kebele,
+      woreda: address.woreda,
+      instructions: address.deliveryInstructions
+    };
+  };
+  
+  // Get the best shipping address (either from buyerInfo or order)
+  const getShippingAddress = () => {
+    if (buyerInfo && buyerInfo.shippingAddress) {
+      return formatEthiopianAddress(buyerInfo.shippingAddress);
+    } else if (order && order.shippingAddress) {
+      return formatEthiopianAddress(order.shippingAddress);
+    }
+    return {};
+  };
+  
   if (loading) {
     return (
       <Container maxWidth="md" sx={{ py: 8, textAlign: 'center' }}>
@@ -334,21 +372,35 @@ const SellerOrderDetail = () => {
   // Get available status options based on current status
   const availableStatusOptions = getAvailableStatusOptions(order.status);
   
+  // Calculate order total from items in case total is missing
+  const calculateOrderTotal = () => {
+    if (!order || !order.items || !Array.isArray(order.items)) {
+      return 0;
+    }
+    return order.items.reduce((total, item) => {
+      const itemPrice = Number(item.price) || 0;
+      const itemQuantity = Number(item.quantity) || 0;
+      return total + (itemPrice * itemQuantity);
+    }, 0);
+  };
+  
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
-        <OrderIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
-        <Typography variant="h4" component="h1">
+    <Container maxWidth="md" sx={{ pt: { xs: 0.5, md: 4 }, pb: { xs: 2, md: 4 } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: { xs: 2, md: 3 } }}>
+        <OrderIcon sx={{ fontSize: { xs: 24, md: 32 }, mr: 1, color: 'primary.main' }} />
+        <Typography variant="h5" component="h1" sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}>
           Order Details
         </Typography>
       </Box>
       
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: { xs: 1.5, md: 3 } }}>
         <Button
           component={Link}
           to="/seller/dashboard"
           startIcon={<BackIcon />}
           variant="outlined"
+          size="small"
+          sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' }, py: { xs: 0.5, md: 0.75 } }}
         >
           Back to Dashboard
         </Button>
@@ -357,37 +409,68 @@ const SellerOrderDetail = () => {
           startIcon={<RefreshIcon />}
           variant="outlined"
           onClick={refreshOrder}
+          size="small"
+          sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' }, py: { xs: 0.5, md: 0.75 } }}
         >
           Refresh
         </Button>
       </Box>
       
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">
+      <Paper elevation={2} sx={{ p: { xs: 2, md: 3 }, mb: 3, overflowX: 'hidden' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: { xs: 1, md: 2 } }}>
+          <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
             Order #{order.id.substring(0, 8)}
           </Typography>
           <Chip 
             label={order.status.toUpperCase()} 
             color={getStatusColor(order.status)}
-            sx={{ fontWeight: 'medium' }}
+            size="small"
+            sx={{ 
+              fontWeight: 'medium',
+              fontSize: { xs: '0.7rem', md: '0.8125rem' },
+              height: { xs: 24, md: 32 }
+            }}
           />
         </Box>
         
-        <Typography variant="body2" color="text.secondary" gutterBottom>
+        <Typography 
+          variant="body2" 
+          color="text.secondary" 
+          gutterBottom
+          sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+        >
           Placed on {formatDate(order.createdAt)}
         </Typography>
         
         {order.mainOrderId && (
-          <Typography variant="body2" color="text.secondary" gutterBottom>
+          <Typography 
+            variant="body2" 
+            color="text.secondary" 
+            gutterBottom
+            sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+          >
             Main Order: #{order.mainOrderId.substring(0, 8)}
           </Typography>
         )}
         
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: { xs: 1, md: 2 } }} />
         
-        <Box sx={{ width: '100%', mb: 3 }}>
-          <Stepper activeStep={currentStepIndex} alternativeLabel>
+        <Box sx={{ width: '100%', mb: 3, overflowX: 'hidden' }}>
+          <Stepper 
+            activeStep={currentStepIndex} 
+            alternativeLabel
+            sx={{ 
+              '& .MuiStepLabel-label': {
+                fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' }
+              },
+              '& .MuiSvgIcon-root': {
+                fontSize: { xs: 20, sm: 24, md: 28 }
+              },
+              '& .MuiStepConnector-line': {
+                mx: { xs: -1, md: 0 }
+              }
+            }}
+          >
             {orderSteps.map((label) => (
               <Step key={label}>
                 <StepLabel>{label.charAt(0).toUpperCase() + label.slice(1)}</StepLabel>
@@ -396,11 +479,11 @@ const SellerOrderDetail = () => {
           </Stepper>
         </Box>
         
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, md: 3 }}>
           <Grid item xs={12} md={6}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="subtitle1">Customer Information</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <PersonIcon sx={{ mr: 0.5, fontSize: { xs: 18, md: 24 }, color: 'primary.main' }} />
+              <Typography variant="subtitle1" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Customer Information</Typography>
             </Box>
             
             {buyerInfoLoading ? (
@@ -410,14 +493,26 @@ const SellerOrderDetail = () => {
               </Box>
             ) : buyerInfo ? (
               <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                  <strong>Name:</strong> {buyerInfo.name || order.shippingAddress?.fullName || 'Not available'}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                  <strong>Email:</strong> {buyerInfo.email || 'Not available'}
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                  <strong>Phone:</strong> {buyerInfo.phone || order.shippingAddress?.phoneNumber || 'Not available'}
+                </Typography>
+              </Box>
+            ) : order.shippingAddress ? (
+              <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  <strong>Name:</strong> {buyerInfo.name}
+                  <strong>Name:</strong> {order.shippingAddress.fullName || 'Not available'}
                 </Typography>
                 <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  <strong>Email:</strong> {buyerInfo.email}
+                  <strong>Email:</strong> {'Not available'}
                 </Typography>
                 <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  <strong>Phone:</strong> {buyerInfo.phone}
+                  <strong>Phone:</strong> {order.shippingAddress.phoneNumber || 'Not available'}
                 </Typography>
               </Box>
             ) : (
@@ -428,34 +523,43 @@ const SellerOrderDetail = () => {
           </Grid>
           
           <Grid item xs={12} md={6}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <AddressIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="subtitle1">Shipping Address</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <AddressIcon sx={{ mr: 0.5, fontSize: { xs: 18, md: 24 }, color: 'primary.main' }} />
+              <Typography variant="subtitle1" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Shipping Address</Typography>
             </Box>
             
-            {buyerInfo && buyerInfo.shippingAddress && typeof buyerInfo.shippingAddress === 'object' ? (
+            {order.shippingAddress ? (
               <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {buyerInfo.shippingAddress.street}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {buyerInfo.shippingAddress.city}, {buyerInfo.shippingAddress.state} {buyerInfo.shippingAddress.zip}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {buyerInfo.shippingAddress.country}
-                </Typography>
-              </Box>
-            ) : order.shippingAddress && typeof order.shippingAddress === 'object' ? (
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {order.shippingAddress.street}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word' }}>
-                  {order.shippingAddress.country}
-                </Typography>
+                {order.shippingAddress.address && (
+                  <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                    <strong>Address:</strong> {order.shippingAddress.address}
+                  </Typography>
+                )}
+                {order.shippingAddress.city && (
+                  <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                    <strong>City:</strong> {order.shippingAddress.city}
+                  </Typography>
+                )}
+                {order.shippingAddress.subCity && (
+                  <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                    <strong>Sub-City/District:</strong> {order.shippingAddress.subCity}
+                  </Typography>
+                )}
+                {(order.shippingAddress.kebele || order.shippingAddress.woreda) && (
+                  <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                    {order.shippingAddress.kebele && (
+                      <><strong>Kebele:</strong> {order.shippingAddress.kebele}{order.shippingAddress.woreda ? ', ' : ''}</>
+                    )}
+                    {order.shippingAddress.woreda && (
+                      <><strong>Woreda:</strong> {order.shippingAddress.woreda}</>
+                    )}
+                  </Typography>
+                )}
+                {order.shippingAddress.deliveryInstructions && (
+                  <Typography variant="body2" sx={{ mb: 0.5, wordBreak: 'break-word', fontStyle: 'italic', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                    <strong>Delivery Instructions:</strong> {order.shippingAddress.deliveryInstructions}
+                  </Typography>
+                )}
               </Box>
             ) : (
               <Typography variant="body2" color="text.secondary">
@@ -466,8 +570,8 @@ const SellerOrderDetail = () => {
         </Grid>
       </Paper>
       
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
+      <Paper elevation={2} sx={{ p: { xs: 2, md: 3 }, mb: 3, overflowX: 'hidden' }}>
+        <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
           Items in This Order
         </Typography>
         
@@ -492,24 +596,45 @@ const SellerOrderDetail = () => {
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Typography variant="subtitle1" sx={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                  <Typography variant="subtitle1" sx={{ wordBreak: 'break-word', overflowWrap: 'break-word', fontSize: { xs: '0.85rem', md: '1rem' } }}>
                     {item.name}
                   </Typography>
                 }
                 secondary={
                   <>
-                    <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block' }}>
+                    <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
                       Quantity: {item.quantity}
                     </Typography>
                     <Box component="div" sx={{ mt: 0.5 }}>
-                      <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block' }}>
-                        Price: {formatCurrency(item.price)}
+                      <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', fontSize: { xs: '0.75rem', md: '0.875rem' }, whiteSpace: 'normal', overflow: 'visible' }}>
+                        Price: <strong style={{ color: '#333' }}>{item && item.price ? formatCurrency(item.price) : 'ETB 0.00'}</strong>
                       </Typography>
                     </Box>
                     {item.variant && (
-                      <Box component="div" sx={{ mt: 0.5 }}>
-                        <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', wordBreak: 'break-word' }}>
-                          Variant: {item.variant}
+                      <Box component="div" sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {item.variantImage && (
+                          <Box sx={{ mr: 1, mb: 0.5 }}>
+                            {item.productId ? (
+                              <Link to={`/product/${item.productId}`} style={{ textDecoration: 'none' }}>
+                                <Avatar 
+                                  src={item.variantImage} 
+                                  variant="rounded" 
+                                  alt={item.variant}
+                                  sx={{ width: 30, height: 30, cursor: 'pointer' }}
+                                />
+                              </Link>
+                            ) : (
+                              <Avatar 
+                                src={item.variantImage} 
+                                variant="rounded" 
+                                alt={item.variant}
+                                sx={{ width: 30, height: 30 }}
+                              />
+                            )}
+                          </Box>
+                        )}
+                        <Typography variant="body2" color="text.secondary" component="div" sx={{ display: 'block', wordBreak: 'break-word', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+                          Variant: <strong>{item.variant}</strong>
                         </Typography>
                       </Box>
                     )}
@@ -517,8 +642,8 @@ const SellerOrderDetail = () => {
                 }
                 sx={{ mr: 2, width: { xs: '100%', sm: 'auto' } }}
               />
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                {formatCurrency(item.price * item.quantity)}
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', fontSize: { xs: '0.85rem', md: '1rem' }, whiteSpace: 'normal', overflow: 'visible' }}>
+                {item && item.price && item.quantity ? formatCurrency(item.price * item.quantity) : 'ETB 0.00'}
               </Typography>
             </ListItem>
           ))}
@@ -527,20 +652,20 @@ const SellerOrderDetail = () => {
         <Box sx={{ mt: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
           <Grid container spacing={1}>
             <Grid item xs={8}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
                 Order Total:
               </Typography>
             </Grid>
             <Grid item xs={4} sx={{ textAlign: 'right' }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                {formatCurrency(order.total || 0)}
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', fontSize: { xs: '0.95rem', md: '1.25rem' }, overflow: 'visible', whiteSpace: 'normal' }}>
+                {order && order.total ? formatCurrency(order.total) : formatCurrency(calculateOrderTotal())}
               </Typography>
             </Grid>
           </Grid>
         </Box>
       </Paper>
       
-      <Paper elevation={2} sx={{ p: 3 }}>
+      <Paper elevation={2} sx={{ p: 3, backgroundColor: '#fff' }}>
         <Typography variant="h6" gutterBottom>
           Update Order Status
         </Typography>
@@ -554,41 +679,56 @@ const SellerOrderDetail = () => {
               'This order is completed. No further status updates are allowed.'}
           </Alert>
         ) : (
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel id="order-status-label">Status</InputLabel>
-                <Select
-                  labelId="order-status-label"
-                  id="order-status"
-                  value={selectedStatus}
-                  label="Status"
-                  onChange={handleStatusChange}
+          <Box sx={{ mt: 1 }}>
+            <Grid container spacing={0} alignItems="flex-start" sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={3} md={2}>
+                <FormControl fullWidth size="small" sx={{ minWidth: '120px' }}>
+                  <Select
+                    id="order-status"
+                    value={selectedStatus}
+                    onChange={handleStatusChange}
+                    disabled={!canUpdateStatus}
+                    displayEmpty
+                    variant="outlined"
+                    sx={{
+                      height: '40px',
+                      '.MuiOutlinedInput-notchedOutline': { borderColor: '#ddd' },
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#bbb' },
+                    }}
+                  >
+                    {availableStatusOptions.map(status => (
+                      <MenuItem key={status} value={status}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4} md={3} sx={{ mt: { xs: 1, sm: 0 }, ml: { xs: 0, sm: 2 } }}>
+                <Button
+                  variant="contained"
+                  onClick={handleOpenConfirmDialog}
+                  startIcon={selectedStatus === 'cancelled' ? <CancelIcon /> : <CheckIcon />}
                   disabled={!canUpdateStatus}
+                  sx={{
+                    backgroundColor: '#f0813a',
+                    '&:hover': { backgroundColor: '#e06929' },
+                    color: 'white',
+                    textTransform: 'none',
+                    fontWeight: 'medium',
+                    height: '40px',
+                    boxShadow: 'none',
+                    paddingLeft: 2,
+                    paddingRight: 2
+                  }}
                 >
-                  {availableStatusOptions.map(status => (
-                    <MenuItem key={status} value={status}>
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleOpenConfirmDialog}
-                startIcon={selectedStatus === 'cancelled' ? <CancelIcon /> : <CheckIcon />}
-                fullWidth
-                disabled={!canUpdateStatus}
-              >
-                Update Status
-              </Button>
+                  Update Status
+                </Button>
+              </Grid>
             </Grid>
             
             {selectedStatus === 'cancelled' && (
-              <Grid item xs={12}>
+              <Box sx={{ mt: 2 }}>
                 <TextField
                   fullWidth
                   label="Cancellation Reason"
@@ -607,9 +747,9 @@ const SellerOrderDetail = () => {
                   multiline
                   rows={2}
                 />
-              </Grid>
+              </Box>
             )}
-          </Grid>
+          </Box>
         )}
       </Paper>
       

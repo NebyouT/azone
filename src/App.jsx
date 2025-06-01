@@ -30,6 +30,7 @@ import NotificationsPage from './components/notifications/NotificationsPage';
 // Seller Components
 import SellerDashboard from './components/seller/SellerDashboard';
 import ProductForm from './components/seller/ProductForm';
+import ProductEdit from './components/seller/ProductEdit';
 import SellerOrderDetail from './components/seller/SellerOrderDetail';
 import SellerProfile from './components/seller/SellerProfile';
 
@@ -160,6 +161,14 @@ const App = () => {
                             <ProductForm />
                           </ProtectedRoute>
                         } 
+                      />
+                      <Route 
+                        path="seller/products/:productId/quick-edit" 
+                        element={
+                          <ProtectedRoute requiredRole="seller">
+                            <ProductEdit />
+                          </ProtectedRoute>
+                        }
                       />
                       <Route 
                         path="seller/orders/:id" 

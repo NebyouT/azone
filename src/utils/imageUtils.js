@@ -2,10 +2,10 @@
  * Image utility functions for the DireMart application
  */
 
-// Fallback image URLs - use GitHub-hosted images for reliability
-export const PRODUCT_FALLBACK_IMAGE = 'https://raw.githubusercontent.com/koehlersimon/fallback/master/Resources/Public/Images/placeholder.jpg';
-export const SMALL_FALLBACK_IMAGE = 'https://raw.githubusercontent.com/koehlersimon/fallback/master/Resources/Public/Images/placeholder.jpg';
-export const CART_FALLBACK_IMAGE = 'https://raw.githubusercontent.com/koehlersimon/fallback/master/Resources/Public/Images/placeholder.jpg';
+// Fallback image URLs - use reliable CDN sources
+export const PRODUCT_FALLBACK_IMAGE = 'https://via.placeholder.com/300x300/f5f5f5/999999?text=No+Image';
+export const SMALL_FALLBACK_IMAGE = 'https://via.placeholder.com/100x100/f5f5f5/999999?text=No+Image';
+export const CART_FALLBACK_IMAGE = 'https://via.placeholder.com/80x80/f5f5f5/999999?text=No+Image';
 
 /**
  * Get a product image URL with fallback

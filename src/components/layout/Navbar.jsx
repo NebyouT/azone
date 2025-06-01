@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import CategoryMenu from '../categories/CategoryMenu';
 import DarkLogo from '../../assets/images/logo.svg';
 import LightLogo from '../../assets/images/logo2.svg';
 import {
@@ -107,19 +108,10 @@ const TopBar = styled(Box)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-// Category Menu styled component
-const CategoryMenu = styled(Paper)(({ theme }) => ({
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  zIndex: 1000,
-  width: 220,
-  maxHeight: 400,
-  overflow: 'auto',
-  marginTop: theme.spacing(1),
-  boxShadow: theme.shadows[5],
-  borderRadius: 0,
-  ...glassmorphism(0.95, 5, theme.palette.mode === 'dark'),
+// Category Menu container style
+const CategoryMenuContainer = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  display: 'inline-block',
 }));
 
 // Material UI Switch for dark/light mode
@@ -190,6 +182,7 @@ const Navbar = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [anchorElCategories, setAnchorElCategories] = useState(null);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -242,8 +235,14 @@ const Navbar = () => {
     setMobileOpen(false);
   };
 
-  const handleCategoryMenuToggle = () => {
+  const handleCategoryMenuToggle = (event) => {
     setCategoryMenuOpen(!categoryMenuOpen);
+    setAnchorElCategories(categoryMenuOpen ? null : event.currentTarget);
+  };
+
+  const handleCloseCategoryMenu = () => {
+    setCategoryMenuOpen(false);
+    setAnchorElCategories(null);
   };
 
   const handleLanguageMenuOpen = (event) => {
@@ -762,63 +761,35 @@ const Navbar = () => {
                 />
               </Box>
 
-              {/* Categories Button (Desktop) - AliExpress style */}
-              <Button
-                variant="text"
-                startIcon={<CategoryIcon />}
-                endIcon={<KeyboardArrowDownIcon />}
-                onClick={handleCategoryMenuToggle}
-                sx={{
-                  display: { xs: 'none', md: 'flex' },
-                  borderRadius: 0,
-                  color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#333333',
-                  fontWeight: 500,
-                  textTransform: 'none',
-                  fontSize: '0.95rem',
-                  mr: 1,
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                  },
-                }}
-              >
-                {t('categories')}
-              </Button>
-
-              {categoryMenuOpen && (
-                <CategoryMenu
-                  elevation={3}
+              {/* Categories Button with dropdown menu */}
+              <CategoryMenuContainer sx={{ display: { xs: 'none', md: 'block' } }}>
+                <Button
+                  variant="text"
+                  startIcon={<CategoryIcon />}
+                  endIcon={<KeyboardArrowDownIcon />}
+                  onClick={handleCategoryMenuToggle}
                   sx={{
                     borderRadius: 0,
+                    color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#333333',
+                    fontWeight: 500,
+                    textTransform: 'none',
+                    fontSize: '0.95rem',
+                    mr: 1,
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                    },
                   }}
                 >
-                  <List>
-                    <ListItem button>
-                      <ListItemText primary="Electronics" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Clothing" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Home & Kitchen" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Beauty" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Sports" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Toys" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Books" />
-                    </ListItem>
-                    <ListItem button>
-                      <ListItemText primary="Automotive" />
-                    </ListItem>
-                  </List>
-                </CategoryMenu>
-              )}
+                  {t('categories')}
+                </Button>
+                
+                {/* Render the CategoryMenu component when categoryMenuOpen is true */}
+                {categoryMenuOpen && (
+                  <CategoryMenu 
+                    onClose={() => setCategoryMenuOpen(false)}
+                  />
+                )}
+              </CategoryMenuContainer>
             </Box>
 
             {/* Desktop Navigation Links */}

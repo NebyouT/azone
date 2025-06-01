@@ -628,7 +628,7 @@ const Checkout = () => {
                   label="Saved Addresses" 
                   disabled={savedAddresses.length === 0}
                 />
-                <Tab label="New Address" />
+                
               </Tabs>
               
               {shippingTabValue === 0 ? (
@@ -732,7 +732,8 @@ const Checkout = () => {
                         }}
                       />
                     </Grid>
-                    
+                   <br/>
+                   <br/>
                     <Grid item xs={12} sm={6}>
                       <TextField
                         required

@@ -216,6 +216,7 @@ const ViewAllButton = styled(Button)(({ theme }) => ({
 const HomePage = () => {
   const navigate = useNavigate();
   const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [newArrivals, setNewArrivals] = useState([]);
   const [electronicsProducts, setElectronicsProducts] = useState([]);
   const [fashionProducts, setFashionProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -233,6 +234,10 @@ const HomePage = () => {
         // Get featured/top-rated products
         const featured = await getProducts(null, 'rating', 8);
         setFeaturedProducts(featured);
+        
+        // Get new arrivals (sorted by creation date)
+        const arrivals = await getProducts(null, 'createdAt', 8);
+        setNewArrivals(arrivals);
         
         // Get electronics products
         const electronics = await getProducts('electronics', 'createdAt', 6);
@@ -641,32 +646,33 @@ const HomePage = () => {
         overflowX: 'hidden',
         ...(isMobile && {
           paddingTop: 0,
-          marginTop: 0
+          marginTop: 0,
+          paddingBottom: '70px' // Add padding to bottom for mobile to account for the bottom navbar
         })
       }}>
         {/* Hero Banner Carousel */}
         <Box 
           className="hero-container"
           sx={{ 
-            mb: { xs: 4, md: 8 }, 
+            mb: { xs: 3, md: 6 }, 
             width: '100vw',
             position: 'relative',
             left: '50%',
             right: '50%',
             marginLeft: '-50vw',
             marginRight: '-50vw',
-            marginTop: isMobile ? '-80px' : 0, // Remove space from top completely on mobile (matches navbar height)
+            marginTop: 0, // Remove negative margin which was causing issues
             paddingTop: 0,
+            overflow: 'hidden', // Prevent any content from spilling out
             '&::before': {
               content: '""',
-              display: isMobile ? 'block' : 'none',
-              height: '80px', // Matches navbar height
+              display: 'none', // Disable the spacer completely
+              height: 0,
               width: '100%',
               position: 'absolute',
               top: 0,
               left: 0,
-              zIndex: 10,
-              background: 'transparent'
+              zIndex: 10
             }
           }}>
           <SimpleCarousel items={bannerItems} />
@@ -675,8 +681,8 @@ const HomePage = () => {
         {/* Features Section */}
         <Box 
           sx={{ 
-            mb: { xs: 4, md: 8 },
-            px: { xs: 1, md: 3 },
+            mb: { xs: 5, md: 8 },
+            px: { xs: 2, md: 3 },
             width: '100%',
             overflowX: 'hidden'
           }}
@@ -688,7 +694,8 @@ const HomePage = () => {
               justifyContent: 'space-between',
               alignItems: 'center',
               width: '100%',
-              gap: { xs: 0.5, md: 3 }
+              gap: { xs: 1.5, md: 3 },
+              mt: { xs: 2, md: 0 } // Add top margin on mobile to create better spacing after hero
             }}
           >
             {features.map(feature => (
@@ -988,7 +995,7 @@ const HomePage = () => {
               width: '100%',
               px: 1
             }}>
-              {fashionProducts.slice(0, 4).map((product) => (
+              {newArrivals.slice(0, 4).map((product) => (
                 <Box 
                   key={product.id}
                   sx={{
@@ -1003,7 +1010,7 @@ const HomePage = () => {
           ) : (
             // Desktop grid using MUI Grid
             <Grid container spacing={3}>
-              {featuredProducts.slice(0, 8).map(product => (
+              {newArrivals.slice(0, 8).map(product => (
                 <Grid item xs={6} sm={6} md={3} key={product.id}>
                   <ProductCard product={product} />
                 </Grid>
@@ -1016,7 +1023,7 @@ const HomePage = () => {
         <Box 
           sx={{ 
             position: 'relative',
-            py: { xs: 5, md: 6 },
+            py: { xs: 6, md: 6 },
             mb: { xs: 4, md: 8 },
             backgroundColor: isDark ? '#1E293B' : '#F8F9FA',
             borderTop: '1px solid',
@@ -1033,6 +1040,7 @@ const HomePage = () => {
                   sx={{ 
                     fontWeight: 700,
                     mb: 2,
+                    fontSize: { xs: '1.5rem', md: '2.125rem' },
                     color: isDark ? '#FFFFFF' : '#333333',
                     position: 'relative',
                     display: 'inline-block',
@@ -1055,7 +1063,7 @@ const HomePage = () => {
                   Your premier local shopping destination in Dire Dawa
                 </Typography>
                 
-                <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: { xs: 'center', md: 'flex-start' } }}>
+                <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: { xs: 3, md: 2 }, justifyContent: { xs: 'center', md: 'flex-start' } }}>
                   {[
                     { text: '2K+ Monthly Customers', icon: 'People' },
                     { text: '250+ Orders Completed', icon: 'ShoppingBag' },
@@ -1067,52 +1075,115 @@ const HomePage = () => {
                       flexDirection: 'column',
                       alignItems: 'center', 
                       justifyContent: 'center',
-                      p: 2,
-                      width: { xs: 'calc(50% - 8px)', md: 'auto', lg: 'calc(25% - 8px)' },
-                      minWidth: { xs: '140px', sm: '160px' },
-                      borderBottom: '2px solid #ED782A',
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                      transition: 'all 0.2s ease',
+                      p: { xs: 2, md: 3 },
+                      width: { xs: 'calc(50% - 20px)', md: 'auto', lg: 'calc(25% - 16px)' },
+                      minWidth: { xs: '130px', sm: '160px' },
+                      position: 'relative',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.95)',
+                      boxShadow: isDark 
+                        ? '0 4px 20px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.1)' 
+                        : '0 10px 25px rgba(0,0,0,0.05), 0 2px 6px rgba(0,0,0,0.03)',
+                      transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                      overflow: 'hidden',
+                      '&::before': {
+                        content: '""',
+                        position: 'absolute',
+                        left: 0,
+                        bottom: 0,
+                        height: '4px',
+                        width: '100%',
+                        background: 'linear-gradient(90deg, #ED782A, #ff9d57)',
+                      },
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0) 60%, rgba(237,120,42,0.07) 100%)',
+                        opacity: 0,
+                        transition: 'opacity 0.4s ease',
+                      },
                       '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        borderBottomWidth: '4px'
+                        transform: 'translateY(-8px)',
+                        boxShadow: isDark 
+                          ? '0 12px 28px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.15)' 
+                          : '0 20px 40px rgba(237,120,42,0.15), 0 2px 10px rgba(0,0,0,0.05)',
+                        '&::after': {
+                          opacity: 1,
+                        },
+                        '& .stat-icon': {
+                          transform: 'scale(1.15) rotate(5deg)',
+                          boxShadow: '0 8px 20px rgba(237,120,42,0.3)',
+                        },
+                        '& .stat-text': {
+                          transform: 'translateY(4px)',
+                          color: isDark ? '#fff' : '#333',
+                        }
                       }
                     }}>
                       <Box 
+                        className="stat-icon"
                         sx={{ 
-                          width: 48, 
-                          height: 48, 
+                          width: { xs: 56, md: 64 }, 
+                          height: { xs: 56, md: 64 }, 
                           display: 'flex', 
                           alignItems: 'center', 
                           justifyContent: 'center',
-                          backgroundColor: '#ED782A',
-                          color: 'white',
-                          mb: 1.5
+                          background: 'linear-gradient(135deg, #ED782A, #ff9d57)',
+                          boxShadow: '0 4px 12px rgba(237,120,42,0.2)',
+                          borderRadius: '0',
+                          mb: 2,
+                          transition: 'all 0.4s ease',
                         }}
                       >
-                        {stat.icon === 'People' && <PeopleIcon />}
-                        {stat.icon === 'ShoppingBag' && <ShoppingBagIcon />}
-                        {stat.icon === 'Store' && <StorefrontIcon />}
-                        {stat.icon === 'Security' && <SecurityIcon />}
+                        {stat.icon === 'People' && <PeopleIcon sx={{ fontSize: 32, color: 'white' }} />}
+                        {stat.icon === 'ShoppingBag' && <ShoppingBagIcon sx={{ fontSize: 32, color: 'white' }} />}
+                        {stat.icon === 'Store' && <StorefrontIcon sx={{ fontSize: 32, color: 'white' }} />}
+                        {stat.icon === 'Security' && <SecurityIcon sx={{ fontSize: 32, color: 'white' }} />}
                       </Box>
                       <Typography 
-                        variant="body1" 
+                        className="stat-text"
+                        variant="h6" 
                         align="center"
                         sx={{ 
-                          fontWeight: 600, 
-                          color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)',
+                          fontWeight: 700, 
+                          color: isDark ? 'rgba(255,255,255,0.95)' : '#333',
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.3s ease',
+                          position: 'relative',
+                          '&::after': {
+                            content: '""',
+                            position: 'absolute',
+                            width: '40%',
+                            height: '2px',
+                            bottom: '-8px',
+                            left: '30%',
+                            background: 'linear-gradient(90deg, rgba(237,120,42,0), rgba(237,120,42,0.7), rgba(237,120,42,0))',
+                            opacity: 0.7,
+                          }
+                        }}
+                      >
+                        {stat.text.split(' ')[0]}
+                      </Typography>
+                      <Typography 
+                        variant="body2" 
+                        align="center"
+                        sx={{ 
+                          mt: 1,
+                          fontWeight: 500, 
+                          color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
                           whiteSpace: 'nowrap'
                         }}
                       >
-                        {stat.text}
+                        {stat.text.split(' ').slice(1).join(' ')}
                       </Typography>
                     </Box>
                   ))}
                 </Box>
                 
-                <Box sx={{ display: 'flex', gap: 2, mt: 3, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: { xs: 3, md: 2 }, mt: 4, flexWrap: 'wrap', justifyContent: { xs: 'center', md: 'flex-start' } }}>
                   <Button
                     variant="contained"
                     size="large"

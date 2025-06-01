@@ -58,7 +58,7 @@ const CartItem = ({ item }) => {
               {item.name}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              ${item.price.toFixed(2)} each
+              ETB {item.price.toFixed(2)} each
             </Typography>
           </Box>
           
@@ -105,7 +105,7 @@ const CartItem = ({ item }) => {
           </Box>
           
           <Typography variant="h6" component="div">
-            ${(item.price * item.quantity).toFixed(2)}
+            ETB {(item.price * item.quantity).toFixed(2)}
           </Typography>
         </Box>
       </CardContent>
