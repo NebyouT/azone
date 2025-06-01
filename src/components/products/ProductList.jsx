@@ -99,7 +99,7 @@ const ProductList = ({ category = null }) => {
 
   return (
     <Container disableGutters={isMobile} sx={{ 
-      pb: { xs: 8, sm: 4 }, 
+      pb: { xs: 10, sm: 4 }, // Increased bottom padding for mobile
       px: { xs: isMobile ? 0 : 2, sm: 3 },
       maxWidth: isMobile ? '100%' : 'xl'
     }}>
@@ -149,20 +149,27 @@ const ProductList = ({ category = null }) => {
         ) : (
           <>
             {isMobile ? (
-              // Mobile-specific grid with forced 2 columns
+              // Mobile-specific grid with forced 2 columns and improved spacing
               <Box sx={{ 
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 1,
+                gap: 2, // Increased gap between cards
                 width: '100%',
-                px: 1
+                px: 2, // Horizontal padding on sides
+                py: 2, // Increased vertical padding
+                pb: 6, // Extra bottom padding to prevent cards being cut off by bottom navbar
+                boxSizing: 'border-box', // Ensure padding doesn't cause overflow
+                mb: 2 // Added margin at bottom of grid container
               }}>
                 {displayedProducts.map((product) => (
                   <Box 
                     key={product.id}
                     sx={{
                       width: '100%',
-                      height: '100%'
+                      height: '100%',
+                      mb: 3, // Increased bottom margin to each card container
+                      display: 'flex',
+                      flexDirection: 'column'
                     }}
                   >
                     <ProductCard product={product} />

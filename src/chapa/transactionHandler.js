@@ -151,7 +151,7 @@ export const handleChapaCallback = async (callbackData) => {
     const verificationResult = await verifyTransaction(tx_ref);
     
     if (verificationResult.status === 'success' && status === 'success') {
-      // Extract user ID from tx_ref (assuming format: azone-{userId}-{random})
+      // Extract user ID from tx_ref (assuming format: DireMart-{userId}-{random})
       const userId = tx_ref.split('-')[1];
       
       // Process the payment

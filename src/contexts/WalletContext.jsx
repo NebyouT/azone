@@ -30,6 +30,22 @@ export const WalletProvider = ({ children }) => {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState(null);
   
+  // Make a reference to refreshWallet available globally for refunds
+  useEffect(() => {
+    if (currentUser) {
+      // Expose refresh function globally so it can be called after refunds
+      window.refreshWalletData = () => {
+        console.log('Global wallet refresh called');
+        fetchWalletData();
+      };
+    }
+    
+    return () => {
+      // Clean up global reference when component unmounts
+      window.refreshWalletData = undefined;
+    };
+  }, [currentUser]);
+  
   // Check for payment verification on component mount
   useEffect(() => {
     const verifyPayment = async () => {

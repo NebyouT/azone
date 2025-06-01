@@ -40,7 +40,10 @@ import {
   uploadProfileImage, 
   logoutUser, 
   getUserOrders,
-  getSellerProducts
+  getSellerProducts,
+  sendPasswordReset,
+  verifyPasswordResetWithCode,
+  confirmPasswordResetWithCode
 } from '../../firebase/services';
 
 // Custom TabPanel component
@@ -75,10 +78,14 @@ const Profile = () => {
   const [profileData, setProfileData] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [resetPasswordStep, setResetPasswordStep] = useState('send'); // 'send', 'verify', 'confirm'
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [formData, setFormData] = useState({
     displayName: '',
-    phoneNumber: '',
-    bio: ''
+    phoneNumber: ''
   });
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({
@@ -107,8 +114,7 @@ const Profile = () => {
       
       setFormData({
         displayName: currentUser.displayName || '',
-        phoneNumber: userDetails.phoneNumber || '',
-        bio: userDetails.bio || ''
+        phoneNumber: userDetails.phoneNumber || ''
       });
       
       setLoading(false);
@@ -199,8 +205,7 @@ const Profile = () => {
         formData.displayName,
         formData.phoneNumber,
         userDetails.role,
-        currentUser.photoURL,
-        formData.bio
+        currentUser.photoURL
       );
       
       setSnackbar({
@@ -269,11 +274,116 @@ const Profile = () => {
   };
   
   // Handle snackbar close
-  const handleSnackbarClose = () => {
+  const handleSnackbarClose = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
     setSnackbar({
       ...snackbar,
       open: false
     });
+  };
+  
+  // Open password reset dialog
+  const handlePasswordReset = () => {
+    setResetPasswordStep('send');
+    setResetCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setResetPasswordDialogOpen(true);
+  };
+  
+  // Handle sending reset code
+  const handleSendResetCode = async () => {
+    try {
+      setLoading(true);
+      const email = currentUser.email;
+      if (!email) {
+        throw new Error('No email found for this account');
+      }
+      
+      await sendPasswordReset(email);
+      
+      setResetPasswordStep('verify');
+      setSnackbar({
+        open: true,
+        message: 'Verification code sent to your email.',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error sending verification code:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to send verification code: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle verifying reset code
+  const handleVerifyResetCode = async () => {
+    try {
+      setLoading(true);
+      if (!resetCode) {
+        throw new Error('Please enter the verification code');
+      }
+      
+      await verifyPasswordResetWithCode(resetCode);
+      setResetPasswordStep('confirm');
+    } catch (error) {
+      console.error('Error verifying code:', error);
+      setSnackbar({
+        open: true,
+        message: `Invalid verification code: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle confirming new password
+  const handleConfirmNewPassword = async () => {
+    try {
+      setLoading(true);
+      
+      if (!newPassword) {
+        throw new Error('Please enter a new password');
+      }
+      
+      if (newPassword !== confirmPassword) {
+        throw new Error('Passwords do not match');
+      }
+      
+      if (newPassword.length < 6) {
+        throw new Error('Password must be at least 6 characters');
+      }
+      
+      await confirmPasswordResetWithCode(resetCode, newPassword);
+      
+      setResetPasswordDialogOpen(false);
+      setSnackbar({
+        open: true,
+        message: 'Password has been successfully reset.',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to reset password: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle reset dialog close
+  const handleCloseResetDialog = () => {
+    setResetPasswordDialogOpen(false);
   };
   
   if (loading) {
@@ -355,6 +465,15 @@ const Profile = () => {
               <Typography variant="body1" sx={{ mb: 1 }}>
                 <strong>Email:</strong> {profileData.email}
               </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handlePasswordReset}
+                disabled={loading}
+                sx={{ mt: 1, mb: 2, borderRadius: 0 }}
+              >
+                Reset Password
+              </Button>
               {profileData.phoneNumber && (
                 <Typography variant="body1" sx={{ mb: 1 }}>
                   <strong>Phone:</strong> {profileData.phoneNumber}
@@ -367,12 +486,6 @@ const Profile = () => {
                 <strong>Member since:</strong> {profileData.joinDate}
               </Typography>
             </Box>
-            
-            {profileData.bio && (
-              <Typography variant="body1" sx={{ mb: 2 }}>
-                {profileData.bio}
-              </Typography>
-            )}
           </Grid>
         </Grid>
       </Paper>
@@ -618,16 +731,7 @@ const Profile = () => {
               value={formData.phoneNumber}
               onChange={handleFormChange}
             />
-            <TextField
-              margin="normal"
-              fullWidth
-              label="Bio"
-              name="bio"
-              value={formData.bio}
-              onChange={handleFormChange}
-              multiline
-              rows={4}
-            />
+
           </Box>
         </DialogContent>
         <DialogActions>
@@ -639,6 +743,102 @@ const Profile = () => {
           >
             {loading ? <CircularProgress size={24} /> : 'Save Changes'}
           </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Password Reset Dialog */}
+      <Dialog
+        open={resetPasswordDialogOpen}
+        onClose={handleCloseResetDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Reset Password</DialogTitle>
+        <DialogContent>
+          {resetPasswordStep === 'send' && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body1" gutterBottom>
+                We'll send a verification code to your email address: <strong>{currentUser?.email}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Enter this code in the next step to verify your identity.
+              </Typography>
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={handleSendResetCode}
+                disabled={loading}
+                sx={{ mt: 2, borderRadius: 0 }}
+              >
+                {loading ? <CircularProgress size={24} /> : 'Send Verification Code'}
+              </Button>
+            </Box>
+          )}
+          
+          {resetPasswordStep === 'verify' && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body1" gutterBottom>
+                Enter the verification code sent to your email
+              </Typography>
+              <TextField
+                margin="normal"
+                fullWidth
+                label="Verification Code"
+                value={resetCode}
+                onChange={(e) => setResetCode(e.target.value)}
+                placeholder="Enter the 6-digit code"
+              />
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={handleVerifyResetCode}
+                disabled={loading || !resetCode}
+                sx={{ mt: 2, borderRadius: 0 }}
+              >
+                {loading ? <CircularProgress size={24} /> : 'Verify Code'}
+              </Button>
+            </Box>
+          )}
+          
+          {resetPasswordStep === 'confirm' && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body1" gutterBottom>
+                Enter your new password
+              </Typography>
+              <TextField
+                margin="normal"
+                fullWidth
+                label="New Password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                error={newPassword.length > 0 && newPassword.length < 6}
+                helperText={newPassword.length > 0 && newPassword.length < 6 ? 'Password must be at least 6 characters' : ''}
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                label="Confirm New Password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                error={confirmPassword.length > 0 && newPassword !== confirmPassword}
+                helperText={confirmPassword.length > 0 && newPassword !== confirmPassword ? 'Passwords do not match' : ''}
+              />
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={handleConfirmNewPassword}
+                disabled={loading || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 6}
+                sx={{ mt: 2, borderRadius: 0 }}
+              >
+                {loading ? <CircularProgress size={24} /> : 'Reset Password'}
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseResetDialog}>Cancel</Button>
         </DialogActions>
       </Dialog>
       

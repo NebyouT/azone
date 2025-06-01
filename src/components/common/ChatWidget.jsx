@@ -173,7 +173,7 @@ const ChatWidget = () => {
               >
                 <SupportAgentIcon sx={{ fontSize: 40, mb: 2, color: 'primary.main' }} />
                 <Typography variant="body1" gutterBottom>
-                  Welcome to Azone Support
+                  Welcome to DireMart Support
                 </Typography>
                 <Typography variant="body2">
                   How can we help you today?

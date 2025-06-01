@@ -194,8 +194,8 @@ export const setupInitialFAQs = async () => {
         order: 2
       },
       {
-        question: 'How can I become a seller on Azone?',
-        answer: 'To become a seller on Azone, go to your profile and click on "Become a Seller". You\'ll need to provide some additional information about your business. Once approved, you can start listing your products and selling on our platform.',
+        question: 'How can I become a seller on DireMart?',
+        answer: 'To become a seller on DireMart, go to your profile and click on "Become a Seller". You\'ll need to provide some additional information about your business. Once approved, you can start listing your products and selling on our platform.',
         category: categoryIds['Seller Information'],
         order: 1
       },

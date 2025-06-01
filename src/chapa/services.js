@@ -33,8 +33,8 @@ export const initializeDeposit = async (userId, amount, email, firstName, lastNa
       lastName,
       currency: 'ETB',
       title: 'Add Funds to Wallet',
-      description: 'Adding funds to your Azone wallet',
-      logo: 'https://azone.com/logo.png', // Replace with your actual logo URL
+      description: 'Adding funds to your DireMart wallet',
+      logo: 'https://DireMart.com/logo.png', // Replace with your actual logo URL
       callback_url: `${window.location.origin}/wallet/callback`,
       return_url: `${window.location.origin}/wallet?tx_ref=${txRef}&status=success`
     };

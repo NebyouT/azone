@@ -1,0 +1,771 @@
+import { useState, useEffect } from 'react';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import {
+  Container,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Grid,
+  Link,
+  Paper,
+  Stepper,
+  Step,
+  StepLabel,
+  FormControl,
+  FormControlLabel,
+  RadioGroup,
+  Radio,
+  Divider,
+  CircularProgress,
+  Alert,
+  InputAdornment,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Tooltip,
+  Zoom,
+  Snackbar,
+  useMediaQuery,
+  useTheme,
+  LinearProgress,
+  Chip
+} from '@mui/material';
+import {
+  Person as PersonIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  Lock as LockIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Google as GoogleIcon,
+  MarkEmailRead as MarkEmailReadIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon,
+  ArrowBack as ArrowBackIcon,
+  ArrowForward as ArrowForwardIcon,
+  Help as HelpIcon
+} from '@mui/icons-material';
+import { useAuth } from '../../contexts/AuthContext';
+import { 
+  registerUser, 
+  validateEthiopianPhoneNumber,
+  signInWithGoogle,
+  resendVerificationEmail
+} from '../../firebase/services';
+
+const Register = () => {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // State for stepper
+  const [activeStep, setActiveStep] = useState(0);
+  const steps = ['Account', 'Personal', 'Verification'];
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    displayName: '',
+    phoneNumber: '',
+    role: 'buyer'
+  });
+  
+  // Validation state
+  const [validations, setValidations] = useState({
+    email: { valid: true, message: '' },
+    password: { valid: true, message: '' },
+    confirmPassword: { valid: true, message: '' },
+    displayName: { valid: true, message: '' },
+    phoneNumber: { valid: true, message: '' }
+  });
+  
+  // Password strength
+  const [passwordStrength, setPasswordStrength] = useState(0);
+  
+  // UI state
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
+  const [registeredUser, setRegisteredUser] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('info');
+  
+  // Calculate password strength whenever password changes
+  useEffect(() => {
+    if (!formData.password) {
+      setPasswordStrength(0);
+      return;
+    }
+    
+    let strength = 0;
+    
+    // Length check
+    if (formData.password.length >= 8) strength += 25;
+    
+    // Character variety checks
+    if (/[A-Z]/.test(formData.password)) strength += 25; // Uppercase
+    if (/[0-9]/.test(formData.password)) strength += 25; // Numbers
+    if (/[^A-Za-z0-9]/.test(formData.password)) strength += 25; // Special chars
+    
+    setPasswordStrength(strength);
+  }, [formData.password]);
+  
+  // Validate a single field
+  const validateField = (name, value) => {
+    let isValid = true;
+    let message = '';
+    
+    switch (name) {
+      case 'email':
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        isValid = emailRegex.test(value);
+        message = isValid ? '' : 'Please enter a valid email address';
+        break;
+        
+      case 'password':
+        isValid = value.length >= 8;
+        message = isValid ? '' : 'Password must be at least 8 characters';
+        break;
+        
+      case 'confirmPassword':
+        isValid = value === formData.password;
+        message = isValid ? '' : 'Passwords do not match';
+        break;
+        
+      case 'displayName':
+        isValid = value.length >= 3;
+        message = isValid ? '' : 'Name must be at least 3 characters';
+        break;
+        
+      case 'phoneNumber':
+        if (value) { // Only validate if a value is provided (phone is optional)
+          isValid = validateEthiopianPhoneNumber(value);
+          message = isValid ? '' : 'Please enter a valid Ethiopian phone number (e.g., +251 9XX XXX XXX or 09XXXXXXXX)';
+        }
+        break;
+        
+      default:
+        break;
+    }
+    
+    return { valid: isValid, message };
+  };
+  
+  // Validate all fields for the current step
+  const validateCurrentStep = () => {
+    let isValid = true;
+    const newValidations = { ...validations };
+    
+    // Fields to validate based on current step
+    const fieldsToValidate = 
+      activeStep === 0 ? ['email', 'password', 'confirmPassword'] :
+      activeStep === 1 ? ['displayName', 'phoneNumber'] :
+      [];
+    
+    fieldsToValidate.forEach(field => {
+      const validation = validateField(field, formData[field]);
+      newValidations[field] = validation;
+      if (!validation.valid) isValid = false;
+    });
+    
+    setValidations(newValidations);
+    return isValid;
+  };
+  
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Real-time validation
+    const validation = validateField(name, value);
+    setValidations(prev => ({
+      ...prev,
+      [name]: validation
+    }));
+    
+    // Clear general error when user types
+    if (error) setError('');
+  };
+  
+  const handleTogglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+  
+  const handleToggleConfirmPasswordVisibility = () => {
+    setShowConfirmPassword(!showConfirmPassword);
+  };
+  
+  const handleNext = () => {
+    // Validate current step before proceeding
+    if (!validateCurrentStep()) {
+      setError('Please correct the errors before proceeding');
+      return;
+    }
+    
+    setError('');
+    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+    
+    // Show success message when moving to next step
+    setSnackbarMessage('Step completed successfully!');
+    setSnackbarSeverity('success');
+    setSnackbarOpen(true);
+  };
+  
+  const handleBack = () => {
+    setActiveStep((prevActiveStep) => prevActiveStep - 1);
+    setError('');
+  };
+  
+  const handleSnackbarClose = (event, reason) => {
+    if (reason === 'clickaway') return;
+    setSnackbarOpen(false);
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Final validation before submission
+    if (!validateCurrentStep()) {
+      setError('Please correct the errors before submitting');
+      return;
+    }
+    
+    setError('');
+    setLoading(true);
+    
+    try {
+      // Register the user
+      const user = await registerUser(
+        formData.email,
+        formData.password,
+        formData.displayName || formData.email.split('@')[0], // Use part of email as display name if not provided
+        formData.phoneNumber || '', // Phone is optional in progressive registration
+        formData.role
+      );
+      
+      // Store the registered user for potential resend verification
+      setRegisteredUser(user);
+      setSuccess('Account created successfully!');
+      
+      // Show verification dialog
+      setVerificationDialogOpen(true);
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError(err.message || 'Failed to register. Please try again.');
+      
+      // Show error in snackbar
+      setSnackbarMessage(err.message || 'Failed to register. Please try again.');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+  };
+  
+  const handleSocialSignIn = async (provider) => {
+    setError('');
+    setLoading(true);
+    
+    try {
+      if (provider === 'Google') {
+        await signInWithGoogle();
+        navigate('/');
+      }
+      // Add other providers as needed
+    } catch (err) {
+      console.error(`${provider} sign-in error:`, err);
+      setError(err.message || `Failed to sign in with ${provider}. Please try again.`);
+      
+      setSnackbarMessage(err.message || `Failed to sign in with ${provider}. Please try again.`);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      if (registeredUser && registeredUser.email) {
+        await resendVerificationEmail(registeredUser);
+        
+        setSnackbarMessage('Verification email sent. Please check your inbox.');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+      } else {
+        setError('Unable to resend verification email. Please try logging in and request a new verification email.');
+      }
+    } catch (err) {
+      console.error('Error resending verification:', err);
+      setError(err.message || 'Failed to resend verification email. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseVerificationDialog = () => {
+    setVerificationDialogOpen(false);
+    navigate('/login');
+  };
+
+  const getPasswordStrengthColor = () => {
+    if (passwordStrength < 25) return 'error.main';
+    if (passwordStrength < 50) return 'warning.main';
+    if (passwordStrength < 75) return 'info.main';
+    return 'success.main';
+  };
+
+  const getPasswordStrengthLabel = () => {
+    if (passwordStrength < 25) return 'Weak';
+    if (passwordStrength < 50) return 'Fair';
+    if (passwordStrength < 75) return 'Good';
+    return 'Strong';
+  };
+
+  const getStepContent = (step) => {
+    switch (step) {
+      case 0:
+        return (
+          <>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="email"
+              label="Email Address"
+              name="email"
+              autoComplete="email"
+              autoFocus
+              value={formData.email}
+              onChange={handleChange}
+              error={!validations.email.valid}
+              helperText={validations.email.message}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EmailIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              id="password"
+              autoComplete="new-password"
+              value={formData.password}
+              onChange={handleChange}
+              error={!validations.password.valid}
+              helperText={validations.password.message}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip title={showPassword ? "Hide password" : "Show password"}>
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={handleTogglePasswordVisibility}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            
+            {formData.password && (
+              <Box sx={{ mt: 1, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ mr: 1 }}>
+                    Password Strength:
+                  </Typography>
+                  <Chip 
+                    size="small" 
+                    label={getPasswordStrengthLabel()} 
+                    color={passwordStrength >= 75 ? 'success' : passwordStrength >= 50 ? 'info' : passwordStrength >= 25 ? 'warning' : 'error'}
+                    sx={{ height: 20 }}
+                  />
+                </Box>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={passwordStrength} 
+                  sx={{ 
+                    height: 6, 
+                    borderRadius: 3,
+                    bgcolor: 'grey.200',
+                    '& .MuiLinearProgress-bar': {
+                      bgcolor: getPasswordStrengthColor(),
+                    }
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Use 8+ characters with a mix of letters, numbers & symbols
+                </Typography>
+              </Box>
+            )}
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="confirmPassword"
+              label="Confirm Password"
+              type={showConfirmPassword ? 'text' : 'password'}
+              id="confirmPassword"
+              autoComplete="new-password"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              error={!validations.confirmPassword.valid}
+              helperText={validations.confirmPassword.message}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip title={showConfirmPassword ? "Hide password" : "Show password"}>
+                      <IconButton
+                        aria-label="toggle confirm password visibility"
+                        onClick={handleToggleConfirmPasswordVisibility}
+                        edge="end"
+                      >
+                        {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </>
+        );
+        
+      case 1:
+        return (
+          <>
+            <TextField
+              margin="normal"
+              fullWidth
+              id="displayName"
+              label="Full Name"
+              name="displayName"
+              autoComplete="name"
+              value={formData.displayName}
+              onChange={handleChange}
+              error={!validations.displayName.valid}
+              helperText={validations.displayName.message}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              margin="normal"
+              fullWidth
+              id="phoneNumber"
+              label="Phone Number (Optional)"
+              name="phoneNumber"
+              autoComplete="tel"
+              value={formData.phoneNumber}
+              onChange={handleChange}
+              error={!validations.phoneNumber.valid}
+              helperText={validations.phoneNumber.message}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PhoneIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <FormControl component="fieldset" sx={{ mt: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Account Type
+              </Typography>
+              <RadioGroup
+                row
+                aria-label="role"
+                name="role"
+                value={formData.role}
+                onChange={handleChange}
+              >
+                <FormControlLabel value="buyer" control={<Radio />} label="Buyer" />
+                <FormControlLabel value="seller" control={<Radio />} label="Seller" />
+              </RadioGroup>
+            </FormControl>
+          </>
+        );
+        
+      case 2:
+        return (
+          <Box sx={{ textAlign: 'center', py: 2 }}>
+            <CheckCircleIcon color="success" sx={{ fontSize: 60, mb: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              Almost Done!
+            </Typography>
+            <Typography variant="body1" paragraph>
+              Please review your information before creating your account.
+            </Typography>
+            
+            <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: 'background.paper' }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Email</Typography>
+                  <Typography variant="body1">{formData.email}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Name</Typography>
+                  <Typography variant="body1">{formData.displayName || '(Not provided)'}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Phone</Typography>
+                  <Typography variant="body1">{formData.phoneNumber || '(Not provided)'}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Account Type</Typography>
+                  <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>{formData.role}</Typography>
+                </Grid>
+              </Grid>
+            </Paper>
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              By clicking "Create Account", you agree to our Terms of Service and Privacy Policy.
+            </Typography>
+          </Box>
+        );
+        
+      default:
+        return 'Unknown step';
+    }
+  };
+
+  return (
+    <Container component="main" maxWidth="sm" sx={{ mb: 4 }}>
+      <Paper 
+        elevation={isMobile ? 0 : 1} 
+        sx={{ 
+          my: { xs: 2, md: 6 }, 
+          p: { xs: 2, md: 3 },
+          borderRadius: 0,
+          border: isMobile ? 'none' : '1px solid',
+          borderColor: 'divider'
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}
+        >
+          <Typography component="h1" variant="h5" gutterBottom>
+            Create an Account
+          </Typography>
+          
+          <Box sx={{ width: '100%', mb: 3 }}>
+            <Grid container justifyContent="center">
+              <Grid item xs={12} sm={8} md={6}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<GoogleIcon />}
+                  onClick={() => handleSocialSignIn('Google')}
+                  sx={{ py: 1.2, borderRadius: 0 }}
+                >
+                  Sign up with Google
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+          
+          <Divider sx={{ width: '100%', mb: 3 }}>
+            <Typography variant="body2" color="text.secondary">
+              OR
+            </Typography>
+          </Divider>
+          
+          {error && (
+            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          
+          {success && (
+            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+              {success}
+            </Alert>
+          )}
+          
+          <Stepper 
+            activeStep={activeStep} 
+            sx={{ 
+              width: '100%', 
+              mb: 3,
+              display: { xs: isMobile ? 'none' : 'flex', sm: 'flex' } 
+            }}
+            alternativeLabel={!isMobile}
+          >
+            {steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+          
+          {isMobile && (
+            <Box sx={{ width: '100%', mb: 2, display: { sm: 'none' } }}>
+              <Typography variant="subtitle1" align="center" gutterBottom>
+                Step {activeStep + 1} of {steps.length}: {steps[activeStep]}
+              </Typography>
+              <LinearProgress 
+                variant="determinate" 
+                value={(activeStep / (steps.length - 1)) * 100} 
+                sx={{ height: 6, borderRadius: 3 }}
+              />
+            </Box>
+          )}
+          
+          <Box component="form" noValidate sx={{ mt: 1, width: '100%' }}>
+            {getStepContent(activeStep)}
+            
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              mt: 3,
+              pt: 2,
+              borderTop: '1px solid',
+              borderColor: 'divider'
+            }}>
+              <Button
+                disabled={activeStep === 0}
+                onClick={handleBack}
+                variant="outlined"
+                startIcon={<ArrowBackIcon />}
+                sx={{ borderRadius: 0 }}
+              >
+                Back
+              </Button>
+              
+              {activeStep === steps.length - 1 ? (
+                <Button
+                  type="button"
+                  variant="contained"
+                  disabled={loading}
+                  onClick={handleSubmit}
+                  sx={{ borderRadius: 0 }}
+                >
+                  {loading ? <CircularProgress size={24} /> : 'Create Account'}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="contained"
+                  onClick={handleNext}
+                  endIcon={<ArrowForwardIcon />}
+                  sx={{ borderRadius: 0 }}
+                >
+                  Next
+                </Button>
+              )}
+            </Box>
+          </Box>
+          
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="body2" align="center">
+              Already have an account?{' '}
+              <Link component={RouterLink} to="/login" variant="body2">
+                Sign in
+              </Link>
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
+      
+      <Dialog
+        open={verificationDialogOpen}
+        onClose={handleCloseVerificationDialog}
+        aria-labelledby="verification-dialog-title"
+        aria-describedby="verification-dialog-description"
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle id="verification-dialog-title" sx={{ display: 'flex', alignItems: 'center' }}>
+          <MarkEmailReadIcon color="primary" sx={{ mr: 1 }} />
+          Verify Your Email
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="verification-dialog-description">
+            We've sent a verification email to <strong>{formData.email}</strong>. Please check your inbox and click the verification link to activate your account.
+          </DialogContentText>
+          <Box sx={{ mt: 2, mb: 1 }}>
+            <Alert severity="info">
+              You can still log in to your account, but some features may be limited until you verify your email.
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleResendVerification} disabled={loading}>
+            {loading ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
+            {loading ? 'Sending...' : 'Resend Email'}
+          </Button>
+          <Button 
+            onClick={handleCloseVerificationDialog} 
+            variant="contained" 
+            autoFocus
+            sx={{ borderRadius: 0 }}
+          >
+            Go to Login
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        TransitionComponent={Zoom}
+      >
+        <Alert 
+          onClose={handleSnackbarClose} 
+          severity={snackbarSeverity} 
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+    </Container>
+  );
+};
+
+export default Register;

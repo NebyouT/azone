@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import DarkLogo from '../../assets/images/logo.svg';
+import LightLogo from '../../assets/images/logo2.svg';
 import {
   AppBar,
   Box,
@@ -179,12 +181,15 @@ const Navbar = () => {
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+  const orangeColor = '#ED782A';
+  const darkOrangeColor = '#D16620';
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [languageMenuAnchorEl, setLanguageMenuAnchorEl] = useState(null);
-  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -484,6 +489,26 @@ const Navbar = () => {
           </ListItemButton>
         </ListItem>
 
+        {/* Seller Dashboard or Become Seller */}
+        <ListItem disablePadding>
+          <ListItemButton
+            component={RouterLink}
+            to={isSeller ? "/seller/dashboard" : "/profile"}
+            sx={{
+              textAlign: 'center',
+              borderRadius: 0,
+              my: 0.5,
+              mx: 1,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ListItemIcon>
+              <StoreIcon />
+            </ListItemIcon>
+            <ListItemText primary={isSeller ? t('sellerDashboard') : t('becomeSeller')} />
+          </ListItemButton>
+        </ListItem>
+
         {!currentUser ? (
           <>
             <ListItem disablePadding>
@@ -649,167 +674,110 @@ const Navbar = () => {
 
   return (
     <>
-      {/* Top Bar - Similar to AliExpress */}
-      <TopBar sx={{ marginTop: { xs: '56px', sm: '64px' } }}>
-        <Container maxWidth="xl">
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: { xs: 1, sm: 2 } }}>
-            {/* Left side links */}
-            <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 2 }}>
-              {isSeller ? (
-                <Button
-                  component={RouterLink}
-                  to="/seller/dashboard"
-                  size="small"
-                  color="inherit"
-                  sx={{ fontSize: '0.75rem', borderRadius: 0 }}
-                  startIcon={<StoreIcon fontSize="small" />}
-                >
-                  {t('sellerDashboard')}
-                </Button>
-              ) : (
-                <Button
-                  component={RouterLink}
-                  to="/profile"
-                  size="small"
-                  color="inherit"
-                  sx={{ fontSize: '0.75rem', borderRadius: 0 }}
-                >
-                  {t('becomeSeller')}
-                </Button>
-              )}
-            </Box>
-
-            {/* Right side links */}
-            <Box sx={{ display: 'flex', gap: 2, ml: 'auto' }}>
-              {!currentUser ? (
-                <>
-                  <Button
-                    component={RouterLink}
-                    to="/login"
-                    size="small"
-                    color="inherit"
-                    sx={{ fontSize: '0.75rem', borderRadius: 0 }}
-                  >
-                    {t('login')}
-                  </Button>
-                  <Button
-                    component={RouterLink}
-                    to="/register"
-                    size="small"
-                    color="inherit"
-                    sx={{ fontSize: '0.75rem', borderRadius: 0 }}
-                  >
-                    {t('register')}
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  component={RouterLink}
-                  to="/orders"
-                  size="small"
-                  color="inherit"
-                  sx={{ fontSize: '0.75rem', borderRadius: 0 }}
-                  startIcon={<OrdersIcon fontSize="small" />}
-                >
-                  {t('orders')}
-                </Button>
-              )}
-
-              <Button
-                size="small"
-                color="inherit"
-                sx={{ fontSize: '0.75rem', borderRadius: 0 }}
-                startIcon={<TranslateIcon fontSize="small" />}
-                onClick={handleLanguageMenuOpen}
-                endIcon={<KeyboardArrowDownIcon fontSize="small" />}
-              >
-                {language === 'en' ? 'English' : 'አማርኛ'}
-              </Button>
-            </Box>
-          </Box>
-        </Container>
-      </TopBar>
-
-      {/* Main Navbar */}
+      {/* Main Navbar - Simplified AliExpress style */}
       <AppBar
         position="sticky"
         sx={{
-          ...glassmorphism(0.7, 10, mode === 'dark'),
           borderRadius: 0,
-          boxShadow: 'none',
-          borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-          backgroundColor: theme.palette.mode === 'dark' ? '#D16620' : '#ED782A', // New brand color
-          position: 'fixed', // Fixed position for all screen sizes
+          boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+          borderBottom: 'none',
+          backgroundColor: theme.palette.mode === 'dark' ? '#1A1A1A' : '#FFFFFF',
+          color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#333333',
+          position: 'fixed',
           top: 0,
           zIndex: 1100,
+          height: 'auto',
+          px: { xs: 1, sm: 2, md: 3 }
         }}
       >
-        <Container maxWidth="xl" disableGutters={isSmall}>
-          <Toolbar sx={{ px: { xs: 1, sm: 2 } }}>
-            {/* Mobile menu icon */}
-            <IconButton
-              color="inherit"
-              aria-label="open drawer"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ mr: { xs: 1, sm: 2 }, display: { md: 'none' } }}
-            >
-              <MenuIcon />
-            </IconButton>
+          <Toolbar sx={{ 
+            minHeight: { xs: '56px', sm: '64px' }, 
+            py: 1,
+            display: 'flex', 
+            justifyContent: 'space-between' 
+          }}>
+            {/* Left section with logo and menu */}
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {/* Mobile menu icon */}
+              <IconButton
+                color="inherit"
+                aria-label="open drawer"
+                edge="start"
+                onClick={handleDrawerToggle}
+                sx={{ 
+                  mr: 1,
+                  display: { md: 'none' },
+                  color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#333333',
+                }}
+              >
+                <MenuIcon />
+              </IconButton>
 
-            {/* Logo */}
-            <Typography
-              variant="h6"
-              noWrap
-              component={RouterLink}
-              to="/"
-              sx={{
-                mr: 2,
-                display: { xs: 'none', md: 'flex' },
-                fontWeight: 700,
-                color: 'white',
-                textDecoration: 'none',
-              }}
-            >
-              Diremart
-            </Typography>
+              {/* Logo */}
+              <Box
+                component={RouterLink}
+                to="/"
+                sx={{
+                  mr: { xs: 1, sm: 2 },
+                  display: { xs: 'none', sm: 'flex' },
+                  textDecoration: 'none',
+                  alignItems: 'center',
+                }}
+              >
+                <img 
+                  src={mode === 'dark' ? DarkLogo : LightLogo} 
+                  alt="DIREMART" 
+                  style={{ 
+                    height: '100px', 
+                    width: 'auto',
+                    marginRight: '12px',
+                    objectFit: 'cover',
+                    objectPosition: 'center center',
+                    clipPath: 'inset(15% 0 15% 0)'
+                  }} 
+                />
+              </Box>
 
-            {/* Mobile Logo */}
-            <Typography
-              variant="h6"
-              noWrap
-              component={RouterLink}
-              to="/"
-              sx={{
-                flexGrow: { xs: 1, sm: 0 },
-                display: { xs: 'flex', md: 'none' },
-                fontWeight: 700,
-                color: 'white',
-                textDecoration: 'none',
-              }}
-            >
-              Diremart
-            </Typography>
+              {/* Mobile Logo */}
+              <Box
+                component={RouterLink}
+                to="/"
+                sx={{
+                  display: { xs: 'flex', sm: 'none' },
+                  textDecoration: 'none',
+                  alignItems: 'center',
+                }}
+              >
+                <img 
+                  src={mode === 'dark' ? DarkLogo : LightLogo} 
+                  alt="DIREMART" 
+                  style={{ 
+                    height: '48px', 
+                    width: 'auto',
+                    marginRight: '8px',
+                    objectFit: 'cover',
+                    objectPosition: 'center center',
+                    clipPath: 'inset(15% 0 15% 0)'
+                  }} 
+                />
+              </Box>
 
-            {/* Categories Button (Desktop) */}
-            <Box
-              sx={{
-                position: 'relative',
-                display: { xs: 'none', md: 'block' },
-                mr: 2,
-              }}
-            >
+              {/* Categories Button (Desktop) - AliExpress style */}
               <Button
-                variant="contained"
-                color="secondary"
+                variant="text"
                 startIcon={<CategoryIcon />}
                 endIcon={<KeyboardArrowDownIcon />}
                 onClick={handleCategoryMenuToggle}
                 sx={{
+                  display: { xs: 'none', md: 'flex' },
                   borderRadius: 0,
-                  backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.2) : alpha('#fff', 0.2),
+                  color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#333333',
+                  fontWeight: 500,
+                  textTransform: 'none',
+                  fontSize: '0.95rem',
+                  mr: 1,
                   '&:hover': {
-                    backgroundColor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.3) : alpha('#fff', 0.3),
+                    backgroundColor: alpha(theme.palette.primary.main, 0.05),
                   },
                 }}
               >
@@ -860,13 +828,14 @@ const Navbar = () => {
                 to="/"
                 sx={{
                   my: 2,
-                  color: 'white',
+                  color: mode === 'dark' ? 'white' : '#333333',
                   display: 'block',
                   mx: 1,
                   '&:hover': {
-                    backgroundColor: alpha('#fff', 0.1),
+                    backgroundColor: mode === 'dark' ? alpha('#fff', 0.1) : alpha('#000', 0.05),
                   },
                   borderRadius: 0,
+                  transition: 'color 0.3s ease, background-color 0.3s ease'
                 }}
               >
                 {t('home')}
@@ -877,13 +846,14 @@ const Navbar = () => {
                 to="/products"
                 sx={{
                   my: 2,
-                  color: 'white',
+                  color: mode === 'dark' ? 'white' : '#333333',
                   display: 'block',
                   mx: 1,
                   '&:hover': {
-                    backgroundColor: alpha('#fff', 0.1),
+                    backgroundColor: mode === 'dark' ? alpha('#fff', 0.1) : alpha('#000', 0.05),
                   },
                   borderRadius: 0,
+                  transition: 'color 0.3s ease, background-color 0.3s ease'
                 }}
               >
                 {t('products')}
@@ -894,13 +864,14 @@ const Navbar = () => {
                 to="/support"
                 sx={{
                   my: 2,
-                  color: 'white',
+                  color: mode === 'dark' ? 'white' : '#333333',
                   display: 'block',
                   mx: 1,
                   '&:hover': {
-                    backgroundColor: alpha('#fff', 0.1),
+                    backgroundColor: mode === 'dark' ? alpha('#fff', 0.1) : alpha('#000', 0.05),
                   },
                   borderRadius: 0,
+                  transition: 'color 0.3s ease, background-color 0.3s ease'
                 }}
               >
                 Support
@@ -993,13 +964,90 @@ const Navbar = () => {
             )}
 
             {/* Theme toggle */}
-            {!isSmall && !searchOpen && (
-              <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-                <IconButton onClick={toggleColorMode} color="inherit">
-                  {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
-                </IconButton>
-              </Tooltip>
-            )}
+            
+            
+            {/* TopBar elements merged into toolbar */}
+            <Box sx={{ display: 'flex', gap: 1, ml: 2, alignItems: 'center' }}>
+              {/* Language selector */}
+              <Button
+                size="small"
+                color="inherit"
+                sx={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: 'bold', 
+                  borderRadius: 0,
+                  display: { xs: 'none', sm: 'flex' } 
+                }}
+                startIcon={<TranslateIcon fontSize="small" />}
+                onClick={handleLanguageMenuOpen}
+                endIcon={<KeyboardArrowDownIcon fontSize="small" />}
+              >
+                {language === 'en' ? 'English' : 'አማርኛ'}
+              </Button>
+              
+              {/* Seller dashboard or become seller */}
+              <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+                {isSeller ? (
+                  <Button
+                    component={RouterLink}
+                    to="/seller/dashboard"
+                    size="small"
+                    color="inherit"
+                    sx={{ fontSize: '0.75rem', fontWeight: 'bold', borderRadius: 0 }}
+                    startIcon={<StoreIcon fontSize="small" />}
+                  >
+                    {t('sellerDashboard')}
+                  </Button>
+                ) : (
+                  <Button
+                    component={RouterLink}
+                    to="/profile"
+                    size="small"
+                    color="inherit"
+                    sx={{ fontSize: '0.75rem', fontWeight: 'bold', borderRadius: 0 }}
+                  >
+                    {t('becomeSeller')}
+                  </Button>
+                )}
+              </Box>
+              
+              {/* Login/Register or Orders */}
+              <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 1 }}>
+                {!currentUser ? (
+                  <>
+                    <Button
+                      component={RouterLink}
+                      to="/login"
+                      size="small"
+                      color="inherit"
+                      sx={{ fontSize: '0.75rem', fontWeight: 'bold', borderRadius: 0 }}
+                    >
+                      {t('login')}
+                    </Button>
+                    <Button
+                      component={RouterLink}
+                      to="/register"
+                      size="small"
+                      color="inherit"
+                      sx={{ fontSize: '0.75rem', fontWeight: 'bold', borderRadius: 0 }}
+                    >
+                      {t('register')}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    component={RouterLink}
+                    to="/orders"
+                    size="small"
+                    color="inherit"
+                    sx={{ fontSize: '0.75rem', fontWeight: 'bold', borderRadius: 0 }}
+                    startIcon={<OrdersIcon fontSize="small" />}
+                  >
+                    {t('orders')}
+                  </Button>
+                )}
+              </Box>
+            </Box>
 
             {/* Action Icons */}
             {!searchOpen && (
@@ -1055,14 +1103,15 @@ const Navbar = () => {
                       aria-controls={menuId}
                       aria-haspopup="true"
                       onClick={handleProfileMenuOpen}
-                      color="inherit"
+                      color={mode === 'dark' ? 'inherit' : 'primary'}
                       sx={{
                         ml: 1,
                         transition: 'all 0.2s',
-                        border: '2px solid transparent',
+                        border: `2px solid ${mode === 'dark' ? 'transparent' : orangeColor}`,
+                        backgroundColor: mode === 'dark' ? 'transparent' : 'rgba(237, 120, 42, 0.1)',
                         '&:hover': { 
                           transform: 'scale(1.05)',
-                          border: '2px solid white',
+                          border: `2px solid ${mode === 'dark' ? 'white' : orangeColor}`,
                         },
                       }}
                     >
@@ -1073,7 +1122,7 @@ const Navbar = () => {
                           sx={{ 
                             width: 32, 
                             height: 32,
-                            boxShadow: '0 0 8px rgba(255,255,255,0.5)'
+                            boxShadow: mode === 'dark' ? '0 0 8px rgba(255,255,255,0.5)' : '0 0 8px rgba(0,0,0,0.3)'
                           }} 
                         />
                       ) : (
@@ -1081,8 +1130,9 @@ const Navbar = () => {
                           sx={{ 
                             width: 32, 
                             height: 32, 
-                            bgcolor: theme.palette.secondary.main,
-                            boxShadow: '0 0 8px rgba(255,255,255,0.5)'
+                            bgcolor: mode === 'dark' ? theme.palette.secondary.main : orangeColor,
+                            color: '#FFFFFF',
+                            boxShadow: mode === 'dark' ? '0 0 8px rgba(255,255,255,0.5)' : '0 0 8px rgba(0,0,0,0.3)'
                           }}
                         >
                           {userDetails?.displayName?.charAt(0) || <PersonIcon />}
@@ -1092,30 +1142,22 @@ const Navbar = () => {
                   </Tooltip>
                 )}
 
-                {/* Login/Register Button - Only for tablet and desktop */}
-                {!isMobile && !currentUser && (
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    component={RouterLink}
-                    to="/login"
-                    startIcon={<PersonIcon />}
-                    sx={{
-                      ml: 2,
-                      borderRadius: 0,
-                      boxShadow: '0 0 10px rgba(0,0,0,0.1)',
-                      '&:hover': {
-                        boxShadow: '0 0 15px rgba(0,0,0,0.2)',
-                      },
-                    }}
-                  >
-                    {t('login')}
-                  </Button>
-                )}
+                {/* Theme Toggle Button */}
+                <IconButton
+                  onClick={() => toggleColorMode()}
+                  color="inherit"
+                  aria-label={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                  sx={{
+                    ml: 2,
+                    transition: 'transform 0.2s',
+                    '&:hover': { transform: 'scale(1.1)' },
+                  }}
+                >
+                  {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                </IconButton>
               </Box>
             )}
           </Toolbar>
-        </Container>
       </AppBar>
 
       {/* Mobile Drawer */}

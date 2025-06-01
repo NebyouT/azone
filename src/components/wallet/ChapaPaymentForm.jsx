@@ -51,12 +51,12 @@ const ChapaPaymentForm = ({
       <input type="hidden" name="email" value={formData.email} />
       <input type="hidden" name="first_name" value={formData.first_name} />
       <input type="hidden" name="last_name" value={formData.last_name} />
-      <input type="hidden" name="title" value="Azone Wallet Deposit" />
+      <input type="hidden" name="title" value="DireMart Wallet Deposit" />
       <input type="hidden" name="description" value={formData.description || "Wallet deposit"} />
       <input type="hidden" name="logo" value={formData.logo || ""} />
       <input type="hidden" name="callback_url" value={fullCallbackUrl} />
       <input type="hidden" name="return_url" value={fullCallbackUrl} />
-      <input type="hidden" name="meta[title]" value="Azone Wallet Deposit" />
+      <input type="hidden" name="meta[title]" value="DireMart Wallet Deposit" />
     </form>
   );
 };

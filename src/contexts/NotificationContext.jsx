@@ -43,9 +43,12 @@ export const NotificationProvider = ({ children }) => {
     setLoading(true);
     const unsubscribe = getNotifications(currentUser.uid, (notificationsData) => {
       // Sort notifications by creation date (newest first)
-      const sortedNotifications = notificationsData.sort((a, b) => 
-        b.createdAt.toDate() - a.createdAt.toDate()
-      );
+      const sortedNotifications = notificationsData.sort((a, b) => {
+        // Check if timestamps exist before trying to call toDate()
+        const dateA = a.createdAt && typeof a.createdAt.toDate === 'function' ? a.createdAt.toDate() : new Date();
+        const dateB = b.createdAt && typeof b.createdAt.toDate === 'function' ? b.createdAt.toDate() : new Date();
+        return dateB - dateA;
+      });
       
       setNotifications(sortedNotifications);
       

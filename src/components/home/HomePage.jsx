@@ -16,7 +16,10 @@ import {
   IconButton,
   useTheme,
   alpha,
-  useMediaQuery
+  useMediaQuery,
+  Tab,
+  Tabs,
+  styled,
 } from '@mui/material';
 import {
   ArrowForward as ArrowForwardIcon,
@@ -26,16 +29,29 @@ import {
   Support as SupportIcon,
   ArrowBackIos as ArrowBackIosIcon,
   ArrowForwardIos as ArrowForwardIosIcon,
+  People as PeopleIcon,
   ShoppingBag as ShoppingBagIcon,
+  Storefront as StorefrontIcon,
   Star as StarIcon,
-  Store as StoreIcon
+  Store as StoreIcon,
+  FlashOn as FlashOnIcon,
+  Phone as PhoneIcon,
+  Tv as TvIcon,
+  Laptop as LaptopIcon,
+  Kitchen as KitchenIcon,
+  Checkroom as FashionIcon,
+  Chair as FurnitureIcon,
+  SportsEsports as ToysIcon,
+  LocalOffer as OffersIcon,
+  Timer as TimerIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 import ProductCard from '../products/ProductCard';
 import { getProducts } from '../../firebase/services';
 import { useColorMode } from '../../theme/ThemeProvider';
-import { glassmorphism, cardHoverEffect } from '../../theme/futuristicTheme';
 import { useLanguage } from '../../contexts/LanguageContext';
 import TranslationWrapper from '../common/TranslationWrapper';
+import { glassmorphism, cardHoverEffect } from '../../theme/futuristicTheme';
 
 // Simple Carousel Component
 const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
@@ -156,10 +172,52 @@ const SimpleCarousel = ({ items, autoPlay = true, interval = 6000 }) => {
   );
 };
 
+// Flipkart style components
+const CategoryIconButton = styled(Button)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '12px 8px',
+  minWidth: 'auto',
+  width: '100%',
+  backgroundColor: 'transparent',
+  borderRadius: 0,
+  textTransform: 'none',
+  color: theme.palette.mode === 'dark' ? '#fff' : '#000',
+  '&:hover': {
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+  },
+}));
+
+const SectionTitle = styled(Typography)(({ theme }) => ({
+  fontSize: '22px',
+  fontWeight: 500,
+  padding: '15px 20px',
+  display: 'flex',
+  alignItems: 'center',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+const ViewAllButton = styled(Button)(({ theme }) => ({
+  backgroundColor: theme.palette.mode === 'dark' ? '#2874f0' : '#2874f0',
+  color: 'white',
+  textTransform: 'none',
+  boxShadow: 'none',
+  padding: '5px 20px',
+  borderRadius: 2,
+  fontWeight: 500,
+  '&:hover': {
+    backgroundColor: '#1a5cbf',
+    boxShadow: 'none',
+  },
+}));
+
 const HomePage = () => {
   const navigate = useNavigate();
   const [featuredProducts, setFeaturedProducts] = useState([]);
-  const [newArrivals, setNewArrivals] = useState([]);
+  const [electronicsProducts, setElectronicsProducts] = useState([]);
+  const [fashionProducts, setFashionProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const theme = useTheme();
   const { mode } = useColorMode();
@@ -172,13 +230,17 @@ const HomePage = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        // Get featured products
-        const featured = await getProducts(null, 'rating', 4);
+        // Get featured/top-rated products
+        const featured = await getProducts(null, 'rating', 8);
         setFeaturedProducts(featured);
         
-        // Get new arrivals
-        const arrivals = await getProducts(null, 'createdAt', 8);
-        setNewArrivals(arrivals);
+        // Get electronics products
+        const electronics = await getProducts('electronics', 'createdAt', 6);
+        setElectronicsProducts(electronics);
+        
+        // Get fashion products
+        const fashion = await getProducts('clothing', 'createdAt', 6);
+        setFashionProducts(fashion);
       } catch (error) {
         console.error("Error fetching products:", error);
       } finally {
@@ -271,95 +333,303 @@ const HomePage = () => {
       key={banner.id}
       sx={{
         position: 'relative',
-        height: { xs: isMobile ? 'calc(60vh + 80px)' : '60vh', sm: '70vh', md: '80vh' },
-        maxHeight: isMobile ? 'none' : 800,
+        height: { xs: 'auto', sm: '380px', md: '400px' },
         width: '100%',
         overflow: 'hidden',
         borderRadius: 0,
+        bgcolor: '#f5f5f5',
       }}
     >
-      <Box
-        component="img"
-        src={banner.image}
-        alt={banner.title}
-        sx={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          filter: 'brightness(0.85)',
-        }}
-      />
-      
+      {/* AliExpress-style banner with red/orange color scheme */}
       <Box
         sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          background: 'linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 30%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0) 100%)',
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          padding: { xs: 3, sm: 5, md: 8 },
+          flexDirection: { xs: 'column', md: 'row' },
+          height: '100%',
+          width: '100%',
+          background: 'linear-gradient(90deg, #ff4747 0%, #ff6a00 100%)',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        <Box sx={{ maxWidth: { xs: '100%', sm: '80%', md: '50%' } }}>
-          <Typography 
-            variant="h2" 
-            component="h1" 
-            color="white" 
-            gutterBottom
-            sx={{ 
-              fontWeight: 900,
-              fontSize: { xs: '2.2rem', sm: '3rem', md: '4rem' },
-              textShadow: '0 2px 10px rgba(0,0,0,0.4)',
-              mb: 2,
-              textTransform: 'uppercase',
-              letterSpacing: '1px'
-            }}
-          >
-            {banner.title}
-          </Typography>
-          
-          <Typography 
-            variant="h6" 
-            color="white" 
-            sx={{ 
-              mb: 4,
-              maxWidth: '90%',
-              textShadow: '0 2px 5px rgba(0,0,0,0.4)',
-              fontSize: { xs: '1.1rem', sm: '1.3rem', md: '1.5rem' },
-              fontWeight: 400,
-              letterSpacing: '0.5px',
-            }}
-          >
-            {banner.description}
-          </Typography>
-          
-          <Button
-            variant="contained"
-            size={isMobile ? "medium" : "large"}
-            endIcon={<ArrowForwardIcon />}
-            onClick={() => navigate(banner.link)}
+        {/* Left content side */}
+        <Box
+          sx={{
+            width: { xs: '100%', md: '55%' },
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            padding: { xs: 3, sm: 4, md: 5 },
+            position: 'relative',
+            zIndex: 2,
+          }}
+        >
+          {/* Discount badge */}
+          <Box
             sx={{
-              background: theme.palette.gradients.primary,
-              px: { xs: 4, md: 5 },
-              py: { xs: 1.5, md: 2 },
-              boxShadow: 'none',
-              borderRadius: 0,
-              fontWeight: 600,
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              '&:hover': {
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                background: theme.palette.gradients.secondary,
-              }
+              position: 'absolute',
+              top: { xs: 10, md: 20 },
+              left: { xs: 10, md: 20 },
+              backgroundColor: '#ffeb3b',
+              color: '#d32f2f',
+              padding: '4px 12px',
+              borderRadius: '0',
+              transform: 'rotate(-5deg)',
+              fontWeight: 'bold',
+              border: '1px dashed #d32f2f',
+              boxShadow: '2px 2px 0 rgba(0,0,0,0.1)',
+              fontSize: { xs: '1rem', md: '1.4rem' },
+              zIndex: 3,
             }}
           >
-            {banner.buttonText}
-          </Button>
+            UP TO {banner.title === 'Summer Sale' ? '50% OFF' : '40% OFF'}
+          </Box>
+
+          <Box
+            sx={{
+              mb: { xs: 2, md: 3 },
+            }}
+          >
+            <Typography
+              variant="h3"
+              component="h1"
+              color="#fff"
+              gutterBottom
+              sx={{
+                fontWeight: 700,
+                fontSize: { xs: '1.8rem', sm: '2.5rem', md: '3rem' },
+                lineHeight: 1.1,
+                textShadow: '2px 2px 0 rgba(0,0,0,0.2)',
+              }}
+            >
+              {banner.title.toUpperCase()}
+            </Typography>
+            
+            <Typography
+              variant="h6"
+              color="#fff"
+              sx={{
+                mb: 2,
+                fontSize: { xs: '1rem', sm: '1.1rem', md: '1.2rem' },
+                fontWeight: 400,
+                textShadow: '1px 1px 0 rgba(0,0,0,0.1)',
+              }}
+            >
+              {banner.description}
+            </Typography>
+
+            {/* Timer component - common on AliExpress */}
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 1,
+                mb: 3,
+                mt: 1,
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  color: '#fff',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                ENDS IN:
+              </Typography>
+              {['12', '45', '22'].map((num, i) => (
+                <Box
+                  key={i}
+                  sx={{
+                    bgcolor: '#fff',
+                    color: '#ff4747',
+                    px: 1,
+                    py: 0.5,
+                    fontWeight: 'bold',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    minWidth: '28px',
+                    textAlign: 'center',
+                    boxShadow: '0 2px 0 rgba(0,0,0,0.05)',
+                  }}
+                >
+                  {num}
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          {/* Multiple CTA buttons - AliExpress style */}
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 2,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Button
+              variant="contained"
+              onClick={() => navigate(banner.link)}
+              sx={{
+                bgcolor: '#fff',
+                color: '#e62e04',
+                fontWeight: 'bold',
+                px: 3,
+                py: 1,
+                boxShadow: '0 4px 0 rgba(0,0,0,0.1)',
+                borderRadius: 0,
+                '&:hover': {
+                  bgcolor: '#f5f5f5',
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 6px 0 rgba(0,0,0,0.1)',
+                },
+              }}
+            >
+              {banner.buttonText}
+            </Button>
+            
+            <Button
+              variant="outlined"
+              sx={{
+                bgcolor: 'rgba(255,255,255,0.2)',
+                color: '#fff',
+                borderColor: '#fff',
+                fontWeight: 'bold',
+                px: 3,
+                py: 1,
+                borderRadius: 0,
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.3)',
+                  borderColor: '#fff',
+                },
+              }}
+            >
+              View Deals
+            </Button>
+          </Box>
+
+          {/* Promo badges - common on AliExpress */}
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1,
+              mt: 3,
+              flexWrap: 'wrap',
+            }}
+          >
+            {['Free Shipping', 'Money Back', 'New Arrivals'].map((badge) => (
+              <Chip
+                key={badge}
+                label={badge}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(255,255,255,0.85)',
+                  color: '#d32f2f',
+                  fontWeight: 500,
+                  borderRadius: 0,
+                  border: '1px solid rgba(0,0,0,0.05)',
+                }}
+              />
+            ))}
+          </Box>
         </Box>
+
+        {/* Right image side */}
+        <Box
+          sx={{
+            width: { xs: '100%', md: '45%' },
+            height: { xs: '220px', md: '100%' },
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <Box
+            component="img"
+            src={banner.image}
+            alt={banner.title}
+            sx={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              transition: 'transform 0.5s ease',
+              '&:hover': {
+                transform: 'scale(1.05)',
+              },
+            }}
+          />
+          
+          {/* Floating product thumbnails - common on AliExpress */}
+          <Box
+            sx={{
+              position: 'absolute',
+              bottom: { xs: 10, md: 20 },
+              right: { xs: 10, md: 20 },
+              display: 'flex',
+              gap: 1,
+            }}
+          >
+            {[1, 2, 3].map((num) => (
+              <Box
+                key={num}
+                sx={{
+                  width: { xs: 40, md: 50 },
+                  height: { xs: 40, md: 50 },
+                  bgcolor: '#fff',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  border: '1px solid #fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                  },
+                  transition: 'transform 0.2s ease',
+                }}
+              >
+                <Box
+                  component="img"
+                  src={`https://source.unsplash.com/random/50x50?product=${num}`}
+                  alt="Product thumbnail"
+                  sx={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        {/* Decorative elements - common on AliExpress */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -20,
+            right: -20,
+            width: 150,
+            height: 150,
+            borderRadius: '50%',
+            bgcolor: 'rgba(255,255,255,0.1)',
+            zIndex: 1,
+            display: { xs: 'none', md: 'block' },
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: -30,
+            left: -30,
+            width: 120,
+            height: 120,
+            borderRadius: '50%',
+            bgcolor: 'rgba(255,255,255,0.1)',
+            zIndex: 1,
+            display: { xs: 'none', md: 'block' },
+          }}
+        />
       </Box>
     </Box>
   ));
@@ -718,7 +988,7 @@ const HomePage = () => {
               width: '100%',
               px: 1
             }}>
-              {newArrivals.slice(0, 4).map((product) => (
+              {fashionProducts.slice(0, 4).map((product) => (
                 <Box 
                   key={product.id}
                   sx={{
@@ -733,7 +1003,7 @@ const HomePage = () => {
           ) : (
             // Desktop grid using MUI Grid
             <Grid container spacing={3}>
-              {newArrivals.slice(0, 8).map(product => (
+              {featuredProducts.slice(0, 8).map(product => (
                 <Grid item xs={6} sm={6} md={3} key={product.id}>
                   <ProductCard product={product} />
                 </Grid>
@@ -742,122 +1012,228 @@ const HomePage = () => {
           )}
         </Container>
         
-        {/* Call to Action */}
+        {/* Call to Action - Seller Recruitment */}
         <Box 
           sx={{ 
             position: 'relative',
-            py: { xs: 6, md: 10 },
+            py: { xs: 5, md: 6 },
             mb: { xs: 4, md: 8 },
-            overflow: 'hidden',
+            backgroundColor: isDark ? '#1E293B' : '#F8F9FA',
+            borderTop: '1px solid',
+            borderBottom: '1px solid',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
           }}
         >
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.9)}, ${alpha(theme.palette.secondary.main, 0.9)})`,
-              zIndex: -1,
-            }}
-          />
-          
           <Container maxWidth="lg">
-            <Grid container spacing={4} alignItems="center" justifyContent="center">
-              <Grid item xs={12} md={7} sx={{ textAlign: { xs: 'center', md: 'left' } }}>
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={12} md={6} sx={{ textAlign: { xs: 'center', md: 'left' }, order: { xs: 2, md: 1 } }}>
                 <Typography 
-                  variant="h3" 
+                  variant="h4" 
                   component="h2" 
-                  color="white" 
-                  gutterBottom
                   sx={{ 
                     fontWeight: 700,
-                    fontSize: { xs: '1.75rem', sm: '2.25rem', md: '2.75rem' },
                     mb: 2,
-                    textShadow: '0 2px 10px rgba(0,0,0,0.2)',
-                  }}
-                >
-                  Ready to Start Selling on Azone?
-                </Typography>
-                
-                <Typography 
-                  variant="h6" 
-                  color="white" 
-                  sx={{ 
-                    mb: 4,
-                    opacity: 0.9,
-                    maxWidth: { md: '80%' },
-                    fontSize: { xs: '1rem', md: '1.25rem' },
-                  }}
-                >
-                  Join thousands of sellers and reach millions of customers worldwide. Start your seller journey today!
-                </Typography>
-                
-                <Button
-                  variant="contained"
-                  size="large"
-                  color="secondary"
-                  endIcon={<StoreIcon />}
-                  onClick={() => navigate('/seller/register')}
-                  sx={{
-                    bgcolor: 'white',
-                    color: theme.palette.primary.main,
-                    px: 4,
-                    py: 1.5,
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
-                    '&:hover': {
-                      bgcolor: 'white',
-                      boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
+                    color: isDark ? '#FFFFFF' : '#333333',
+                    position: 'relative',
+                    display: 'inline-block',
+                    '&:after': {
+                      content: '""',
+                      position: 'absolute',
+                      width: '60%',
+                      height: '4px',
+                      bottom: '-8px',
+                      left: 0,
+                      backgroundColor: '#ED782A',
+                      display: { xs: 'none', md: 'block' }
                     }
                   }}
                 >
-                  Become a Seller
-                </Button>
-              </Grid>
-              
-              <Grid item xs={12} md={5} sx={{ display: { xs: 'none', md: 'block' } }}>
-                <Box
-                  sx={{
-                    position: 'relative',
-                    height: 400,
-                    width: '100%',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      width: 300,
-                      height: 300,
-                      borderRadius: '50%',
-                      background: 'rgba(255,255,255,0.1)',
-                      backdropFilter: 'blur(10px)',
-                      display: 'flex',
+                  Diremart: Dire Dawa's Local Marketplace
+                </Typography>
+                
+                <Typography variant="subtitle1" sx={{ mb: 3, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)', fontWeight: 500 }}>
+                  Your premier local shopping destination in Dire Dawa
+                </Typography>
+                
+                <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: { xs: 'center', md: 'flex-start' } }}>
+                  {[
+                    { text: '2K+ Monthly Customers', icon: 'People' },
+                    { text: '250+ Orders Completed', icon: 'ShoppingBag' },
+                    { text: '500+ Active Sellers', icon: 'Store' },
+                    { text: '100% Secure Payments', icon: 'Security' }
+                  ].map((stat, index) => (
+                    <Box key={index} sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
                       justifyContent: 'center',
-                      alignItems: 'center',
-                      boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
-                      animation: 'pulse 3s infinite',
-                      '@keyframes pulse': {
-                        '0%': {
-                          transform: 'scale(1)',
-                          boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
-                        },
-                        '50%': {
-                          transform: 'scale(1.05)',
-                          boxShadow: '0 25px 60px rgba(0,0,0,0.2)',
-                        },
-                        '100%': {
-                          transform: 'scale(1)',
-                          boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
-                        },
+                      p: 2,
+                      width: { xs: 'calc(50% - 8px)', md: 'auto', lg: 'calc(25% - 8px)' },
+                      minWidth: { xs: '140px', sm: '160px' },
+                      borderBottom: '2px solid #ED782A',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        borderBottomWidth: '4px'
+                      }
+                    }}>
+                      <Box 
+                        sx={{ 
+                          width: 48, 
+                          height: 48, 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          backgroundColor: '#ED782A',
+                          color: 'white',
+                          mb: 1.5
+                        }}
+                      >
+                        {stat.icon === 'People' && <PeopleIcon />}
+                        {stat.icon === 'ShoppingBag' && <ShoppingBagIcon />}
+                        {stat.icon === 'Store' && <StorefrontIcon />}
+                        {stat.icon === 'Security' && <SecurityIcon />}
+                      </Box>
+                      <Typography 
+                        variant="body1" 
+                        align="center"
+                        sx={{ 
+                          fontWeight: 600, 
+                          color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {stat.text}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+                
+                <Box sx={{ display: 'flex', gap: 2, mt: 3, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<StorefrontIcon />}
+                    onClick={() => navigate('/profile')}
+                    sx={{
+                      backgroundColor: '#ED782A',
+                      color: 'white',
+                      borderRadius: 0,
+                      py: 1.5,
+                      px: 4,
+                      fontWeight: 600,
+                      border: 'none',
+                      boxShadow: 'none',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        width: '100%',
+                        height: '100%',
+                        top: 0,
+                        left: '-100%',
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        transition: 'all 0.4s ease',
                       },
+                      '&:hover': {
+                        backgroundColor: '#D16620',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        transform: 'translateY(-2px)',
+                        '&::after': {
+                          left: '100%'
+                        }
+                      }
                     }}
                   >
-                    <ShoppingBagIcon sx={{ fontSize: 100, color: 'white' }} />
-                  </Box>
+                    Join as Seller
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    startIcon={<ShoppingBagIcon />}
+                    onClick={() => navigate('/products')}
+                    sx={{
+                      borderRadius: 0,
+                      py: 1.5,
+                      px: 4,
+                      fontWeight: 600,
+                      borderColor: '#ED782A',
+                      color: isDark ? 'white' : '#ED782A',
+                      '&:hover': {
+                        borderColor: '#D16620',
+                        backgroundColor: isDark ? 'rgba(237, 120, 42, 0.08)' : 'rgba(237, 120, 42, 0.04)',
+                        color: isDark ? 'white' : '#D16620',
+                      }
+                    }}
+                  >
+                    Shop Now
+                  </Button>
+                </Box>
+              </Grid>
+              
+              <Grid item xs={12} md={6} sx={{ order: { xs: 1, md: 2 }, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <Box
+                  sx={{
+                    width: '100%',
+                    maxWidth: 400,
+                    height: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(237,120,42,0.05)',
+                    p: 4,
+                    border: '1px solid',
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(237,120,42,0.2)',
+                  }}
+                >
+                  <Typography variant="h6" sx={{ color: isDark ? '#ED782A' : '#333333', mb: 3, fontWeight: 600, textAlign: 'center' }}>
+                    Seller Success Metrics
+                  </Typography>
+                  
+                  <Grid container spacing={2}>
+                    {[
+                      { icon: <ShoppingBagIcon sx={{ fontSize: 30 }} />, title: '2M+', subtitle: 'Monthly Customers' },
+                      { icon: <StoreIcon sx={{ fontSize: 30 }} />, title: '10K+', subtitle: 'Active Sellers' },
+                      { icon: <LocalShippingIcon sx={{ fontSize: 30 }} />, title: '15K+', subtitle: 'Daily Orders' },
+                      { icon: <SecurityIcon sx={{ fontSize: 30 }} />, title: '100%', subtitle: 'Secure Payments' }
+                    ].map((stat, index) => (
+                      <Grid item xs={6} key={index}>
+                        <Box sx={{ 
+                          p: 2, 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          alignItems: 'center',
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.5)',
+                          height: '100%',
+                          border: '1px solid',
+                          borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(237,120,42,0.1)',
+                        }}>
+                          <Box sx={{ 
+                            color: '#ED782A', 
+                            mb: 1,
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            height: 50
+                          }}>
+                            {stat.icon}
+                          </Box>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+                            {stat.title}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)', textAlign: 'center' }}>
+                            {stat.subtitle}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
                 </Box>
               </Grid>
             </Grid>

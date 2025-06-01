@@ -1,5 +1,5 @@
 /**
- * Image utility functions for the Azone application
+ * Image utility functions for the DireMart application
  */
 
 // Fallback image URLs - use GitHub-hosted images for reliability

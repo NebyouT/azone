@@ -7,7 +7,7 @@ import CryptoJS from 'crypto-js';
 
 // Encryption key - in production, this should be stored in environment variables
 // For development, we're using a hardcoded key
-const ENCRYPTION_KEY = 'azone-wallet-encryption-key-9876543210';
+const ENCRYPTION_KEY = 'DireMart-wallet-encryption-key-9876543210';
 
 /**
  * Encrypt a string

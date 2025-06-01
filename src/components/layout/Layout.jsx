@@ -43,6 +43,7 @@ const Layout = () => {
           width: '100%',
           maxWidth: '100%',
           margin: '0 auto',
+          marginTop: { xs: '84px', sm: '96px' }, // Additional space for TopBar (navbar + topbar height)
           padding: {
             xs: '16px',
             sm: '24px',

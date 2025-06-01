@@ -26,7 +26,7 @@ export const CartProvider = ({ children }) => {
         }
       } else {
         // If user is logged out, load cart from localStorage
-        const savedCart = localStorage.getItem('azone-cart');
+        const savedCart = localStorage.getItem('DireMart-cart');
         if (savedCart) {
           setCart(JSON.parse(savedCart));
         } else {
@@ -42,7 +42,7 @@ export const CartProvider = ({ children }) => {
   // Save cart to localStorage when it changes (for non-logged in users)
   useEffect(() => {
     if (!loading && !currentUser) {
-      localStorage.setItem('azone-cart', JSON.stringify(cart));
+      localStorage.setItem('DireMart-cart', JSON.stringify(cart));
     }
   }, [cart, loading, currentUser]);
 

@@ -376,16 +376,44 @@ const OrderDetail = () => {
   const handleCancelOrder = async () => {
     try {
       setActionLoading(true);
+      console.log('Cancelling order:', id);
+      
+      // Remember payment status before cancellation
+      const paymentWasMade = (order?.paymentStatus === 'paid' || order?.paymentStatus === 'HELD_IN_ESCROW');
+      const refundAmount = order?.totalAmount || 0;
+      
+      // Process the cancellation
       await cancelOrder(id);
-      setSuccessMessage('Order cancelled successfully');
+      
+      // Set appropriate success message based on payment status
+      if (paymentWasMade) {
+        setSuccessMessage(`Order cancelled successfully. ${formatCurrency(refundAmount)} has been refunded to your wallet.`);
+        
+        // Force refresh wallet data to show updated balance
+        try {
+          // If WalletContext is available, refresh wallet data
+          if (window.refreshWalletData && typeof window.refreshWalletData === 'function') {
+            console.log('Refreshing wallet data after refund');
+            window.refreshWalletData();
+          }
+        } catch (walletError) {
+          console.error('Error refreshing wallet data:', walletError);
+        }
+      } else {
+        setSuccessMessage('Order cancelled successfully.');
+      }
+      
       setCancelDialogOpen(false);
+      setSnackbarOpen(true);
       
       // Refresh order data
       const updatedOrder = await getOrderById(id);
       setOrder(updatedOrder);
+      
     } catch (err) {
       console.error('Error cancelling order:', err);
       setError('Failed to cancel order: ' + err.message);
+      setSnackbarOpen(true);
     } finally {
       setActionLoading(false);
     }
@@ -846,7 +874,7 @@ const OrderDetail = () => {
               >
                 <ListItemText
                   primary={`Status changed to ${update.status.toUpperCase()}`}
-                  secondary={update.timestamp ? formatDate(update.timestamp) : 'N/A'}
+                  secondary={<Typography component="span" variant="body2">{update.timestamp ? formatDate(update.timestamp) : 'N/A'}</Typography>}
                 />
                 <Chip 
                   label={update.status.toUpperCase()} 
@@ -913,7 +941,7 @@ const OrderDetail = () => {
                 >
                   <ListItemText
                     primary={transaction.description}
-                    secondary={formatDate(transaction.timestamp)}
+                    secondary={<Typography component="span" variant="body2">{formatDate(transaction.timestamp)}</Typography>}
                   />
                   <Typography 
                     variant="body2" 
@@ -1224,14 +1252,35 @@ const OrderDetail = () => {
         open={cancelDialogOpen}
         onClose={() => setCancelDialogOpen(false)}
         aria-labelledby="cancel-order-dialog-title"
+        PaperProps={{
+          sx: { borderTop: '4px solid', borderColor: 'error.main' }
+        }}
       >
-        <DialogTitle id="cancel-order-dialog-title">
+        <DialogTitle id="cancel-order-dialog-title" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CancelIcon color="error" />
           Cancel Order
         </DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to cancel this order? This action cannot be undone.
           </DialogContentText>
+          
+          {order?.paymentStatus === 'paid' && (
+            <Alert 
+              severity="info" 
+              icon={<PaymentIcon />}
+              sx={{ mt: 2, alignItems: 'flex-start' }}
+            >
+              <Box>
+                <Typography variant="subtitle2" component="span">
+                  Payment Refund:
+                </Typography>
+                <Typography variant="body2">
+                  Your payment of {formatCurrency(order?.totalAmount || 0)} will be immediately refunded to your wallet.
+                </Typography>
+              </Box>
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button 

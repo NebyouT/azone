@@ -46,7 +46,9 @@ import {
   TRANSACTION_TYPES, 
   TRANSACTION_STATUS,
   holdPaymentInEscrow,
-  releasePaymentFromEscrow
+  releasePaymentFromEscrow,
+  addFunds,
+  initializeWallet
 } from './walletServices';
 
 // Initialize Firebase services
@@ -104,6 +106,23 @@ export const formatEthiopianPhoneNumber = (phoneNumber) => {
   
   // Return as is with + prefix if it doesn't match known patterns
   return '+' + cleaned;
+};
+
+// Check if email already exists in the database
+export const checkEmailExists = async (email) => {
+  try {
+    // Query Firestore to check if a user with this email already exists
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+    
+    // If there are any documents in the result, the email exists
+    return !querySnapshot.empty;
+  } catch (error) {
+    console.error('Error checking email existence:', error);
+    // In case of error, assume the email might exist to prevent potential duplicates
+    throw error;
+  }
 };
 
 // User Registration
@@ -520,11 +539,10 @@ export const getProducts = async (categoryFilter = null, sortBy = 'createdAt', l
     let productsQuery;
     
     if (categoryFilter) {
+      // Use a simpler query without compound index requirement
       productsQuery = query(
         collection(db, 'products'),
-        where('category', '==', categoryFilter),
-        orderBy(sortBy, 'desc'),
-        limit(limitCount)
+        where('category', '==', categoryFilter)
       );
     } else {
       productsQuery = query(
@@ -543,6 +561,24 @@ export const getProducts = async (categoryFilter = null, sortBy = 'createdAt', l
         ...doc.data()
       });
     });
+    
+    // Apply client-side sorting and limiting for category filtered queries
+    if (categoryFilter) {
+      // Sort products based on the sortBy field
+      products.sort((a, b) => {
+        // Handle timestamp objects from Firestore
+        if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
+          const aTime = a[sortBy]?.seconds || 0;
+          const bTime = b[sortBy]?.seconds || 0;
+          return bTime - aTime; // descending order
+        }
+        // Handle regular fields
+        return b[sortBy] - a[sortBy]; // descending order
+      });
+      
+      // Apply the limit
+      return products.slice(0, limitCount);
+    }
     
     return products;
   } catch (error) {
@@ -795,13 +831,17 @@ export const createOrder = async (userId, orderData) => {
     if (orderData.paymentMethod === 'wallet') {
       try {
         // Hold the total amount in escrow
-        await holdPaymentInEscrow(userId, orderData.total, orderRef.id);
+        const escrowResult = await holdPaymentInEscrow(userId, orderData.total, orderRef.id);
         
-        // Update order payment status to 'held_in_escrow'
+        // Update order payment status to 'held_in_escrow' and record the exact amount held
         await updateDoc(orderRef, {
           paymentStatus: 'held_in_escrow',
+          heldAmount: orderData.total, // Store exact amount held in escrow
+          escrowId: escrowResult.escrowId, // Store reference to escrow record
           updatedAt: serverTimestamp()
         });
+        
+        console.log(`[PAYMENT] Held ${orderData.total} ETB in escrow for order ${orderRef.id}`);
       } catch (paymentError) {
         console.error("Error holding payment in escrow:", paymentError);
         // Don't fail the order creation if payment fails
@@ -950,11 +990,132 @@ export const updateOrderStatus = async (orderId, status, updatedBy) => {
       statusHistory: arrayUnion(statusUpdate)
     });
     
+    // If status is changed to cancelled, handle refunds if payment was made
+    if (status === 'cancelled') {
+      console.log(`Order ${orderId} status changed to cancelled. Checking if refund is needed...`);
+      
+      // If payment was already made or held in escrow, initiate refund
+      if (orderData.paymentStatus?.toLowerCase() === 'paid' || orderData.paymentStatus?.toLowerCase() === 'held_in_escrow') {
+        try {
+          // Use the exact amount that was originally held in escrow if available
+          const totalOrderAmount = orderData.heldAmount || orderData.totalAmount || 
+            orderData.items.reduce((total, item) => total + (item.price * item.quantity), 0);
+          
+          console.log(`[REFUND] Using amount for refund: ${totalOrderAmount} ETB (Original held amount: ${orderData.heldAmount || 'Not recorded'})`);
+          
+          console.log(`[REFUND] Starting refund process for order ${orderId} via status update. Payment status: ${orderData.paymentStatus}, Amount: ${totalOrderAmount} ETB`);
+          
+          // Get buyer ID from order data
+          const buyerId = orderData.userId;
+          if (!buyerId) {
+            throw new Error('Buyer ID not found in order data');
+          }
+          
+          // Format order number for display
+          const orderNumber = orderId.substring(0, 8).toUpperCase();
+          
+          console.log(`[REFUND-SELLER-CANCEL] STEP 1: Getting buyer wallet for ${buyerId}`);
+          // Get buyer wallet directly
+          const buyerWalletRef = doc(db, 'wallets', buyerId);
+          const buyerWalletSnap = await getDoc(buyerWalletRef);
+          
+          // If buyer wallet doesn't exist, create it
+          let buyerWallet = { balance: 0 };
+          let currentBalance = 0;
+          
+          if (buyerWalletSnap.exists()) {
+            buyerWallet = buyerWalletSnap.data();
+            currentBalance = buyerWallet.balance || 0;
+            console.log(`[REFUND-SELLER-CANCEL] STEP 2: Found existing wallet with balance: ${currentBalance} ETB`);
+          } else {
+            console.log(`[REFUND-SELLER-CANCEL] STEP 2: No wallet found for buyer. Creating new wallet.`);
+          }
+          
+          // Calculate new balance
+          const newBalance = currentBalance + totalOrderAmount;
+          console.log(`[REFUND-SELLER-CANCEL] STEP 3: Calculating new balance: ${currentBalance} + ${totalOrderAmount} = ${newBalance} ETB`);
+          
+          // Update wallet with new balance
+          console.log(`[REFUND-SELLER-CANCEL] STEP 4: Updating buyer wallet to ${newBalance} ETB`);
+          if (buyerWalletSnap.exists()) {
+            await updateDoc(buyerWalletRef, {
+              balance: newBalance,
+              updatedAt: serverTimestamp()
+            });
+          } else {
+            await setDoc(buyerWalletRef, {
+              balance: totalOrderAmount,
+              userId: buyerId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          }
+          
+          // Create transaction record
+          console.log(`[REFUND-SELLER-CANCEL] STEP 5: Creating refund transaction record`);
+          const refundTransactionRef = doc(collection(db, 'transactions'));
+          await setDoc(refundTransactionRef, {
+            userId: buyerId,
+            amount: totalOrderAmount,
+            type: 'credit',
+            category: 'refund',
+            description: `Refund for cancelled order #${orderNumber} (seller cancelled)`,
+            status: 'completed',
+            orderId: orderId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          
+          console.log(`[REFUND-SELLER-CANCEL] STEP 6: Verifying wallet update`);
+          // Verify the wallet was updated
+          const verifyWalletSnap = await getDoc(buyerWalletRef);
+          if (verifyWalletSnap.exists()) {
+            const verifyWallet = verifyWalletSnap.data();
+            console.log(`[REFUND-SELLER-CANCEL] Verified wallet balance after refund: ${verifyWallet.balance} ETB`);
+            if (verifyWallet.balance !== newBalance) {
+              console.warn(`[REFUND-SELLER-CANCEL] WARNING: Balance verification failed. Expected ${newBalance} but got ${verifyWallet.balance}`);
+            }
+          }
+          
+          // Set refund result to true
+          const refundResult = true;
+          
+          if (refundResult) {
+            // Update order payment status to 'refunded'
+            await updateDoc(orderRef, {
+              paymentStatus: 'refunded',
+              refundedAmount: totalOrderAmount,
+              refundedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            
+            // Create a notification for the buyer about the refund
+            await addDoc(collection(db, 'users', buyerId, 'notifications'), {
+              type: 'refund',
+              orderId: orderId,
+              message: `Your payment of ${totalOrderAmount} ETB for order #${orderId.substring(0, 8)} has been refunded to your wallet.`,
+              amount: totalOrderAmount,
+              read: false,
+              createdAt: serverTimestamp()
+            });
+            
+            console.log(`Refund of ${totalOrderAmount} processed successfully via status update for order ${orderId} to buyer ${buyerId}`);
+          }
+        } catch (refundError) {
+          console.error(`Error processing refund for order ${orderId} during status update:`, refundError);
+          throw new Error(`Failed to process refund during status update: ${refundError.message}`);
+        }
+      } else {
+        console.log(`No refund needed for order ${orderId}. Current payment status: ${orderData.paymentStatus}`);
+      }
+    }
+    
     // If order is delivered by seller, update product sold counts
     if (status === 'delivered' && updatedBy === orderData.sellerId) {
       await updateProductSoldCounts(orderId);
     }
     
+    return true;
   } catch (error) {
     console.error('Error updating order status:', error);
     throw error;
@@ -1546,35 +1707,50 @@ export const cancelOrder = async (orderId) => {
     
     await Promise.all(cancelSellerOrderPromises);
     
-    // If payment was already made, initiate refund
-    if (orderData.paymentStatus === 'paid' && orderData.paymentMethod === 'wallet') {
-      // Get all seller IDs from the order
-      const sellerIds = [...new Set(orderData.items.map(item => item.sellerId))];
-      
-      // Process refund for each seller
-      for (const sellerId of sellerIds) {
-        if (!sellerId) continue;
+    // If payment was already made or held in escrow, initiate refund
+    if (orderData.paymentStatus?.toLowerCase() === 'paid' || 
+        orderData.paymentStatus?.toLowerCase() === 'held_in_escrow') {
+      try {
+        // Use the exact amount that was originally held in escrow if available
+        const totalOrderAmount = orderData.heldAmount || orderData.totalAmount || 
+          orderData.items.reduce((total, item) => total + (item.price * item.quantity), 0);
         
-        // Calculate total amount for this seller
-        const sellerItems = orderData.items.filter(item => item.sellerId === sellerId);
-        const sellerTotal = sellerItems.reduce((total, item) => {
-          return total + (item.price * item.quantity);
-        }, 0);
+        console.log(`[REFUND] Using amount for refund: ${totalOrderAmount} ETB (Original held amount: ${orderData.heldAmount || 'Not recorded'})`);
         
-        try {
-          // Process refund from seller to buyer
-          await processRefund(sellerId, currentUser.uid, sellerTotal, orderId);
-          
+        console.log(`[REFUND] Starting refund process for order ${orderId}. Payment status: ${orderData.paymentStatus}, Amount: ${totalOrderAmount} ETB`);
+        
+        // Direct refund to buyer's wallet - this ensures funds return to the buyer regardless of seller status
+        const refundResult = await directRefundToBuyer(currentUser.uid, totalOrderAmount, orderId);
+        
+        if (refundResult) {
           // Update order payment status to 'refunded'
           await updateDoc(orderRef, {
             paymentStatus: 'refunded',
+            refundedAmount: totalOrderAmount,
+            refundedAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
-        } catch (refundError) {
-          console.error(`Error processing refund for order ${orderId} from seller ${sellerId}:`, refundError);
-          // Continue with other refunds even if one fails
+          
+          // Create a notification for the buyer about the refund
+          await addDoc(collection(db, 'users', currentUser.uid, 'notifications'), {
+            type: 'refund',
+            orderId: orderId,
+            message: `Your payment of ${totalOrderAmount} ETB for order #${orderId.substring(0, 8)} has been refunded to your wallet.`,
+            amount: totalOrderAmount,
+            read: false,
+            createdAt: serverTimestamp()
+          });
+          
+          console.log(`Refund of ${totalOrderAmount} processed successfully for order ${orderId} to buyer ${currentUser.uid}`);
+        } else {
+          throw new Error('Refund operation did not complete successfully');
         }
+      } catch (refundError) {
+        console.error(`Error processing refund for order ${orderId}:`, refundError);
+        throw new Error(`Failed to process refund: ${refundError.message}`);
       }
+    } else {
+      console.log(`No refund needed for order ${orderId}. Current payment status: ${orderData.paymentStatus}`);
     }
     
     return true;
@@ -2257,6 +2433,109 @@ export const getSellerStatistics = async (sellerId, period = 'month') => {
   } catch (error) {
     console.error('Error getting seller statistics:', error);
     throw error;
+  }
+};
+
+/**
+ * Process a direct refund to the buyer's wallet, regardless of the current location of the funds
+ * This ensures cancelled orders always return money to the buyer
+ * @param {string} buyerId - ID of the buyer receiving the refund
+ * @param {number} amount - Amount to refund
+ * @param {string} orderId - ID of the order being refunded
+ * @returns {Promise<boolean>} True if refund was successful
+ */
+const directRefundToBuyer = async (buyerId, amount, orderId) => {
+  try {
+    // Validate input parameters
+    if (!buyerId) {
+      console.error('[REFUND-BUYER-CANCEL] Missing buyer ID for refund');
+      throw new Error('Missing buyer ID for refund');
+    }
+    
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      console.error(`[REFUND-BUYER-CANCEL] Invalid refund amount: ${amount}`);
+      throw new Error(`Invalid refund amount: ${amount}. Must be a positive number.`);
+    }
+    
+    if (!orderId) {
+      console.error('[REFUND-BUYER-CANCEL] Missing order ID for refund');
+      throw new Error('Missing order ID for refund');
+    }
+    
+    console.log(`[REFUND-BUYER-CANCEL] Processing refund of ${amount} ETB to buyer ${buyerId} for order ${orderId}`);
+    
+    // Format order number for display
+    const orderNumber = orderId.substring(0, 8).toUpperCase();
+    
+    console.log(`[REFUND-BUYER-CANCEL] STEP 1: Getting buyer wallet for ${buyerId}`);
+    // Get buyer wallet directly
+    const buyerWalletRef = doc(db, 'wallets', buyerId);
+    const buyerWalletSnap = await getDoc(buyerWalletRef);
+    
+    // If buyer wallet doesn't exist, create it
+    let buyerWallet = { balance: 0 };
+    let currentBalance = 0;
+    
+    if (buyerWalletSnap.exists()) {
+      buyerWallet = buyerWalletSnap.data();
+      currentBalance = buyerWallet.balance || 0;
+      console.log(`[REFUND-BUYER-CANCEL] STEP 2: Found existing wallet with balance: ${currentBalance} ETB`);
+    } else {
+      console.log(`[REFUND-BUYER-CANCEL] STEP 2: No wallet found for buyer. Creating new wallet.`);
+    }
+    
+    // Calculate new balance
+    const newBalance = currentBalance + amount;
+    console.log(`[REFUND-BUYER-CANCEL] STEP 3: Calculating new balance: ${currentBalance} + ${amount} = ${newBalance} ETB`);
+    
+    // Update wallet with new balance
+    console.log(`[REFUND-BUYER-CANCEL] STEP 4: Updating buyer wallet to ${newBalance} ETB`);
+    if (buyerWalletSnap.exists()) {
+      await updateDoc(buyerWalletRef, {
+        balance: newBalance,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      await setDoc(buyerWalletRef, {
+        balance: amount,
+        userId: buyerId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+    
+    // Create transaction record
+    console.log(`[REFUND-BUYER-CANCEL] STEP 5: Creating refund transaction record`);
+    const refundTransactionRef = doc(collection(db, 'transactions'));
+    await setDoc(refundTransactionRef, {
+      userId: buyerId,
+      amount: amount,
+      type: 'credit',
+      category: 'refund',
+      description: `Refund for cancelled order #${orderNumber} (buyer cancelled)`,
+      status: 'completed',
+      orderId: orderId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log(`[REFUND-BUYER-CANCEL] STEP 6: Verifying wallet update`);
+    // Verify the wallet was updated
+    const verifyWalletSnap = await getDoc(buyerWalletRef);
+    if (verifyWalletSnap.exists()) {
+      const verifyWallet = verifyWalletSnap.data();
+      console.log(`[REFUND-BUYER-CANCEL] Verified wallet balance after refund: ${verifyWallet.balance} ETB`);
+      if (verifyWallet.balance !== newBalance) {
+        console.warn(`[REFUND-BUYER-CANCEL] WARNING: Balance verification failed. Expected ${newBalance} but got ${verifyWallet.balance}`);
+      }
+    }
+    
+    console.log(`[REFUND-BUYER-CANCEL] Direct refund processed successfully: ${amount} ETB to buyer ${buyerId} for order ${orderId}`);
+    
+    return true;
+  } catch (error) {
+    console.error(`[REFUND-BUYER-CANCEL] Error processing direct refund for order ${orderId}:`, error);
+    throw new Error(`Failed to process refund: ${error.message}`);
   }
 };
 

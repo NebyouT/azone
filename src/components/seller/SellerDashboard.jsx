@@ -1211,7 +1211,7 @@ const SellerDashboard = () => {
                   margin="normal"
                   variant="outlined"
                   InputProps={{ 
-                    startAdornment: <InputAdornment position="start">azone.com/shop/</InputAdornment>,
+                    startAdornment: <InputAdornment position="start">DireMart.com/shop/</InputAdornment>,
                     sx: { borderRadius: 0 } 
                   }}
                 />
@@ -1280,7 +1280,7 @@ const SellerDashboard = () => {
                     <MenuItem value="mobile_money">Mobile Money</MenuItem>
                     <MenuItem value="paypal">PayPal</MenuItem>
                   </Select>
-                  <FormHelperText>How you want to receive payments from Azone</FormHelperText>
+                  <FormHelperText>How you want to receive payments from DireMart</FormHelperText>
                 </FormControl>
               </Grid>
               

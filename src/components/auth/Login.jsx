@@ -108,12 +108,17 @@ const Login = () => {
       navigate('/');
     } catch (err) {
       console.error("Login error:", err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('Invalid email or password');
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Incorrect email or password. Please try again.');
       } else if (err.code === 'auth/too-many-requests') {
         setError('Too many failed login attempts. Please try again later or reset your password');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Please enter a valid email address');
+      } else if (err.code === 'auth/user-disabled') {
+        setError('This account has been disabled. Please contact support.');
       } else {
-        setError(err.message || 'Failed to login. Please try again.');
+        // Don't show technical Firebase errors to the user
+        setError('Login failed. Please check your credentials and try again.');
       }
     } finally {
       setLoading(false);
@@ -217,7 +222,7 @@ const Login = () => {
           </Typography>
           
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            Sign in to continue to Azone
+            Sign in to continue to DireMart
           </Typography>
           
           {verificationSuccess && (
@@ -364,7 +369,7 @@ const Login = () => {
           </DialogContentText>
           <Box sx={{ mt: 2, mb: 1 }}>
             <Alert severity="info">
-              While you can continue using Azone with limited functionality, some features may be restricted until you verify your email.
+              While you can continue using DireMart with limited functionality, some features may be restricted until you verify your email.
             </Alert>
           </Box>
         </DialogContent>

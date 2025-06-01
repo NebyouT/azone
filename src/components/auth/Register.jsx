@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -25,7 +25,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  FormHelperText
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -35,14 +36,17 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Google as GoogleIcon,
-  MarkEmailRead as MarkEmailReadIcon
+  MarkEmailRead as MarkEmailReadIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   registerUser, 
   validateEthiopianPhoneNumber,
   signInWithGoogle,
-  resendVerificationEmail
+  resendVerificationEmail,
+  checkEmailExists
 } from '../../firebase/services';
 
 const Register = () => {
@@ -63,23 +67,189 @@ const Register = () => {
     role: 'buyer'
   });
   
+  // Validation state
+  const [validation, setValidation] = useState({
+    email: { valid: false, message: '', checking: false },
+    password: { valid: false, message: '' },
+    confirmPassword: { valid: false, message: '' },
+    displayName: { valid: false, message: '' },
+    phoneNumber: { valid: true, message: '' } // Optional field, so initially valid
+  });
+  
   // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [phoneError, setPhoneError] = useState('');
   const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
   const [registeredUser, setRegisteredUser] = useState(null);
+  
+  // Email validation with debounce
+  useEffect(() => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    
+    if (!formData.email) {
+      setValidation(prev => ({
+        ...prev,
+        email: { valid: false, message: 'Email is required', checking: false }
+      }));
+      return;
+    }
+    
+    if (!emailRegex.test(formData.email)) {
+      setValidation(prev => ({
+        ...prev,
+        email: { valid: false, message: 'Please enter a valid email address', checking: false }
+      }));
+      return;
+    }
+    
+    // Set checking state while we verify email uniqueness
+    setValidation(prev => ({
+      ...prev,
+      email: { ...prev.email, checking: true }
+    }));
+    
+    const checkEmailTimer = setTimeout(async () => {
+      try {
+        const exists = await checkEmailExists(formData.email);
+        setValidation(prev => ({
+          ...prev,
+          email: { 
+            valid: !exists, 
+            message: exists ? 'This email is already in use' : '',
+            checking: false
+          }
+        }));
+      } catch (err) {
+        console.error('Error checking email:', err);
+        setValidation(prev => ({
+          ...prev,
+          email: { valid: false, message: 'Error checking email', checking: false }
+        }));
+      }
+    }, 600); // Debounce for 600ms
+    
+    return () => clearTimeout(checkEmailTimer);
+  }, [formData.email]);
+  
+  // Password validation
+  useEffect(() => {
+    if (!formData.password) {
+      setValidation(prev => ({
+        ...prev,
+        password: { valid: false, message: 'Password is required' }
+      }));
+      return;
+    }
+    
+    if (formData.password.length < 8) {
+      setValidation(prev => ({
+        ...prev,
+        password: { valid: false, message: 'Password must be at least 8 characters' }
+      }));
+      return;
+    }
+    
+    // Check password strength
+    const hasUppercase = /[A-Z]/.test(formData.password);
+    const hasLowercase = /[a-z]/.test(formData.password);
+    const hasNumber = /[0-9]/.test(formData.password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(formData.password);
+    
+    const strength = [hasUppercase, hasLowercase, hasNumber, hasSpecial].filter(Boolean).length;
+    
+    if (strength < 3) {
+      setValidation(prev => ({
+        ...prev,
+        password: { 
+          valid: false, 
+          message: 'Password should include uppercase, lowercase, numbers, and special characters' 
+        }
+      }));
+      return;
+    }
+    
+    setValidation(prev => ({
+      ...prev,
+      password: { valid: true, message: '' }
+    }));
+  }, [formData.password]);
+  
+  // Confirm password validation
+  useEffect(() => {
+    if (!formData.confirmPassword) {
+      setValidation(prev => ({
+        ...prev,
+        confirmPassword: { valid: false, message: 'Please confirm your password' }
+      }));
+      return;
+    }
+    
+    if (formData.password !== formData.confirmPassword) {
+      setValidation(prev => ({
+        ...prev,
+        confirmPassword: { valid: false, message: 'Passwords do not match' }
+      }));
+      return;
+    }
+    
+    setValidation(prev => ({
+      ...prev,
+      confirmPassword: { valid: true, message: '' }
+    }));
+  }, [formData.password, formData.confirmPassword]);
+  
+  // Display name validation
+  useEffect(() => {
+    if (!formData.displayName) {
+      setValidation(prev => ({
+        ...prev,
+        displayName: { valid: false, message: 'Display name is required' }
+      }));
+      return;
+    }
+    
+    if (formData.displayName.length < 3) {
+      setValidation(prev => ({
+        ...prev,
+        displayName: { valid: false, message: 'Display name must be at least 3 characters' }
+      }));
+      return;
+    }
+    
+    setValidation(prev => ({
+      ...prev,
+      displayName: { valid: true, message: '' }
+    }));
+  }, [formData.displayName]);
+  
+  // Phone number validation
+  useEffect(() => {
+    // Skip validation if phone number is empty (optional field)
+    if (!formData.phoneNumber) {
+      setValidation(prev => ({
+        ...prev,
+        phoneNumber: { valid: true, message: '' }
+      }));
+      return;
+    }
+    
+    const isValid = validateEthiopianPhoneNumber(formData.phoneNumber);
+    
+    setValidation(prev => ({
+      ...prev,
+      phoneNumber: { 
+        valid: isValid, 
+        message: isValid ? '' : 'Please enter a valid Ethiopian phone number (e.g., +251 9XX XXX XXX or 09XXXXXXXX)' 
+      }
+    }));
+  }, [formData.phoneNumber]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Clear phone error when user types
-    if (name === 'phoneNumber') {
-      setPhoneError('');
-    }
+    setError(''); // Clear general error when user types
   };
   
   const handleTogglePasswordVisibility = () => {
@@ -93,20 +263,21 @@ const Register = () => {
   const handleNext = () => {
     // Validate current step before proceeding
     if (activeStep === 0) {
-      if (!formData.email) {
-        setError('Email is required');
+      // Check email validation
+      if (!validation.email.valid) {
+        setError(validation.email.message || 'Please enter a valid email');
         return;
       }
-      if (!formData.password) {
-        setError('Password is required');
+      
+      // Check password validation
+      if (!validation.password.valid) {
+        setError(validation.password.message || 'Please enter a valid password');
         return;
       }
-      if (formData.password !== formData.confirmPassword) {
-        setError('Passwords do not match');
-        return;
-      }
-      if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters');
+      
+      // Check confirm password validation
+      if (!validation.confirmPassword.valid) {
+        setError(validation.confirmPassword.message || 'Passwords must match');
         return;
       }
     }
@@ -123,21 +294,36 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    // Final validation check before submission
+    if (!validation.email.valid) {
+      setError(validation.email.message || 'Please enter a valid email');
+      return;
+    }
+    
+    if (!validation.password.valid) {
+      setError(validation.password.message || 'Please enter a valid password');
+      return;
+    }
+    
+    if (!validation.displayName.valid) {
+      setError(validation.displayName.message || 'Please enter a valid display name');
+      return;
+    }
+    
+    if (!validation.phoneNumber.valid) {
+      setError(validation.phoneNumber.message || 'Please enter a valid phone number or leave it empty');
+      return;
+    }
+    
     setLoading(true);
     
-    try {
-      // Validate phone number if provided
-      if (formData.phoneNumber && !validateEthiopianPhoneNumber(formData.phoneNumber)) {
-        setPhoneError('Please enter a valid Ethiopian phone number (e.g., +251 9XX XXX XXX or 09XXXXXXXX)');
-        setLoading(false);
-        return;
-      }
-      
+    try {      
       // Register the user
       const user = await registerUser(
         formData.email,
         formData.password,
-        formData.displayName || formData.email.split('@')[0], // Use part of email as display name if not provided
+        formData.displayName,
         formData.phoneNumber || '', // Phone is optional in progressive registration
         formData.role
       );
@@ -149,7 +335,20 @@ const Register = () => {
       setVerificationDialogOpen(true);
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.message || 'Failed to register. Please try again.');
+      
+      // Provide user-friendly error messages and filter out technical errors
+      if (err.code === 'auth/email-already-in-use') {
+        setError('This email address is already registered. Please use another email or try logging in.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Please enter a valid email address.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Please choose a stronger password. It should be at least 6 characters.');
+      } else if (err.message && err.message.includes('initializeWallet')) {
+        // Don't show wallet initialization errors to the user if the account was created
+        setError('Your account was created but we encountered an issue setting up your wallet. Please try logging in.');
+      } else {
+        setError('Registration failed. Please check your information and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -211,15 +410,29 @@ const Register = () => {
               label="Email Address"
               name="email"
               autoComplete="email"
-              autoFocus
               value={formData.email}
               onChange={handleChange}
+              error={!!validation.email.message}
+              helperText={
+                validation.email.checking ? 
+                  'Checking email availability...' : 
+                  validation.email.message
+              }
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
                     <EmailIcon />
                   </InputAdornment>
                 ),
+                endAdornment: validation.email.valid && !validation.email.checking ? (
+                  <InputAdornment position="end">
+                    <CheckCircleIcon color="success" />
+                  </InputAdornment>
+                ) : (validation.email.message && !validation.email.checking) ? (
+                  <InputAdornment position="end">
+                    <ErrorIcon color="error" />
+                  </InputAdornment>
+                ) : null
               }}
             />
             <TextField
@@ -233,6 +446,8 @@ const Register = () => {
               autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
+              error={!!validation.password.message}
+              helperText={validation.password.message}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -248,6 +463,9 @@ const Register = () => {
                     >
                       {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
+                    {validation.password.valid && (
+                      <CheckCircleIcon color="success" fontSize="small" sx={{ ml: 1 }} />
+                    )}
                   </InputAdornment>
                 ),
               }}
@@ -263,6 +481,8 @@ const Register = () => {
               autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleChange}
+              error={!!validation.confirmPassword.message}
+              helperText={validation.confirmPassword.message}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -278,10 +498,67 @@ const Register = () => {
                     >
                       {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
+                    {validation.confirmPassword.valid && (
+                      <CheckCircleIcon color="success" fontSize="small" sx={{ ml: 1 }} />
+                    )}
                   </InputAdornment>
                 ),
               }}
             />
+            {formData.password && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Password strength requirements:
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1 }}>
+                  <Typography 
+                    variant="caption" 
+                    color={formData.password.length >= 8 ? 'success.main' : 'text.secondary'}
+                    sx={{ display: 'flex', alignItems: 'center' }}
+                  >
+                    {formData.password.length >= 8 ? 
+                      <CheckCircleIcon fontSize="inherit" sx={{ mr: 0.5 }} /> : 
+                      '•'} At least 8 characters
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    color={/[A-Z]/.test(formData.password) ? 'success.main' : 'text.secondary'}
+                    sx={{ display: 'flex', alignItems: 'center' }}
+                  >
+                    {/[A-Z]/.test(formData.password) ? 
+                      <CheckCircleIcon fontSize="inherit" sx={{ mr: 0.5 }} /> : 
+                      '•'} At least one uppercase letter
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    color={/[a-z]/.test(formData.password) ? 'success.main' : 'text.secondary'}
+                    sx={{ display: 'flex', alignItems: 'center' }}
+                  >
+                    {/[a-z]/.test(formData.password) ? 
+                      <CheckCircleIcon fontSize="inherit" sx={{ mr: 0.5 }} /> : 
+                      '•'} At least one lowercase letter
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    color={/[0-9]/.test(formData.password) ? 'success.main' : 'text.secondary'}
+                    sx={{ display: 'flex', alignItems: 'center' }}
+                  >
+                    {/[0-9]/.test(formData.password) ? 
+                      <CheckCircleIcon fontSize="inherit" sx={{ mr: 0.5 }} /> : 
+                      '•'} At least one number
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    color={/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'success.main' : 'text.secondary'}
+                    sx={{ display: 'flex', alignItems: 'center' }}
+                  >
+                    {/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 
+                      <CheckCircleIcon fontSize="inherit" sx={{ mr: 0.5 }} /> : 
+                      '•'} At least one special character
+                  </Typography>
+                </Box>
+              </Box>
+            )}
           </>
         );
       case 1:
@@ -289,19 +566,27 @@ const Register = () => {
           <>
             <TextField
               margin="normal"
+              required
               fullWidth
               id="displayName"
-              label="Display Name (Optional)"
+              label="Display Name"
               name="displayName"
               autoComplete="name"
               value={formData.displayName}
               onChange={handleChange}
+              error={!!validation.displayName.message}
+              helperText={validation.displayName.message}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
                     <PersonIcon />
                   </InputAdornment>
                 ),
+                endAdornment: validation.displayName.valid ? (
+                  <InputAdornment position="end">
+                    <CheckCircleIcon color="success" />
+                  </InputAdornment>
+                ) : null
               }}
             />
             <TextField
@@ -313,19 +598,24 @@ const Register = () => {
               autoComplete="tel"
               value={formData.phoneNumber}
               onChange={handleChange}
-              error={!!phoneError}
-              helperText={phoneError}
+              error={!!validation.phoneNumber.message}
+              helperText={validation.phoneNumber.message || 'Format: +251 9XX XXX XXX or 09XXXXXXXX'}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
                     <PhoneIcon />
                   </InputAdornment>
                 ),
+                endAdornment: formData.phoneNumber && validation.phoneNumber.valid ? (
+                  <InputAdornment position="end">
+                    <CheckCircleIcon color="success" />
+                  </InputAdornment>
+                ) : null
               }}
             />
-            <FormControl component="fieldset" margin="normal">
+            <FormControl component="fieldset" sx={{ mt: 2 }}>
               <Typography variant="subtitle2" gutterBottom>
-                I want to:
+                Account Type
               </Typography>
               <RadioGroup
                 row
@@ -334,9 +624,12 @@ const Register = () => {
                 value={formData.role}
                 onChange={handleChange}
               >
-                <FormControlLabel value="buyer" control={<Radio />} label="Shop on Azone" />
-                <FormControlLabel value="seller" control={<Radio />} label="Sell on Azone" />
+                <FormControlLabel value="buyer" control={<Radio />} label="Buyer" />
+                <FormControlLabel value="seller" control={<Radio />} label="Seller" />
               </RadioGroup>
+              <FormHelperText>
+                You can change your account type later in your profile settings
+              </FormHelperText>
             </FormControl>
           </>
         );
@@ -407,7 +700,7 @@ const Register = () => {
                 <Button
                   type="button"
                   variant="contained"
-                  disabled={loading}
+                  disabled={loading || !validation.displayName.valid || !validation.phoneNumber.valid}
                   onClick={handleSubmit}
                 >
                   {loading ? <CircularProgress size={24} /> : 'Create Account'}
@@ -417,6 +710,7 @@ const Register = () => {
                   type="button"
                   variant="contained"
                   onClick={handleNext}
+                  disabled={!validation.email.valid || !validation.password.valid || !validation.confirmPassword.valid}
                 >
                   Next
                 </Button>

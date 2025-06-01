@@ -202,7 +202,7 @@ const WalletDashboard = () => {
         email: userEmail,
         first_name: firstName,
         last_name: lastName,
-        description: `Add ${amountToAdd} ETB to your Azone wallet`,
+        description: `Add ${amountToAdd} ETB to your DireMart wallet`,
         callback_url: `${window.location.origin}/wallet`,
         return_url: `${window.location.origin}/wallet?tx_ref=${result.txRef}&status=success`
       });
@@ -401,7 +401,7 @@ const WalletDashboard = () => {
         }}
       >
         <Grid container spacing={3}>
-          <Grid item grid={{ xs: 12, md: 6 }}>
+          <Grid item xs={12} md={6}>
             <Box sx={{ position: 'relative', zIndex: 1 }}>
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 {t('walletBalance')}
@@ -440,7 +440,7 @@ const WalletDashboard = () => {
             </Box>
           </Grid>
           
-          <Grid item grid={{ xs: 12, md: 6 }}>
+          <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
               <Paper sx={{ 
                 p: 2, 
@@ -493,7 +493,7 @@ const WalletDashboard = () => {
       {/* Overview Content */}
         <Box sx={{ mb: 3 }}>
           <Grid container spacing={2} alignItems="center">
-            <Grid item grid={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 placeholder="Search transactions..."
@@ -510,7 +510,7 @@ const WalletDashboard = () => {
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
               />
             </Grid>
-            <Grid item grid={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <FormControl size="small" sx={{ minWidth: 120 }}>
                   <InputLabel id="date-filter-label">Date</InputLabel>
@@ -617,11 +617,12 @@ const WalletDashboard = () => {
                         alignItems: 'center',
                       }}
                     >
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" component="span" color="text.secondary">
                         {transaction.description || (transaction.method === 'chapa' ? 'Via Chapa Payment' : 'Manual transaction')}
                       </Typography>
                       <Typography
                         variant="caption"
+                        component="span"
                         sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                         color="text.secondary"
                       >

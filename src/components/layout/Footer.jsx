@@ -32,6 +32,10 @@ const Footer = () => {
   const { cart } = useCart();
   const itemCount = cart?.items?.reduce((count, item) => count + item.quantity, 0) || 0;
   const { t } = useLanguage();
+  
+  // Define consistent colors
+  const orangeColor = '#ED782A';
+  const darkOrangeColor = '#D16620';
 
   // Mobile bottom navigation component
   const MobileBottomNav = () => {
@@ -204,34 +208,22 @@ const Footer = () => {
   };
 
   // If on mobile, render the mobile bottom navigation
-  if (isMobile) {
-    return <MobileBottomNav />;
-  }
-
-  // Desktop footer
-  return (
+  return isMobile ? (
+    <>
+      <MobileBottomNav />
+      <Box sx={{ height: 70 }} /> {/* Spacer for mobile bottom nav */}
+    </>
+  ) : (
     <Box
-      sx={{
-        position: 'relative',
-        color: 'text.primary',
-        py: { xs: 4, md: 6 },
-        mt: 'auto',
-        background: isDark ? '#D16620' : '#ED782A',
-        borderTop: `1px solid ${alpha('#FFFFFF', 0.1)}`,
-        borderRadius: 0,
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '100px',
-          background: `linear-gradient(to top, ${alpha(theme.palette.background.default, 0)}, ${alpha(theme.palette.background.default, 0.1)})`,
-          pointerEvents: 'none',
-          zIndex: -1,
-        }
-      }}
       component="footer"
+      sx={{
+        backgroundColor: '#FFFFFF',
+        color: theme.palette.mode === 'dark' ? '#333333' : '#555555',
+        pt: 6,
+        pb: 4,
+        boxShadow: '0px -2px 10px rgba(0,0,0,0.05)',
+        borderTop: `1px solid ${alpha('#000000', 0.05)}`
+      }}
     >
       <Container maxWidth="xl" sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
         <Grid container spacing={{ xs: 3, md: 4 }}>
@@ -254,181 +246,179 @@ const Footer = () => {
             </Typography>
             <Box sx={{ 
               display: 'flex', 
-              gap: 1,
-              '& .MuiIconButton-root': {
-                transition: 'all 0.2s ease',
-                backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                borderRadius: 0,
-                '&:hover': {
-                  backgroundColor: alpha(theme.palette.primary.main, 0.2),
-                  transform: 'translateY(-3px)'
-                }
-              }
+              gap: 1
             }}>
-              <IconButton color="primary" aria-label="Facebook" size="small">
+              <IconButton
+                size="small"
+                sx={{ 
+                  color: '#FFFFFF',
+                  backgroundColor: '#ED782A',
+                  '&:hover': { backgroundColor: '#D16620' } 
+                }}
+                aria-label="Facebook"
+              >
                 <FacebookIcon fontSize="small" />
               </IconButton>
-              <IconButton color="primary" aria-label="Twitter" size="small">
-                <TwitterIcon fontSize="small" />
-              </IconButton>
-              <IconButton color="primary" aria-label="Instagram" size="small">
+              <IconButton
+                size="small"
+                sx={{ 
+                  color: '#FFFFFF',
+                  backgroundColor: '#ED782A',
+                  '&:hover': { backgroundColor: '#D16620' } 
+                }}
+                aria-label="Instagram"
+              >
                 <InstagramIcon fontSize="small" />
               </IconButton>
-              <IconButton color="primary" aria-label="YouTube" size="small">
-                <YouTubeIcon fontSize="small" />
+              <IconButton
+                size="small"
+                sx={{ 
+                  color: '#FFFFFF',
+                  backgroundColor: '#ED782A',
+                  '&:hover': { backgroundColor: '#D16620' } 
+                }}
+                aria-label="Twitter"
+              >
+                <TwitterIcon fontSize="small" />
               </IconButton>
             </Box>
           </Grid>
 
-          <Grid item grid={{ xs: 6, sm: 6, md: 3 }}>
-            <Typography variant="h6" gutterBottom fontWeight={600}>
+          {/* Quick Links */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, letterSpacing: '0.5px', mb: 3 }}>
               <TranslationWrapper translationKey="quickLinks">Quick Links</TranslationWrapper>
             </Typography>
-            <Box component="nav" sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {[
-                { name: 'home', path: '/' },
-                { name: 'products', path: '/products' },
-                { name: 'aboutUs', path: '/about' },
-                { name: 'contact', path: '/contact' },
-                { name: 'faqs', path: '/faqs' }
+                { name: 'Home', path: '/' },
+                { name: 'Products', path: '/products' },
+                { name: 'Become a Seller', path: '/profile' },
+                { name: 'My Orders', path: '/orders' },
+                { name: 'My Account', path: '/profile' },
               ].map((link) => (
                 <Link
                   key={link.name}
                   component={RouterLink}
                   to={link.path}
-                  color="inherit"
-                  underline="hover"
-                  sx={{ 
-                    mb: 1.5, 
-                    opacity: 0.8,
-                    transition: 'all 0.2s ease',
+                  sx={{
+                    color: 'inherit',
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    transition: 'all 0.2s',
                     '&:hover': {
-                      opacity: 1,
-                      transform: 'translateX(5px)',
-                      color: theme.palette.primary.main
+                      color: orangeColor,
+                      transform: 'translateX(5px)'
                     },
-                    display: 'inline-block',
-                    fontSize: { xs: '0.875rem', md: 'inherit' }
                   }}
                 >
-                  <TranslationWrapper translationKey={link.name}>{t(link.name)}</TranslationWrapper>
+                  {link.name}
                 </Link>
               ))}
             </Box>
           </Grid>
 
-          <Grid item grid={{ xs: 6, sm: 6, md: 3 }}>
-            <Typography variant="h6" gutterBottom fontWeight={600}>
-              <TranslationWrapper translationKey="customerService">Customer Service</TranslationWrapper>
-            </Typography>
-            <Box component="nav" sx={{ display: 'flex', flexDirection: 'column' }}>
-              {[
-                { name: 'myAccount', path: '/profile' },
-                { name: 'myOrders', path: '/orders' },
-                { name: 'shippingPolicy', path: '/shipping' },
-                { name: 'returnsRefunds', path: '/returns' },
-                { name: 'privacyPolicy', path: '/privacy' }
-              ].map((link) => (
-                <Link
-                  key={link.name}
-                  component={RouterLink}
-                  to={link.path}
-                  color="inherit"
-                  underline="hover"
-                  sx={{ 
-                    mb: 1.5, 
-                    opacity: 0.8,
-                    transition: 'all 0.2s ease',
-                    '&:hover': {
-                      opacity: 1,
-                      transform: 'translateX(5px)',
-                      color: theme.palette.primary.main
-                    },
-                    display: 'inline-block',
-                    fontSize: { xs: '0.875rem', md: 'inherit' }
-                  }}
-                >
-                  <TranslationWrapper translationKey={link.name}>{t(link.name)}</TranslationWrapper>
-                </Link>
-              ))}
-            </Box>
-          </Grid>
-
-          <Grid item grid={{ xs: 12, sm: 12, md: 3 }}>
-            <Typography variant="h6" gutterBottom fontWeight={600}>
+          {/* Contact Information */}
+          <Grid item xs={12} sm={6} md={5}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, letterSpacing: '0.5px', mb: 3 }}>
               <TranslationWrapper translationKey="contactUs">Contact Us</TranslationWrapper>
             </Typography>
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                <LocationIcon fontSize="small" sx={{ mr: 1, color: theme.palette.primary.main }} />
-                <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                  <TranslationWrapper translationKey="address">123 Commerce St, Market City</TranslationWrapper>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                <LocationIcon sx={{ mt: 0.3, color: orangeColor }} />
+                <Typography variant="body2">
+                  Dire Dawa, Ethiopia<br />
+                  Near Kezira, Main Street
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                <PhoneIcon fontSize="small" sx={{ mr: 1, color: theme.palette.primary.main }} />
-                <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                  +1 (234) 567-8900
+              
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <PhoneIcon sx={{ color: orangeColor }} />
+                <Typography variant="body2">
+                  +251 912 946 688
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <EmailIcon fontSize="small" sx={{ mr: 1, color: theme.palette.primary.main }} />
-                <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                  support@diremart.com
+              
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <EmailIcon sx={{ color: orangeColor }} />
+                <Typography variant="body2">
+                  info@diremart.et
                 </Typography>
               </Box>
             </Box>
             
-            <Typography variant="subtitle2" gutterBottom fontWeight={600}>
-              <TranslationWrapper translationKey="subscribe">Subscribe to our newsletter</TranslationWrapper>
-            </Typography>
-            <Box sx={{ display: 'flex', mt: 1 }}>
-              <TextField
-                size="small"
-                placeholder="Your email"
-                variant="outlined"
-                sx={{
-                  flexGrow: 1,
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '0',
-                    backgroundColor: alpha(theme.palette.background.paper, 0.5),
-                  }
-                }}
-              />
-              <Button 
-                variant="contained" 
-                sx={{ 
-                  borderRadius: 0,
-                  background: '#FFFFFF',
-                  color: '#ED782A',
-                  minWidth: 'auto'
-                }}
-              >
-                <SendIcon fontSize="small" />
-              </Button>
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 1.5 }}>
+                <TranslationWrapper translationKey="subscribe">Subscribe to our newsletter</TranslationWrapper>
+              </Typography>
+              <Box sx={{ display: 'flex' }}>
+                <TextField
+                  size="small"
+                  placeholder="Your email"
+                  variant="outlined"
+                  fullWidth
+                  sx={{
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.2)',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      color: isDark ? '#FFFFFF' : '#FFFFFF',
+                      '& fieldset': {
+                        borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.7)',
+                      },
+                    },
+                    '& .MuiInputBase-input::placeholder': {
+                      color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.7)',
+                      opacity: 1,
+                    },
+                  }}
+                />
+                <Button 
+                  variant="contained" 
+                  sx={{ 
+                    borderRadius: 0,
+                    backgroundColor: orangeColor,
+                    color: '#FFFFFF',
+                    minWidth: 'auto',
+                    border: 'none',
+                    boxShadow: 'none',
+                    '&:hover': {
+                      backgroundColor: darkOrangeColor,
+                      boxShadow: 'none',
+                    }
+                  }}
+                >
+                  <SendIcon fontSize="small" />
+                </Button>
+              </Box>
             </Box>
           </Grid>
         </Grid>
         
-        <Divider sx={{ my: { xs: 3, md: 4 }, opacity: 0.1 }} />
+        <Divider sx={{ my: 4, borderColor: 'rgba(0,0,0,0.1)' }} />
         
         <Box sx={{ 
           display: 'flex', 
           justifyContent: { xs: 'center', md: 'space-between' }, 
           flexDirection: { xs: 'column', md: 'row' },
           alignItems: 'center',
-          textAlign: { xs: 'center', md: 'left' },
-          opacity: 0.7 
+          pt: 1
         }}>
-          <Typography variant="body2" sx={{ mb: { xs: 2, md: 0 } }}>
-            {currentYear} <TranslationWrapper translationKey="diremart">Diremart</TranslationWrapper>. <TranslationWrapper translationKey="copyright">All rights reserved.</TranslationWrapper>
+          <Typography variant="body2" sx={{ color: '#555555', mb: { xs: 2, md: 0 } }}>
+            {currentYear} DIREMART. All rights reserved.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 3 }}>
-            <Link color="inherit" underline="hover" component={RouterLink} to="/terms">
-              <TranslationWrapper translationKey="terms">Terms of Service</TranslationWrapper>
+          <Box sx={{ display: 'flex', gap: { xs: 2, md: 4 } }}>
+            <Link underline="hover" component={RouterLink} to="/terms" sx={{ color: '#555555', '&:hover': { color: orangeColor } }}>
+              Terms
             </Link>
-            <Link color="inherit" underline="hover" component={RouterLink} to="/privacy">
-              <TranslationWrapper translationKey="privacy">Privacy Policy</TranslationWrapper>
+            <Link underline="hover" component={RouterLink} to="/privacy" sx={{ color: '#555555', '&:hover': { color: orangeColor } }}>
+              Privacy
+            </Link>
+            <Link underline="hover" component={RouterLink} to="/faq" sx={{ color: '#555555', '&:hover': { color: orangeColor } }}>
+              FAQ
             </Link>
           </Box>
         </Box>

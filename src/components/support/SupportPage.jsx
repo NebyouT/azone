@@ -179,7 +179,7 @@ const SupportPage = () => {
           Customer Support
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Get help with your Azone shopping experience
+          Get help with your DireMart shopping experience
         </Typography>
       </Box>
       
@@ -343,7 +343,7 @@ const SupportPage = () => {
                 Contact Information
               </Typography>
               <Typography variant="body2" paragraph>
-                <strong>Email:</strong> support@azone.com
+                <strong>Email:</strong> support@DireMart.com
               </Typography>
               <Typography variant="body2" paragraph>
                 <strong>Phone:</strong> +251 911 234 567

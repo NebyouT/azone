@@ -100,7 +100,7 @@ const NotificationSettings = ({ onBack }) => {
     {
       id: 'systemAnnouncements',
       name: 'System Announcements',
-      description: 'Important announcements and updates about the Azone platform',
+      description: 'Important announcements and updates about the DireMart platform',
       icon: <AnnouncementIcon fontSize="large" color="warning" />
     }
   ];

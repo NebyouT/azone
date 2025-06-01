@@ -106,7 +106,7 @@ const enTranslations = {
   privacyPolicy: 'Privacy Policy',
   faq: 'FAQ',
   helpCenter: 'Help Center',
-  copyright: ' 2025 Azone. All rights reserved.',
+  copyright: ' 2025 DireMart. All rights reserved.',
 };
 
 // Amharic translations
@@ -215,7 +215,7 @@ const amTranslations = {
   privacyPolicy: 'የግላዊነት ፖሊሲ',
   faq: 'ተደጋግመው የሚጠየቁ ጥያቄዎች',
   helpCenter: 'የእርዳታ ማዕከል',
-  copyright: ' 2025 Azone. ሁሉም መብቶች የተጠበቁ ናቸው።',
+  copyright: ' 2025 DireMart. ሁሉም መብቶች የተጠበቁ ናቸው።',
 };
 
 // Create language context
