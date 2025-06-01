@@ -576,8 +576,8 @@ const Checkout = () => {
                   </Box>
                   
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body1">Tax</Typography>
-                    <Typography variant="body1">{formatCurrency(tax)}</Typography>
+                    <Typography variant="body1">Service Fee (5%)</Typography>
+                    <Typography variant="body1">{formatCurrency(serviceFee)}</Typography>
                   </Box>
                   
                   <Divider sx={{ my: 2 }} />
@@ -886,8 +886,8 @@ const Checkout = () => {
               </Box>
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body1">Tax</Typography>
-                <Typography variant="body1">{formatCurrency(tax)}</Typography>
+                <Typography variant="body1">Service Fee (5%)</Typography>
+                <Typography variant="body1">{formatCurrency(serviceFee)}</Typography>
               </Box>
               
               <Divider sx={{ my: 2 }} />
