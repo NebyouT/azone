@@ -587,6 +587,87 @@ export const getProducts = async (categoryFilter = null, sortBy = 'createdAt', l
   }
 };
 
+// Admin Sales Management
+export const getSales = async (filters = {}, sortBy = 'createdAt', sortDirection = 'desc', limit = 50) => {
+  try {
+    const salesRef = collection(db, 'sales');
+    let salesQuery = query(salesRef);
+    
+    // Apply filters if any
+    if (filters.status) {
+      salesQuery = query(salesQuery, where('status', '==', filters.status));
+    }
+    
+    if (filters.dateFrom && filters.dateTo) {
+      const fromDate = new Date(filters.dateFrom);
+      const toDate = new Date(filters.dateTo);
+      toDate.setHours(23, 59, 59, 999); // End of day
+      
+      salesQuery = query(salesQuery, 
+        where('createdAt', '>=', Timestamp.fromDate(fromDate)),
+        where('createdAt', '<=', Timestamp.fromDate(toDate))
+      );
+    }
+    
+    // Add sorting
+    salesQuery = query(salesQuery, orderBy(sortBy, sortDirection), limit(limit));
+    
+    const salesSnapshot = await getDocs(salesQuery);
+    const sales = [];
+    
+    salesSnapshot.forEach((doc) => {
+      const data = doc.data();
+      sales.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        updatedAt: data.updatedAt?.toDate() || new Date()
+      });
+    });
+    
+    return sales;
+  } catch (error) {
+    console.error('Error getting sales data:', error);
+    throw error;
+  }
+};
+
+export const updateSaleStatus = async (saleId, status) => {
+  try {
+    const saleRef = doc(db, 'sales', saleId);
+    await updateDoc(saleRef, {
+      status: status,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating sale status:', error);
+    throw error;
+  }
+};
+
+export const getProductFlags = async (productId) => {
+  try {
+    const flagsRef = collection(db, 'productFlags');
+    const q = query(flagsRef, where('productId', '==', productId));
+    const flagsSnap = await getDocs(q);
+    
+    if (flagsSnap.empty) {
+      return []; // No flags found
+    }
+    
+    // Return all flags for this product
+    return flagsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate() || new Date() // Convert Firestore timestamp to JS Date
+    }));
+  } catch (error) {
+    console.error('Error getting product flags:', error);
+    throw error;
+  }
+};
+
 export const getProductById = async (productId) => {
   try {
     const productRef = doc(db, 'products', productId);
@@ -826,6 +907,16 @@ export const createOrder = async (userId, orderData) => {
     
     // Create separate seller orders
     await createSellerOrders(orderWithId);
+    
+    // Save a copy to the sales table with status "ordered"
+    const salesRef = collection(db, 'sales');
+    await addDoc(salesRef, {
+      ...completeOrderData,
+      orderId: orderRef.id,
+      status: 'ordered',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
     
     // If using wallet payment, hold the payment in escrow
     if (orderData.paymentMethod === 'wallet') {

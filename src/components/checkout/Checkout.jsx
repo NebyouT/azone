@@ -127,8 +127,8 @@ const Checkout = () => {
     ? cart.items.reduce((total, item) => total + (item.price * item.quantity), 0)
     : 0;
   const shippingCost = subtotal > 1000 ? 0 : 50; // Free shipping for orders over 1000 ETB
-  const tax = subtotal * 0.15; // 15% VAT
-  const total = subtotal + shippingCost + tax;
+  const serviceFee = subtotal * 0.05; // 5% service fee
+  const total = subtotal + shippingCost + serviceFee;
 
   // Load user data, wallet balance, and saved addresses
   useEffect(() => {
@@ -452,7 +452,7 @@ const Checkout = () => {
         items: cart.items,
         subtotal,
         shippingCost,
-        tax,
+        serviceFee,
         total,
         paymentMethod: 'wallet',
         shippingAddress: shippingDetails,
@@ -1095,8 +1095,8 @@ const Checkout = () => {
                   </Box>
                   
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2">Tax</Typography>
-                    <Typography variant="body2">{formatCurrency(tax)}</Typography>
+                    <Typography variant="body2">Service Fee (5%)</Typography>
+                    <Typography variant="body2">{formatCurrency(serviceFee)}</Typography>
                   </Box>
                   
                   <Divider sx={{ my: 1 }} />

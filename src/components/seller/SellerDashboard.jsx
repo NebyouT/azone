@@ -59,17 +59,21 @@ import {
   Notifications as NotificationsIcon,
   Message as MessageIcon,
   Settings as SettingsIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  Flag as FlagIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
+import {
   getSellerProducts, 
   getSellerOrders, 
   updateSellerOrderStatus,
   getBuyerInfoForOrder,
   updateShopSettings,
   getShopSettings,
-  deleteProduct
+  deleteProduct,
+  getProductFlags
 } from '../../firebase/services';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 
@@ -118,6 +122,8 @@ const SellerDashboard = () => {
   const [productSearch, setProductSearch] = useState('');
   const [productPage, setProductPage] = useState(0);
   const [productsPerPage, setProductsPerPage] = useState(10);
+  const [productFlags, setProductFlags] = useState({});
+  const [loadingFlags, setLoadingFlags] = useState(false);
 
   // State for order status update
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -164,36 +170,58 @@ const SellerDashboard = () => {
   }, [currentUser, userDetails, isSeller, navigate]);
 
   useEffect(() => {
-    const fetchSellerData = async () => {
-      if (!currentUser) return;
-      
+    const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch seller's products
+        setError('');
+        
+        // Fetch seller products
         const sellerProducts = await getSellerProducts(currentUser.uid);
         setProducts(sellerProducts);
         
-        // Fetch all seller orders
-        console.log(`Fetching all orders for seller: ${currentUser.uid}`);
+        // Fetch seller orders
         const sellerOrders = await getSellerOrders(currentUser.uid);
-        console.log(`Found ${sellerOrders.length} orders for this seller`, sellerOrders);
         setOrders(sellerOrders);
         
         // Fetch shop settings
         const settings = await getShopSettings(currentUser.uid);
-        setShopSettings(settings);
+        if (settings) {
+          setShopSettings(settings);
+        }
         
-        setError('');
+        // Check for product flags
+        setLoadingFlags(true);
+        const flagsMap = {};
+        
+        // Get flags for each product, but don't block the UI loading
+        // We'll load flags in the background
+        await Promise.all(sellerProducts.map(async (product) => {
+          try {
+            const flags = await getProductFlags(product.id);
+            if (flags && flags.length > 0) {
+              // Get most recent flag
+              const latestFlag = flags.sort((a, b) => b.createdAt - a.createdAt)[0];
+              flagsMap[product.id] = latestFlag;
+            }
+          } catch (flagErr) {
+            console.error(`Error fetching flags for product ${product.id}:`, flagErr);
+          }
+        }));
+        
+        setProductFlags(flagsMap);
+        setLoadingFlags(false);
       } catch (err) {
         console.error("Error fetching seller data:", err);
-        setError('Failed to load seller data. Please try again.');
+        setError('Failed to load seller dashboard data');
       } finally {
         setLoading(false);
       }
     };
     
-    fetchSellerData();
-  }, [currentUser]);
+    if (currentUser && isSeller) {
+      fetchData();
+    }
+  }, [currentUser, isSeller]);
 
   // Handle order status update
   const handleOpenStatusDialog = async (order, initialStatus) => {
@@ -722,13 +750,32 @@ const SellerDashboard = () => {
                         </TableCell>
                         <TableCell align="center">
                           <Box>
-                            <Chip 
-                              label={product.inStock ? 'Active' : 'Inactive'} 
-                              color={product.inStock ? 'success' : 'error'} 
-                              size="small"
-                              sx={{ borderRadius: 0, mb: !product.inStock && product.inactiveReason ? 1 : 0 }}
-                            />
-                            {!product.inStock && product.inactiveReason && (
+                            {productFlags[product.id] && productFlags[product.id].deactivated ? (
+                              <Chip 
+                                icon={<FlagIcon />}
+                                label="Flagged" 
+                                color="error" 
+                                size="small"
+                                sx={{ borderRadius: 0, mb: 1 }}
+                              />
+                            ) : (
+                              <Chip 
+                                label={product.inStock ? 'Active' : 'Inactive'} 
+                                color={product.inStock ? 'success' : 'error'} 
+                                size="small"
+                                sx={{ borderRadius: 0, mb: !product.inStock && product.inactiveReason ? 1 : 0 }}
+                              />
+                            )}
+                            
+                            {/* Show flag reasons if flagged */}
+                            {productFlags[product.id] && productFlags[product.id].deactivated && productFlags[product.id].issues && (
+                              <Typography variant="caption" color="error" sx={{ display: 'block', mb: 0.5 }}>
+                                Issues: {productFlags[product.id].issues.join(', ')}
+                              </Typography>
+                            )}
+                            
+                            {/* Show inactive reason if not flagged but inactive */}
+                            {!productFlags[product.id] && !product.inStock && product.inactiveReason && (
                               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                 Reason: {product.inactiveReason}
                               </Typography>

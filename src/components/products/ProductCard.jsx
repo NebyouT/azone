@@ -26,7 +26,8 @@ import { formatCurrency } from '../../utils/formatters';
 import { getProductImageUrl, handleImageError } from '../../utils/imageUtils';
 
 const ProductCard = ({ product }) => {
-  const { addToCart } = useCart();
+  const cartContext = useCart();
+  const addToCart = cartContext ? cartContext.addToCart : () => console.warn('Cart context not available');
   const navigate = useNavigate();
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
