@@ -1373,8 +1373,7 @@ const ProductVariantSelector = ({ variants, onVariantChange }) => {
         <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
           <Typography variant="body2">
             <strong>Selected:</strong> {selectedVariant.name || selectedVariant.options}
-            {selectedVariant.price && ` - ETB ${selectedVariant.price}`}
-            {selectedVariant.quantity && ` (${selectedVariant.quantity} available)`}
+            
           </Typography>
         </Box>
       )}

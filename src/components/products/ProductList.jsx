@@ -39,7 +39,9 @@ const ProductList = ({ category = null }) => {
       try {
         setLoading(true);
         const fetchedProducts = await getProducts(category, sortBy);
-        setProducts(fetchedProducts);
+        // Exclude products that are flagged (e.g., inappropriate or removed)
+        const visibleProducts = fetchedProducts.filter(p => !(p.flagged || p.isFlagged || p.status === 'Flagged'));
+        setProducts(visibleProducts);
         setError(null);
       } catch (err) {
         console.error("Error fetching products:", err);

@@ -166,7 +166,7 @@ const SavedAddresses = ({
   // Save or update address
   const handleSaveAddress = () => {
     // Validate form
-    if (!addressForm.fullName || !addressForm.phoneNumber || !addressForm.address || 
+    if (!addressForm.fullName || !addressForm.phoneNumber || 
         !addressForm.city || !addressForm.subCity || !addressForm.woreda || !addressForm.kebele) {
       setFormError('Please fill in all required fields');
       return;

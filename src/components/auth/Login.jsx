@@ -36,7 +36,8 @@ import {
   signInWithGoogle, 
   resendVerificationEmail,
   reloadUser,
-  isEmailVerified 
+  isEmailVerified, 
+  logoutUser 
 } from '../../firebase/services';
 
 const Login = () => {
@@ -98,6 +99,9 @@ const Login = () => {
       
       // Check if email is verified
       if (!user.emailVerified) {
+        // Sign user out so they stay logged out until verification
+        await logoutUser();
+
         // Show verification dialog if email is not verified
         setVerificationDialogOpen(true);
         setLoading(false);
@@ -132,7 +136,15 @@ const Login = () => {
     try {
       switch (provider) {
         case 'Google':
-          await signInWithGoogle();
+          const googleUser = await signInWithGoogle();
+          // If google account exists but email not verified (rare), enforce verification
+          if (!googleUser.emailVerified) {
+            await logoutUser();
+            setCurrentUser(googleUser);
+            setVerificationDialogOpen(true);
+            setLoading(false);
+            return;
+          }
           break;
         default:
           throw new Error('Invalid provider');
@@ -368,9 +380,7 @@ const Login = () => {
             Your email address has not been verified yet. Please check your inbox for a verification email and click the link to verify your account.
           </DialogContentText>
           <Box sx={{ mt: 2, mb: 1 }}>
-            <Alert severity="info">
-              While you can continue using DireMart with limited functionality, some features may be restricted until you verify your email.
-            </Alert>
+            
           </Box>
         </DialogContent>
         <DialogActions>
@@ -380,9 +390,7 @@ const Login = () => {
           <Button onClick={handleCheckVerification} disabled={loading}>
             {loading ? 'Checking...' : 'I\'ve Verified My Email'}
           </Button>
-          <Button onClick={handleCloseVerificationDialog} variant="contained" color="primary">
-            Continue Anyway
-          </Button>
+        
         </DialogActions>
       </Dialog>
     </Container>

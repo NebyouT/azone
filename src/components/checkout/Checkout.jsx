@@ -590,9 +590,10 @@ const Checkout = () => {
                         fontWeight: 'bold',
                         background: theme.palette.primary.gradient,
                         WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
+                        WebkitTextFillColor: 'green',
                       }}
                     >
+                    
                       {formatCurrency(total)}
                     </Typography>
                   </Box>
@@ -900,7 +901,7 @@ const Checkout = () => {
                     fontWeight: 'bold',
                     background: theme.palette.primary.gradient,
                     WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
+                    WebkitTextFillColor: 'green',
                   }}
                 >
                   {formatCurrency(total)}
@@ -1109,7 +1110,7 @@ const Checkout = () => {
                         fontWeight: 'bold',
                         background: theme.palette.primary.gradient,
                         WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
+                        WebkitTextFillColor: 'green',
                       }}
                     >
                       {formatCurrency(total)}

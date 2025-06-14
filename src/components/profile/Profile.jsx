@@ -227,6 +227,41 @@ const Profile = () => {
     }
   };
   
+  // Handle role change to seller
+  const handleBecomeSeller = async () => {
+    try {
+      setLoading(true);
+      await updateUserProfile(
+        currentUser.uid,
+        null,
+        null,
+        'seller',
+        currentUser.photoURL
+      );
+
+      // Update local state immediately
+      setProfileData(prev => ({
+        ...prev,
+        role: 'seller'
+      }));
+
+      setSnackbar({
+        open: true,
+        message: 'Congratulations! Your account has been upgraded to Seller.',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error changing role:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to change role',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle profile image upload
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -482,6 +517,18 @@ const Profile = () => {
               <Typography variant="body1" sx={{ mb: 1 }}>
                 <strong>Role:</strong> {profileData.role.charAt(0).toUpperCase() + profileData.role.slice(1)}
               </Typography>
+              {profileData.role === 'buyer' && (
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<StarIcon />}
+                  onClick={handleBecomeSeller}
+                  sx={{ mb: 2 }}
+                  disabled={loading}
+                >
+                  Become a Seller
+                </Button>
+              )}
               <Typography variant="body1" sx={{ mb: 1 }}>
                 <strong>Member since:</strong> {profileData.joinDate}
               </Typography>

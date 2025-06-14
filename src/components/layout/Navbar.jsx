@@ -939,22 +939,7 @@ const Navbar = () => {
             
             {/* TopBar elements merged into toolbar */}
             <Box sx={{ display: 'flex', gap: 1, ml: 2, alignItems: 'center' }}>
-              {/* Language selector */}
-              <Button
-                size="small"
-                color="inherit"
-                sx={{ 
-                  fontSize: '0.75rem', 
-                  fontWeight: 'bold', 
-                  borderRadius: 0,
-                  display: { xs: 'none', sm: 'flex' } 
-                }}
-                startIcon={<TranslateIcon fontSize="small" />}
-                onClick={handleLanguageMenuOpen}
-                endIcon={<KeyboardArrowDownIcon fontSize="small" />}
-              >
-                {language === 'en' ? 'English' : 'አማርኛ'}
-              </Button>
+              
               
               {/* Seller dashboard or become seller */}
               <Box sx={{ display: { xs: 'none', md: 'flex' } }}>

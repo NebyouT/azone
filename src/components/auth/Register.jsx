@@ -46,7 +46,8 @@ import {
   validateEthiopianPhoneNumber,
   signInWithGoogle,
   resendVerificationEmail,
-  checkEmailExists
+  checkEmailExists,
+  logoutUser
 } from '../../firebase/services';
 
 const Register = () => {
@@ -330,9 +331,13 @@ const Register = () => {
       
       // Store the registered user for potential resend verification
       setRegisteredUser(user);
-      
-      // Show verification dialog
-      setVerificationDialogOpen(true);
+
+      // Immediately sign the user out so they cannot access protected areas until email is verified
+      await logoutUser();
+
+      // Redirect to login page with a flag so we can show a message there if desired
+      navigate('/login?verify=pending');
+      return;
     } catch (err) {
       console.error('Registration error:', err);
       
